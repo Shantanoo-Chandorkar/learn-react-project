@@ -1,0 +1,52 @@
+/* style.css */
+
+/* Outer container for the counter example */
+.use-state-component-outer-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: #ffffff;
+  /* border-radius: 10px; */
+}
+
+/* Count text */
+.use-state-component-outer-container h6 {
+  font-size: 24px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin: 20px 0px;
+}
+
+/* Shared button styles */
+.use-state-component-increment-button,
+.use-state-component-decrement-button {
+  padding: 10px 20px;
+  font-size: 16px;
+  font-weight: 600;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+/* Increment Button */
+.use-state-component-increment-button {
+  background-color: #2ecc71;
+  color: #ffffff;
+  margin-bottom: 10px;
+}
+
+.use-state-component-increment-button:hover {
+  background-color: #27ae60;
+}
+
+/* Decrement Button */
+.use-state-component-decrement-button {
+  background-color: #e74c3c;
+  color: #ffffff;
+}
+
+.use-state-component-decrement-button:hover {
+  background-color: #c0392b;
+}

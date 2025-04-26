@@ -1,4 +1,5 @@
 import RenderTopicDetails from "../RenderTopicDetails/RenderTopicDetails";
+import "./style.css"
 
 const RenderTopicExamplePanel = ({ topic }) => {
   if (!topic) {
