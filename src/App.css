@@ -1,33 +1,69 @@
+/* App.css */
+
+/* Outer container */
 .learn-react-project-outer-container {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  min-height: 100vh;
+  background-color: #f5f7fa; /* Light elegant background */
+  font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  color: #2c3e50; /* Dark soft text color */
 }
 
-.learn-react-project-outer-container .learn-react-project-topic-container {
-  display: flex;
-}
-
-.learn-react-project-topic-container .learn-react-project-left-section-outer-container {
-  flex: 1;
-  border-right: 1px solid black;
-  padding: 10px;
-}
-
-.learn-react-project-topic-container .learn-react-project-middle-section-outer-container {
-  flex: 2;
-  border-right: 1px solid black;
-  padding: 10px;
-}
-
-.learn-react-project-topic-container .learn-react-project-right-section-outer-container {
-  flex: 2;
-  padding: 10px;
-}
-
+/* Header */
 .learn-react-project-header {
-  font-size: 36px;
-  font-weight: 700;
+  font-size: 32px;
+  font-weight: 800;
   text-align: center;
-  margin: 10px 0px;
+  padding: 20px;
+  background: linear-gradient(90deg, #4b6cb7 0%, #182848 100%); /* Soft blue gradient */
+  color: #ffffff;
+  border-bottom: 2px solid #dcdfe6;
+}
+
+/* Topic container holding three sections */
+.learn-react-project-topic-container {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Left section */
+.learn-react-project-left-section-outer-container {
+  flex: 1;
+  background-color: #ffffff;
+  border-right: 1px solid #dcdfe6;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+/* Middle section */
+.learn-react-project-middle-section-outer-container {
+  flex: 2;
+  background-color: #fafafa;
+  border-right: 1px solid #dcdfe6;
+  padding: 30px;
+  overflow-y: auto;
+}
+
+/* Right section */
+.learn-react-project-right-section-outer-container {
+  flex: 2;
+  background-color: #ffffff;
+  padding: 30px;
+  overflow-y: auto;
+}
+
+/* Add some scrollbars when needed */
+.learn-react-project-left-section-outer-container::-webkit-scrollbar,
+.learn-react-project-middle-section-outer-container::-webkit-scrollbar,
+.learn-react-project-right-section-outer-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.learn-react-project-left-section-outer-container::-webkit-scrollbar-thumb,
+.learn-react-project-middle-section-outer-container::-webkit-scrollbar-thumb,
+.learn-react-project-right-section-outer-container::-webkit-scrollbar-thumb {
+  background-color: #c1c8d0;
+  border-radius: 4px;
 }

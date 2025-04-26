@@ -1,0 +1,28 @@
+/* style.css */
+
+/* Outer container for the example panel */
+.render-topic-example-outer-container {
+  display: flex;
+  flex-direction: column;
+  background-color: #ffffff;
+  padding: 10px;
+  border-radius: 10px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* Heading inside the example panel */
+.render-topic-example-outer-container h3 {
+  font-size: 22px;
+  font-weight: 700;
+  color: #34495e;
+  margin-bottom: 20px;
+}
+
+/* Message when no topic is selected */
+.render-topic-example-outer-container h6 {
+  font-size: 18px;
+  font-weight: 500;
+  color: #7f8c8d;
+  text-align: center;
+}

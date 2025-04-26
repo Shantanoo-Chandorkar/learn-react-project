@@ -1,5 +1,6 @@
 import { useState } from "react";
 import RenderTopicDetails from "../RenderTopicDetails/RenderTopicDetails";
+import "./style.css";
 
 const RenderTopicInformationPanel = ({ topic }) => {
 

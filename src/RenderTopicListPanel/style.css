@@ -1,18 +1,63 @@
+/* style.css */
+
+/* Outer container */
 .render-topic-list-outer-container {
   display: flex;
   flex-direction: column;
-  column-gap: 10px;
+  gap: 20px; /* More space between list items */
+  padding: 10px;
 }
 
+/* Heading */
 .render-topic-list-outer-container h3 {
-  font-family: Georgia, 'Times New Roman', Times, serif;
-  font-size: 20px;
-  font-weight: 600;
+  font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-size: 22px;
+  font-weight: 700;
   text-align: center;
+  color: #34495e;
+  margin-bottom: 20px;
 }
 
+/* Each topic row */
 .render-topic-list-single-topic-container {
   display: flex;
-  flex-direction: row;
-  justify-content: space-around;
+  justify-content: space-between;
+  align-items: center;
+  background: #ecf0f3;
+  padding: 12px 16px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+  transition: background 0.3s ease, transform 0.2s ease;
+  cursor: pointer;
+}
+
+/* On hover, make it pop slightly */
+.render-topic-list-single-topic-container:hover {
+  background: #e1e7ec;
+  transform: translateY(-2px);
+}
+
+/* Topic title */
+.render-topic-list-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+/* View button */
+.render-topic-list-view-button {
+  background-color: #4b6cb7;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+/* Button hover effect */
+.render-topic-list-view-button:hover {
+  background-color: #3a539b;
 }
