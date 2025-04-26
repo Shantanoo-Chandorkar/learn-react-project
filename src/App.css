@@ -1,0 +1,33 @@
+.learn-react-project-outer-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.learn-react-project-outer-container .learn-react-project-topic-container {
+  display: flex;
+}
+
+.learn-react-project-topic-container .learn-react-project-left-section-outer-container {
+  flex: 1;
+  border-right: 1px solid black;
+  padding: 10px;
+}
+
+.learn-react-project-topic-container .learn-react-project-middle-section-outer-container {
+  flex: 2;
+  border-right: 1px solid black;
+  padding: 10px;
+}
+
+.learn-react-project-topic-container .learn-react-project-right-section-outer-container {
+  flex: 2;
+  padding: 10px;
+}
+
+.learn-react-project-header {
+  font-size: 36px;
+  font-weight: 700;
+  text-align: center;
+  margin: 10px 0px;
+}
