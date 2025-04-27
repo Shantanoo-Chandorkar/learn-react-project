@@ -20,7 +20,8 @@
 
 /* Shared button styles */
 .use-state-component-increment-button,
-.use-state-component-decrement-button {
+.use-state-component-decrement-button,
+.use-state-component-reset-button {
   padding: 10px 20px;
   font-size: 16px;
   font-weight: 600;
@@ -45,8 +46,20 @@
 .use-state-component-decrement-button {
   background-color: #e74c3c;
   color: #ffffff;
+  margin-bottom: 10px;
 }
 
 .use-state-component-decrement-button:hover {
   background-color: #c0392b;
+}
+
+/* Decrement Button */
+.use-state-component-reset-button {
+  background-color: #4d4bb7;
+  color: #ffffff;
+  margin-bottom: 10px;
+}
+
+.use-state-component-reset-button:hover {
+  background-color: #44427d;
 }

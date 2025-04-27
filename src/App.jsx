@@ -16,10 +16,12 @@ function App() {
     setSelectedTopic(topic);
   }
 
+  const hasExample = selectedTopic && selectedTopic.example;
+
   return (
     <div className='learn-react-project-outer-container'>
       {/* Move the header to the component afterwards */}
-      <header className='learn-react-project-header'>This is the Header</header>
+      <header className='learn-react-project-header'>Welcome to React Tutorial</header>
 
       <div className='learn-react-project-topic-container'>
         {/* Left Section */}
@@ -28,14 +30,20 @@ function App() {
         </div>
 
         {/* Middle Section */}
-        <div className='learn-react-project-middle-section-outer-container'>
+        <div className={
+          hasExample ?
+            'learn-react-project-middle-section-outer-container' :
+            'learn-react-project-middle-section-expanded-outer-container'
+        }>
           <RenderTopicInformationPanel topic={selectedTopic} />
         </div>
 
-        {/* Right Section */}
-        <div className='learn-react-project-right-section-outer-container'>
-          <RenderTopicExamplePanel topic={selectedTopic} />
-        </div>
+        {/* Right Section (Show only if the example is present in the topic) */}
+        {hasExample && (
+          <div className='learn-react-project-right-section-outer-container'>
+            <RenderTopicExamplePanel topic={selectedTopic} />
+          </div>
+        )}
       </div>
 
     </div>

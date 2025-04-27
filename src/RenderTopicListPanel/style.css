@@ -15,7 +15,7 @@
   font-weight: 700;
   text-align: center;
   color: #34495e;
-  margin-bottom: 20px;
+  margin: 10px 0px;
 }
 
 /* Each topic row */
@@ -24,7 +24,7 @@
   justify-content: space-between;
   align-items: center;
   background: #ecf0f3;
-  padding: 12px 16px;
+  padding: 8px;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.08);
   transition: background 0.3s ease, transform 0.2s ease;
@@ -39,9 +39,10 @@
 
 /* Topic title */
 .render-topic-list-title {
-  font-size: 18px;
+  font-size: 14px;
   font-weight: 600;
   color: #2c3e50;
+  margin: 4px;
 }
 
 /* View button */
@@ -49,9 +50,9 @@
   background-color: #4b6cb7;
   color: white;
   border: none;
-  padding: 8px 16px;
+  padding: 4px 8px;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   transition: background-color 0.3s ease;
