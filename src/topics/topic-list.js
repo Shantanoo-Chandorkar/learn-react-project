@@ -10,6 +10,9 @@ import UseMemoComponentExample from "../Hooks/UseMemoComponent/UseMemoComponentE
 // Import useReducer Hook Details
 import useReducerInformation from "../Hooks/UseReducerComponent/information";
 import UseReducerComponentExample from "../Hooks/UseReducerComponent/UseReducerComponentExample";
+// Import useCallback Hook Details
+import useCallbackInformation from "../Hooks/UseCallbackComponent/information";
+import UseCallbackComponentExample from "../Hooks/UseCallbackComponent/UseCallbackComponentExample";
 // Import State Details
 import StateInformation from "../RelatedTopics/State/information";
 // Import Side Effects Details
@@ -54,6 +57,13 @@ export const topics = [
     title: "useReducer",
     info: useReducerInformation,
     example: UseReducerComponentExample,
+    category: "hooks",
+  },
+  {
+    id: 7,
+    title: "useCallback",
+    info: useCallbackInformation,
+    example: UseCallbackComponentExample,
     category: "hooks",
   },
 ];
