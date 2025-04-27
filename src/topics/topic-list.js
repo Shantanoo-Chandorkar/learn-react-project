@@ -13,6 +13,9 @@ import UseReducerComponentExample from "../Hooks/UseReducerComponent/UseReducerC
 // Import useCallback Hook Details
 import useCallbackInformation from "../Hooks/UseCallbackComponent/information";
 import UseCallbackComponentExample from "../Hooks/UseCallbackComponent/UseCallbackComponentExample";
+// Import useRef Hook Details
+import useRefInformation from "../Hooks/UseRefComponent/information";
+import UseRefComponentExample from "../Hooks/UseRefComponent/UseRefComponentExample";
 // Import State Details
 import StateInformation from "../RelatedTopics/State/information";
 // Import Side Effects Details
@@ -64,6 +67,20 @@ export const topics = [
     title: "useCallback",
     info: useCallbackInformation,
     example: UseCallbackComponentExample,
+    category: "hooks",
+  },
+  {
+    id: 8,
+    title: "useRef",
+    info: useRefInformation,
+    example: UseRefComponentExample,
+    category: "hooks",
+  },
+  {
+    id: 9,
+    title: "useRef",
+    info: useRefInformation,
+    example: UseRefComponentExample,
     category: "hooks",
   },
 ];
