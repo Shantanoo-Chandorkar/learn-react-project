@@ -1,9 +1,13 @@
 import React from "react";
+import "./style.css"
 
 const RenderTopicInformation = ({ topic }) => {
   return (
     <div className="render-topic-information-outer-container">
-      <h3>Information for {topic.title}</h3>
+      <h3>
+        Information for <span className="highlighted-topic-title">{topic.title}</span>
+      </h3>
+
 
       <div className="render-topic-information-container">
         {topic.info.map((detail, index) => (

@@ -33,7 +33,7 @@
   flex: 1;
   background-color: #ffffff;
   border-right: 1px solid #dcdfe6;
-  padding: 20px;
+  padding: 10px;
   overflow-y: auto;
 }
 
@@ -42,8 +42,14 @@
   flex: 2;
   background-color: #fafafa;
   border-right: 1px solid #dcdfe6;
-  padding: 30px;
+  padding: 10px;
   overflow-y: auto;
+}
+
+/* Expanded Middle Section when no Example */
+.learn-react-project-middle-section-expanded-outer-container {
+  flex: 4; /* Take both middle and right space */
+  padding: 10px;
 }
 
 /* Right section */

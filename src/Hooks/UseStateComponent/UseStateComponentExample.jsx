@@ -14,6 +14,9 @@ const UseStateComponentExample = () => {
       <button className="use-state-component-decrement-button" onClick={() => setCount(count - 1)}>
         Decrement
       </button>
+      <button className="use-state-component-reset-button" onClick={() => setCount(0)}>
+        Reset
+      </button>
     </div>
   )
 }
