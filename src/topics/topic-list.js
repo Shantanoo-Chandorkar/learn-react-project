@@ -16,6 +16,9 @@ import UseCallbackComponentExample from "../Hooks/UseCallbackComponent/UseCallba
 // Import useRef Hook Details
 import useRefInformation from "../Hooks/UseRefComponent/information";
 import UseRefComponentExample from "../Hooks/UseRefComponent/UseRefComponentExample";
+// Import useContext Hook Details
+import useContextInformation from "../Hooks/UseContextComponent/information";
+import UseContextComponentExample from "../Hooks/UseContextComponent/UseContextComponentExample";
 // Import State Details
 import StateInformation from "../RelatedTopics/State/information";
 // Import Side Effects Details
@@ -78,9 +81,9 @@ export const topics = [
   },
   {
     id: 9,
-    title: "useRef",
-    info: useRefInformation,
-    example: UseRefComponentExample,
+    title: "useContext",
+    info: useContextInformation,
+    example: UseContextComponentExample,
     category: "hooks",
   },
 ];

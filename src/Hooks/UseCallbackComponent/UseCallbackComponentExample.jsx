@@ -50,7 +50,7 @@ const UseCallbackComponentExample = () => {
 
   return (
     <div className="use-callback-outer-container">
-      <h2 className="use-callback-header">🧠 useCallback Optimization Demo</h2>
+      <h2 className="use-callback-header">useCallback Demo</h2>
 
       <div className="use-callback-controls">
         <button
