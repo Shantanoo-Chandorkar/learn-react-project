@@ -4,6 +4,12 @@ import UseStateComponentExample from "../Hooks/UseStateComponent/UseStateCompone
 // Import useEffect Hook Details
 import useEffectInformation from "../Hooks/UseEffectComponent/information";
 import UseEffectComponentExample from "../Hooks/UseEffectComponent/UseEffectComponentExample";
+// Import useMemo Hook Details
+import useMemoInformation from "../Hooks/UseMemoComponent/information";
+import UseMemoComponentExample from "../Hooks/UseMemoComponent/UseMemoComponentExample";
+// Import useReducer Hook Details
+import useReducerInformation from "../Hooks/UseReducerComponent/information";
+import UseReducerComponentExample from "../Hooks/UseReducerComponent/UseReducerComponentExample";
 // Import State Details
 import StateInformation from "../RelatedTopics/State/information";
 // Import Side Effects Details
@@ -35,5 +41,19 @@ export const topics = [
     title: "Side Effects",
     info: SideEffectsInformation,
     category: "related-topics",
+  },
+  {
+    id: 5,
+    title: "useMemo",
+    info: useMemoInformation,
+    example: UseMemoComponentExample,
+    category: "hooks",
+  },
+  {
+    id: 6,
+    title: "useReducer",
+    info: useReducerInformation,
+    example: UseReducerComponentExample,
+    category: "hooks",
   },
 ];
