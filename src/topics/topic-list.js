@@ -10,6 +10,15 @@ import UseMemoComponentExample from "../Hooks/UseMemoComponent/UseMemoComponentE
 // Import useReducer Hook Details
 import useReducerInformation from "../Hooks/UseReducerComponent/information";
 import UseReducerComponentExample from "../Hooks/UseReducerComponent/UseReducerComponentExample";
+// Import useCallback Hook Details
+import useCallbackInformation from "../Hooks/UseCallbackComponent/information";
+import UseCallbackComponentExample from "../Hooks/UseCallbackComponent/UseCallbackComponentExample";
+// Import useRef Hook Details
+import useRefInformation from "../Hooks/UseRefComponent/information";
+import UseRefComponentExample from "../Hooks/UseRefComponent/UseRefComponentExample";
+// Import useContext Hook Details
+import useContextInformation from "../Hooks/UseContextComponent/information";
+import UseContextComponentExample from "../Hooks/UseContextComponent/UseContextComponentExample";
 // Import State Details
 import StateInformation from "../RelatedTopics/State/information";
 // Import Side Effects Details
@@ -54,6 +63,27 @@ export const topics = [
     title: "useReducer",
     info: useReducerInformation,
     example: UseReducerComponentExample,
+    category: "hooks",
+  },
+  {
+    id: 7,
+    title: "useCallback",
+    info: useCallbackInformation,
+    example: UseCallbackComponentExample,
+    category: "hooks",
+  },
+  {
+    id: 8,
+    title: "useRef",
+    info: useRefInformation,
+    example: UseRefComponentExample,
+    category: "hooks",
+  },
+  {
+    id: 9,
+    title: "useContext",
+    info: useContextInformation,
+    example: UseContextComponentExample,
     category: "hooks",
   },
 ];

@@ -1,5 +1,5 @@
 import React from "react";
-import "./style.css"
+import "./style.css";
 
 const RenderTopicInformation = ({ topic }) => {
   return (
@@ -8,14 +8,17 @@ const RenderTopicInformation = ({ topic }) => {
         Information for <span className="highlighted-topic-title">{topic.title}</span>
       </h3>
 
-
       <div className="render-topic-information-container">
         {topic.info.map((detail, index) => (
-          <p key={index} className="render-topic-information-single-detail">{detail}</p>
+          <p
+            key={index}
+            className="render-topic-information-single-detail"
+            dangerouslySetInnerHTML={{ __html: detail }}
+          />
         ))}
       </div>
     </div>
-  )
-}
+  );
+};
 
 export default RenderTopicInformation;

@@ -1,0 +1,82 @@
+.use-callback-outer-container {
+  max-width: 600px;
+  margin: 2rem auto;
+  padding: 1.5rem;
+  background-color: #f8f9fa;
+  border-radius: 12px;
+  box-shadow: 0 0 10px rgba(0,0,0,0.1);
+}
+
+.use-callback-header {
+  text-align: center;
+  margin-bottom: 1.5rem;
+  font-size: 1.8rem;
+  color: #333;
+}
+
+.use-callback-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.use-callback-toggle-button {
+  padding: 0.5rem 1rem;
+  font-size: 1rem;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.use-callback-toggle-button:hover {
+  background-color: #45a049;
+}
+
+.use-callback-status {
+  font-size: 1rem;
+  color: #555;
+}
+
+.use-callback-buttons-group {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 2rem;
+}
+
+.child-button {
+  padding: 0.5rem 1rem;
+  font-size: 1rem;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.child-button:hover {
+  background-color: #0069d9;
+}
+
+.use-callback-messages {
+  background: white;
+  padding: 1rem;
+  border-radius: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.use-callback-messages ul {
+  list-style-type: none;
+  padding-left: 0;
+}
+
+.use-callback-messages li {
+  padding: 0.25rem 0;
+  border-bottom: 1px solid #eee;
+}

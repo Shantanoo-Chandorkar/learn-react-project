@@ -7,6 +7,7 @@ import RenderTopicListPanel from './RenderTopicListPanel/RenderTopicListPanel';
 import { topics } from './topics/topic-list';
 import RenderTopicInformationPanel from './RenderTopicInformationPanel/RenderTopicInformationPanel';
 import RenderTopicExamplePanel from './RenderTopicExamplePanel/RenderTopicExamplePanel';
+import Header from './Header/Header';
 
 function App() {
   const [selectedTopic, setSelectedTopic] = useState(null);
@@ -21,7 +22,7 @@ function App() {
   return (
     <div className='learn-react-project-outer-container'>
       {/* Move the header to the component afterwards */}
-      <header className='learn-react-project-header'>Welcome to React Tutorial</header>
+      <Header />
 
       <div className='learn-react-project-topic-container'>
         {/* Left Section */}

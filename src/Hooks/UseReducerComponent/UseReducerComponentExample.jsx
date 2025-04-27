@@ -1,87 +1,118 @@
 import { useReducer } from "react";
 import "./style.css";
 
-const products = [
-  { id: 1, name: "Laptop", price: 1200 },
-  { id: 2, name: "Headphones", price: 200 },
-  { id: 3, name: "Keyboard", price: 150 },
-  { id: 4, name: "Smartphone", price: 999 },
-];
+const initialState = {
+  cart: [],
+  discount: 0,
+  shippingFee: 0,
+};
 
-// Reducer function
-const cartReducer = (state, action) => {
+const reducer = (state, action) => {
   switch (action.type) {
     case "ADD_ITEM":
-      const existingItem = state.find(item => item.id === action.product.id);
-      if (existingItem) {
-        return state.map(item =>
-          item.id === action.product.id
+      const existingItemIndex = state.cart.findIndex(item => item.id === action.payload.id);
+      let updatedCart;
+
+      if (existingItemIndex !== -1) {
+        // If item already exists, increase quantity
+        updatedCart = state.cart.map(item =>
+          item.id === action.payload.id
             ? { ...item, quantity: item.quantity + 1 }
             : item
         );
       } else {
-        return [...state, { ...action.product, quantity: 1 }];
+        // If new item, add it with quantity 1
+        updatedCart = [...state.cart, { ...action.payload, quantity: 1 }];
       }
+
+      return calculateTotals(updatedCart);
+
     case "REMOVE_ITEM":
-      return state.filter(item => item.id !== action.id);
+      const filteredCart = state.cart
+        .map(item =>
+          item.id === action.payload
+            ? { ...item, quantity: item.quantity - 1 }
+            : item
+        )
+        .filter(item => item.quantity > 0); // remove completely if quantity drops to 0
+
+      return calculateTotals(filteredCart);
+
     case "CLEAR_CART":
-      return [];
+      return initialState;
+
     default:
       return state;
   }
 };
 
+// Helper function
+const calculateTotals = (cart) => {
+  const itemCount = cart.reduce((count, item) => count + item.quantity, 0);
+  const discount = itemCount > 3 ? 0.10 : 0;
+  const shippingFee = itemCount > 0 ? 10 : 0;
+
+  return {
+    cart,
+    discount,
+    shippingFee,
+  };
+};
+
 const UseReducerComponentExample = () => {
-  const [cart, dispatch] = useReducer(cartReducer, []);
+  const [state, dispatch] = useReducer(reducer, initialState);
 
-  const handleAddToCart = (product) => {
-    dispatch({ type: "ADD_ITEM", product });
-  };
+  const totalPrice = state.cart.reduce((total, item) => total + (item.price * item.quantity), 0);
+  const discountedPrice = totalPrice - (totalPrice * state.discount) + state.shippingFee;
 
-  const handleRemoveFromCart = (id) => {
-    dispatch({ type: "REMOVE_ITEM", id });
-  };
-
-  const handleClearCart = () => {
-    dispatch({ type: "CLEAR_CART" });
-  };
-
-  const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const fakeProducts = [
+    { id: 1, name: "Phone", price: 500 },
+    { id: 2, name: "Shoes", price: 150 },
+    { id: 3, name: "Book", price: 30 },
+    { id: 4, name: "Headphones", price: 200 },
+    { id: 5, name: "Watch", price: 300 },
+  ];
 
   return (
-    <div className="use-reducer-cart-outer-container">
-      <h2 className="use-reducer-header">🛒 Shopping Cart</h2>
+    <div className="cart-outer-container">
+      <h2 className="cart-header">🛒 Shopping Cart with Quantity, Discount & Shipping</h2>
 
-      <div className="products">
-        {products.map((product) => (
-          <div key={product.id} className="product-card">
-            <h4>{product.name}</h4>
-            <p>${product.price}</p>
-            <button onClick={() => handleAddToCart(product)}>Add to Cart</button>
+      <div className="cart-products">
+        {fakeProducts.map((product) => (
+          <div key={product.id} className="cart-product">
+            <p>{product.name} - ${product.price}</p>
+            <button onClick={() => dispatch({ type: "ADD_ITEM", payload: product })}>
+              Add to Cart
+            </button>
           </div>
         ))}
       </div>
 
-      <div className="cart">
-        <h3>Your Cart</h3>
-        {cart.length === 0 ? (
-          <p>Cart is empty 🛒</p>
+      <div className="cart-summary">
+        <h3>🧾 Cart Summary</h3>
+        {state.cart.length === 0 ? (
+          <p>No items in cart.</p>
         ) : (
-          <ul>
-            {cart.map(item => (
-              <li key={item.id}>
-                {item.name} (x{item.quantity}) - ${item.price * item.quantity}
-                <button onClick={() => handleRemoveFromCart(item.id)}>❌</button>
-              </li>
-            ))}
-          </ul>
+          <>
+            <ul>
+              {state.cart.map(item => (
+                <li key={item.id}>
+                  {item.name} - ${item.price} x {item.quantity} {" "}
+                  <button onClick={() => dispatch({ type: "REMOVE_ITEM", payload: item.id })}>
+                    ➖ Remove One
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <p><strong>Subtotal:</strong> ${totalPrice.toFixed(2)}</p>
+            {state.discount > 0 && <p><strong>Discount (10%):</strong> -${(totalPrice * state.discount).toFixed(2)}</p>}
+            {state.shippingFee > 0 && <p><strong>Shipping Fee:</strong> +${state.shippingFee}</p>}
+            <h4><strong>Total:</strong> ${discountedPrice.toFixed(2)}</h4>
+            <button onClick={() => dispatch({ type: "CLEAR_CART" })}>
+              🧹 Clear Cart
+            </button>
+          </>
         )}
-        <div className="cart-summary">
-          <strong>Total: ${total}</strong>
-        </div>
-        <button onClick={handleClearCart} className="clear-cart-button">
-          Clear Cart
-        </button>
       </div>
     </div>
   );
