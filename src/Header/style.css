@@ -1,0 +1,29 @@
+.learn-react-project-header-outer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 2rem;
+  background-color: #282c34;
+  color: white;
+}
+
+.learn-react-project-header-title {
+  font-size: 1.5rem;
+  text-align: center;
+  flex: 1;
+}
+
+.learn-react-project-header-link {
+  width: 150px;
+  text-align: center;
+}
+
+.learn-react-project-header-link a {
+  color: #61dafb;
+  text-decoration: none;
+  font-weight: bold;
+}
+
+.learn-react-project-header-link a:hover {
+  text-decoration: underline;
+}
