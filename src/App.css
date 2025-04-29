@@ -34,6 +34,7 @@
   background-color: #ffffff;
   border-right: 1px solid #dcdfe6;
   padding: 10px;
+  box-sizing: border-box;
   overflow-y: auto;
 }
 
@@ -72,4 +73,102 @@
 .learn-react-project-right-section-outer-container::-webkit-scrollbar-thumb {
   background-color: #c1c8d0;
   border-radius: 4px;
+}
+
+
+@media screen and (max-width: 1024px) {
+  .learn-react-project-topic-container {
+    flex-direction: column;
+    overflow: visible;
+  }
+
+  .learn-react-project-left-section-outer-container,
+  .learn-react-project-middle-section-outer-container,
+  .learn-react-project-right-section-outer-container {
+    width: 100%;
+    max-width: 100%;
+    border-right: none;
+    border-bottom: 1px solid #dcdfe6;
+    padding: 16px;
+  }
+
+  .learn-react-project-middle-section-expanded-outer-container {
+    width: 100%;
+    max-width: 100%;
+    padding: 16px;
+  }
+
+  .learn-react-project-right-section-outer-container {
+    padding-top: 10px;
+  }
+}
+
+@media screen and (min-width: 768px) and (max-width: 1024px) {
+  .render-topic-list-title {
+    font-size: 14px;
+  }
+
+  .render-topic-list-view-button {
+    font-size: 12px;
+    padding: 6px 10px;
+  }
+
+  .learn-react-project-header {
+    font-size: 26px;
+  }
+
+  .render-topic-information-outer-container h6,
+  .render-topic-example-outer-container h6 {
+    font-size: 16px;
+    text-align: center;
+    margin: 20px 0;
+  }
+}
+
+@media screen and (max-width: 600px) {
+  .learn-react-project-header {
+    font-size: 24px;
+    padding: 15px;
+  }
+
+  .render-topic-list-title {
+    font-size: 13px;
+  }
+
+  .render-topic-list-view-button {
+    padding: 4px 6px;
+    font-size: 11px;
+  }
+}
+
+
+.mobile-tab-buttons {
+  display: flex;
+  justify-content: space-around;
+  margin: 10px 0;
+  background-color: #ecf0f1;
+  padding: 10px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.mobile-tab-buttons button {
+  flex: 1;
+  padding: 8px;
+  margin: 0 5px;
+  border: none;
+  background-color: #4b6cb7;
+  color: white;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+.mobile-tab-buttons button:hover {
+  background-color: #3a539b;
+}
+
+.mobile-tab-content {
+  padding: 10px;
 }
