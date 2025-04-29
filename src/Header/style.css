@@ -36,7 +36,7 @@
 }
 
 /* Tablet responsiveness */
-@media screen and (max-width: 1024) {
+@media screen and (max-width: 1024px) {
   .learn-react-project-header-outer {
     flex-direction: row;
     justify-content: space-around;

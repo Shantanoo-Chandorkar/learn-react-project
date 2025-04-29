@@ -85,7 +85,6 @@
   .learn-react-project-left-section-outer-container,
   .learn-react-project-middle-section-outer-container,
   .learn-react-project-right-section-outer-container {
-    width: 100%;
     max-width: 100%;
     border-right: none;
     border-bottom: 1px solid #dcdfe6;
@@ -93,7 +92,6 @@
   }
 
   .learn-react-project-middle-section-expanded-outer-container {
-    width: 100%;
     max-width: 100%;
     padding: 16px;
   }

@@ -20,11 +20,11 @@ function App() {
 
   // Responsive Code
   const [activeMobilePanel, setActiveMobilePanel] = useState('info');
-  const [isMobileView, setIsMobileView] = useState(window.innerWidth <= 768);
+  const [isMobileView, setIsMobileView] = useState(window.innerWidth <= 1024);
 
   useEffect(() => {
     const handleResize = () => {
-      setIsMobileView(window.innerWidth <= 768);
+      setIsMobileView(window.innerWidth <= 1024);
     };
 
     window.addEventListener('resize', handleResize);
