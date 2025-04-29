@@ -1,0 +1,80 @@
+.step4-container {
+  padding: 2rem;
+  text-align: center;
+}
+
+.step4-success-message {
+  background-color: #4caf50;
+  color: white;
+  border-radius: 12px;
+  padding: 3rem 2rem;
+  max-width: 600px;
+  margin: 0 auto;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08);
+  animation: fadeInUp 0.5s ease-out, glow 1.5s ease-in-out infinite, smoothShadow 2s ease-in-out infinite;
+  font-family: 'Roboto', sans-serif;
+}
+
+.step4-success-message h2 {
+  font-size: 2.4rem;
+  margin-bottom: 1.2rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.step4-success-message p {
+  font-size: 1.2rem;
+  font-weight: 400;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+@keyframes fadeInUp {
+  0% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes glow {
+  0% {
+    box-shadow: 0 0 15px rgba(76, 175, 80, 0.6), 0 0 25px rgba(76, 175, 80, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(76, 175, 80, 1), 0 0 35px rgba(76, 175, 80, 0.8);
+  }
+  100% {
+    box-shadow: 0 0 15px rgba(76, 175, 80, 0.6), 0 0 25px rgba(76, 175, 80, 0.6);
+  }
+}
+
+@keyframes smoothShadow {
+  0% {
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08);
+  }
+  50% {
+    box-shadow: 0 8px 12px rgba(0, 0, 0, 0.15), 0 2px 6px rgba(0, 0, 0, 0.1);
+  }
+  100% {
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08);
+  }
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .step4-success-message {
+    padding: 2rem;
+  }
+
+  .step4-success-message h2 {
+    font-size: 1.8rem;
+  }
+
+  .step4-success-message p {
+    font-size: 1rem;
+  }
+}

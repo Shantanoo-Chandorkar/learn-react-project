@@ -1,0 +1,47 @@
+.step3-container {
+  padding: 2rem;
+  text-align: center;
+}
+
+.step3-title {
+  font-size: 1.8rem;
+  margin-bottom: 2rem;
+}
+
+.step3-progress-bar {
+  width: 100%;
+  max-width: 500px;
+  height: 25px;
+  background-color: #e0e0e0;
+  border-radius: 20px;
+  overflow: hidden;
+  margin: 0 auto;
+  position: relative;
+}
+
+.step3-progress-fill {
+  height: 100%;
+  background-color: #4caf50;
+  transition: width 0.3s ease-in-out;
+}
+
+.step3-progress-text {
+  margin-top: 1rem;
+  font-size: 1.2rem;
+  color: #555;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .step3-progress-bar {
+    height: 20px;
+  }
+
+  .step3-title {
+    font-size: 1.4rem;
+  }
+
+  .step3-progress-text {
+    font-size: 1rem;
+  }
+}

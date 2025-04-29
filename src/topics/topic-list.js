@@ -23,6 +23,10 @@ import UseContextComponentExample from "../Hooks/UseContextComponent/UseContextC
 import StateInformation from "../RelatedTopics/State/information";
 // Import Side Effects Details
 import SideEffectsInformation from "../RelatedTopics/SideEffects/information";
+// Import React Router Details
+import ReactRouterInformation from "../RelatedTopics/ReactRouter/information";
+// Import React Router Best Practices
+import ReactRouterBestPracticesInformation from "../RelatedTopics/ReactRouterBestPractices/information";
 
 export const topics = [
   {
@@ -85,5 +89,17 @@ export const topics = [
     info: useContextInformation,
     example: UseContextComponentExample,
     category: "hooks",
+  },
+  {
+    id: 10,
+    title: "React Router",
+    info: ReactRouterInformation,
+    category: "related-topics",
+  },
+  {
+    id: 11,
+    title: "React Router Best Practices",
+    info: ReactRouterBestPracticesInformation,
+    category: "related-topics",
   },
 ];
