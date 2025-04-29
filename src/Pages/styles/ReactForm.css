@@ -1,0 +1,119 @@
+.react-form-container {
+  padding: 2rem;
+  max-width: 400px;
+  margin: 0 auto;
+  font-family: Arial, sans-serif;
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.08);
+}
+
+.react-form-container h2 {
+  margin-bottom: 1.5rem;
+  text-align: center;
+  color: #333;
+}
+
+.react-form-group {
+  margin-bottom: 1.2rem;
+}
+
+.react-form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  color: #444;
+}
+
+.react-form-group input {
+  width: 100%;
+  padding: 0.6rem;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  font-size: 1rem;
+}
+
+.react-form-error {
+  color: #d32f2f;
+  margin-top: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.react-form-submit {
+  padding: 0.6rem 1rem;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  font-size: 1rem;
+  border-radius: 5px;
+  cursor: pointer;
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.react-form-submit:hover {
+  background-color: #0056b3;
+}
+
+.react-form-toggle {
+  margin-top: 1rem;
+  text-align: center;
+  font-size: 0.95rem;
+  color: #333;
+}
+
+.react-form-toggle button {
+  color: #007bff;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.react-form-toggle button:hover {
+  text-decoration: underline;
+}
+
+.react-form-result {
+  margin-top: 2rem;
+  background: #f9f9f9;
+  padding: 1rem;
+  border-radius: 5px;
+  font-family: monospace;
+  color: #222;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.react-form-note {
+  font-size: 0.8rem;
+  color: #666;
+  margin-top: 0.25rem;
+  display: block;
+}
+
+.react-form-password-wrapper {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.react-form-password-wrapper input {
+  flex: 1;
+}
+
+.react-form-show-button {
+  position: absolute;
+  right: 10px;
+  background: none;
+  border: none;
+  font-size: 0.85rem;
+  color: #007bff;
+  cursor: pointer;
+  padding: 0;
+}
+
+.react-form-show-button:hover {
+  text-decoration: underline;
+}

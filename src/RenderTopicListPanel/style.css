@@ -4,7 +4,7 @@
 .render-topic-list-outer-container {
   display: flex;
   flex-direction: column;
-  gap: 20px; /* More space between list items */
+  gap: 20px;
   padding: 10px;
 }
 
@@ -15,7 +15,16 @@
   font-weight: 700;
   text-align: center;
   color: #34495e;
-  margin: 10px 0px;
+  margin: 10px 0;
+}
+
+/* Section header */
+.render-topic-list-section-header {
+  font-size: 18px;
+  font-weight: 600;
+  margin-top: 10px;
+  margin-bottom: 6px;
+  color: #2c3e50;
 }
 
 /* Each topic row */
@@ -24,14 +33,14 @@
   justify-content: space-between;
   align-items: center;
   background: #ecf0f3;
-  padding: 8px;
+  padding: 10px 12px;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.08);
   transition: background 0.3s ease, transform 0.2s ease;
   cursor: pointer;
 }
 
-/* On hover, make it pop slightly */
+/* Hover effect */
 .render-topic-list-single-topic-container:hover {
   background: #e1e7ec;
   transform: translateY(-2px);
@@ -39,10 +48,10 @@
 
 /* Topic title */
 .render-topic-list-title {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   color: #2c3e50;
-  margin: 4px;
+  margin: 0;
 }
 
 /* View button */
@@ -50,15 +59,66 @@
   background-color: #4b6cb7;
   color: white;
   border: none;
-  padding: 4px 8px;
+  padding: 6px 12px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: background-color 0.3s ease;
 }
 
-/* Button hover effect */
+/* Button hover */
 .render-topic-list-view-button:hover {
   background-color: #3a539b;
+}
+
+/* Responsive: Tablet and Mobile */
+@media screen and (max-width: 1024px) {
+  .render-topic-list-single-topic-container {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .render-topic-list-title {
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  .render-topic-list-view-button {
+    align-self: flex-start;
+    padding: 6px 14px;
+    font-size: 14px;
+  }
+
+  .render-topic-list-outer-container h3 {
+    font-size: 20px;
+  }
+
+  .render-topic-list-section-header {
+    font-size: 17px;
+  }
+}
+
+@media screen and (max-width: 600px) {
+  .render-topic-list-single-topic-container {
+    padding: 12px;
+  }
+
+  .render-topic-list-title {
+    font-size: 15px;
+  }
+
+  .render-topic-list-view-button {
+    font-size: 13px;
+  }
+
+  .render-topic-list-outer-container h3 {
+    font-size: 18px;
+  }
+
+  .render-topic-list-section-header {
+    font-size: 16px;
+  }
 }

@@ -1,28 +1,32 @@
-/* style.css */
+/* Existing styles remain unchanged */
 
-/* Outer container for the example panel */
-.render-topic-example-outer-container {
-  display: flex;
-  flex-direction: column;
-  background-color: #ffffff;
-  padding: 10px;
-  border-radius: 10px;
-  height: 100%;
-  overflow-y: auto;
+/* Responsive adjustments */
+@media screen and (max-width: 1024px) {
+  .render-topic-example-outer-container {
+    padding: 12px;
+    border-radius: 6px;
+  }
+
+  .render-topic-example-outer-container h3 {
+    font-size: 20px;
+    margin-bottom: 16px;
+  }
+
+  .render-topic-example-outer-container h6 {
+    font-size: 16px;
+    margin-top: 30px;
+    padding: 0 10px;
+  }
 }
 
-/* Heading inside the example panel */
-.render-topic-example-outer-container h3 {
-  font-size: 22px;
-  font-weight: 700;
-  color: #34495e;
-  margin-bottom: 20px;
-}
+@media screen and (max-width: 480px) {
+  .render-topic-example-outer-container h3 {
+    font-size: 18px;
+    margin-bottom: 12px;
+  }
 
-/* Message when no topic is selected */
-.render-topic-example-outer-container h6 {
-  font-size: 18px;
-  font-weight: 500;
-  color: #7f8c8d;
-  text-align: center;
+  .render-topic-example-outer-container h6 {
+    font-size: 15px;
+    text-align: center;
+  }
 }

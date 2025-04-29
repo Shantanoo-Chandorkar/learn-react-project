@@ -1,0 +1,51 @@
+.step1-container {
+  padding: 2rem;
+  text-align: center;
+}
+
+.step1-title {
+  font-size: 1.8rem;
+  margin-bottom: 2rem;
+  color: #333;
+}
+
+.step1-card {
+  background-color: #f9f9f9;
+  border-radius: 12px;
+  padding: 2rem;
+  margin: 0 auto;
+  max-width: 400px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.step1-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.15);
+}
+
+.step1-card-title {
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.step1-card-description {
+  font-size: 1rem;
+  color: #555;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .step1-card {
+    padding: 1.5rem;
+  }
+
+  .step1-card-title {
+    font-size: 1.3rem;
+  }
+
+  .step1-card-description {
+    font-size: 0.95rem;
+  }
+}

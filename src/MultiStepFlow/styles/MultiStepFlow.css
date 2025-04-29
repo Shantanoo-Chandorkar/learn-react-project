@@ -1,0 +1,14 @@
+.multi-step-container {
+  width: 100%;
+  max-width: 800px;
+  margin: auto;
+  padding: 1rem;
+  box-sizing: border-box;
+}
+
+/* Responsive for mobile */
+@media (max-width: 600px) {
+  .multi-step-container {
+    padding: 0.5rem;
+  }
+}

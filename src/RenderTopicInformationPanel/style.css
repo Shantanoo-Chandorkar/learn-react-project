@@ -1,19 +1,52 @@
 /* style.css */
 
 /* Outer container for the middle info panel */
-.render-topic-information-outer-container {
-  display: flex;
+  .render-topic-information-outer-container {
+    display: flex;
   flex-direction: column;
   border-radius: 10px;
   height: 100%;
   overflow-y: auto;
+  }
+
+  /* Message when no topic is selected */
+  .render-topic-information-outer-container h6 {
+    font-size: 18px;
+    font-weight: 500;
+  color: #7f8c8d;
+    text-align: center;
+  margin-top: 50px;
 }
 
-/* Message when no topic is selected */
-.render-topic-information-outer-container h6 {
-  font-size: 18px;
-  font-weight: 500;
-  color: #7f8c8d;
-  text-align: center;
-  margin-top: 50px;
+/* Already included styles remain unchanged */
+
+/* Responsive adjustments */
+@media screen and (max-width: 1024px) {
+  .render-topic-information-outer-container {
+    padding: 16px;
+    border-radius: 8px;
+    width: 100%; /* Ensure it takes full available width */
+    box-sizing: border-box; /* Prevent overflow due to padding */
+  }
+
+  .render-topic-information-outer-container h6 {
+    font-size: 16px;
+    margin-top: 20px;
+    padding: 0 10px;
+    text-align: center; /* Center align text */
+  }
+
+  /* Optional: Prevent text from overflowing horizontally */
+  .render-topic-information-outer-container p {
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+  }
+}
+
+@media screen and (max-width: 480px) {
+  .render-topic-information-outer-container h6 {
+    font-size: 15px;
+    margin-top: 20px;
+    text-align: center;
+  }
 }

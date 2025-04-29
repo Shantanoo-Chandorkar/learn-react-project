@@ -2,15 +2,22 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap; /* Allow items to wrap on smaller screens */
   padding: 1rem 2rem;
   background-color: #282c34;
   color: white;
+  gap: 0.5rem;
 }
 
 .learn-react-project-header-title {
   font-size: 1.5rem;
   text-align: center;
   flex: 1;
+}
+
+.learn-react-project-header-title a {
+  text-decoration: none;
+  color: white;
 }
 
 .learn-react-project-header-link {
@@ -26,4 +33,43 @@
 
 .learn-react-project-header-link a:hover {
   text-decoration: underline;
+}
+
+/* Tablet responsiveness */
+@media screen and (max-width: 1024) {
+  .learn-react-project-header-outer {
+    flex-direction: row;
+    justify-content: space-around;
+    padding: 0.8rem 1rem;
+  }
+
+  .learn-react-project-header-link {
+    width: auto;
+    font-size: 0.95rem;
+  }
+
+  .learn-react-project-header-title {
+    font-size: 1.25rem;
+    flex: 100%;
+    margin-top: 0.5rem;
+  }
+}
+
+/* Mobile responsiveness */
+@media screen and (max-width: 480px) {
+  .learn-react-project-header-outer {
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1rem;
+  }
+
+  .learn-react-project-header-title {
+    font-size: 1.2rem;
+  }
+
+  .learn-react-project-header-link {
+    width: auto;
+    font-size: 0.9rem;
+  }
 }
