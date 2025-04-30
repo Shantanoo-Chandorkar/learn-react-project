@@ -27,6 +27,9 @@ import SideEffectsInformation from "../RelatedTopics/SideEffects/information";
 import ReactRouterInformation from "../RelatedTopics/ReactRouter/information";
 // Import React Router Best Practices
 import ReactRouterBestPracticesInformation from "../RelatedTopics/ReactRouterBestPractices/information";
+import VirtualDomInformation from "../RelatedTopics/VirtualDom/information";
+import ReactClassVsFunctionInformation from "../RelatedTopics/ReactClassVsFunction/information";
+import ReactComponentLifeCycleInformation from "../RelatedTopics/ReactComponentLifeCycle/information";
 
 export const topics = [
   {
@@ -98,8 +101,27 @@ export const topics = [
   },
   {
     id: 11,
+    title: "React Virtual DOM",
+    info: VirtualDomInformation,
+    category: "related-topics",
+  },
+  {
+    id: 12,
+    title: "React Class Vs Function",
+    info: ReactClassVsFunctionInformation,
+    category: "related-topics",
+  },
+  {
+    id: 13,
+    title: "React Component Life Cycle",
+    info: ReactComponentLifeCycleInformation,
+    category: "related-topics",
+  },
+  {
+    id: 14,
     title: "React Router Best Practices",
     info: ReactRouterBestPracticesInformation,
     category: "related-topics",
   },
+
 ];
