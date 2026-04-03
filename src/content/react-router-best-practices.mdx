@@ -1,0 +1,43 @@
+# React Router Best Practices
+
+**React Router Best Practices** help ensure that your application's navigation logic is clean, efficient, and scalable.
+
+## 1. Dedicated Router File
+
+Create a separate `Routes.jsx` file to define all routes in one centralized place. This keeps your main layout clean.
+
+## 2. Use `NavLink` for Navigation
+
+`NavLink` provides styling hooks for highlighting active routes, making it ideal for navbars or side menus.
+
+## 3. Dynamic Route Params
+
+Use `:param` syntax to match dynamic values in URLs (e.g., `/user/:userId`). Access these using the `useParams()` hook.
+
+## 4. Route Nesting
+
+Define parent-child relationships between routes using nested `<Route>` components. Use `<Outlet />` in the parent component to render matched child routes.
+
+## 5. Handle 404s and Redirects
+
+Include a catch-all route to show a 404 page when no route matches:
+
+```jsx
+<Route path="*" element={<NotFound />} />
+```
+
+## 6. Suspense and Lazy Loading
+
+Use `React.lazy()` and `Suspense` to load route components on demand, improving initial load time.
+
+```jsx
+const Settings = React.lazy(() => import('./Settings'));
+
+<Suspense fallback={<Loader />}>
+  <Route path="/settings" element={<Settings />} />
+</Suspense>;
+```
+
+## 7. Protected Routes
+
+Create a wrapper component that checks authentication and redirects unauthenticated users to the login page.

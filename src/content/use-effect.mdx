@@ -1,0 +1,38 @@
+# Understanding the `useEffect` Hook
+
+The `useEffect` Hook is a special function in React that lets you perform **side effects** inside functional components. Side effects include things like fetching data, manually updating the DOM, setting up subscriptions, and managing timers — anything that affects something outside the component itself.
+
+## Syntax
+
+```javascript
+useEffect(() => {
+  // side effect code
+}, [dependencies]);
+```
+
+The `useEffect` function accepts two arguments:
+
+1.  **A function** that contains your side effect logic. This function can optionally return a **cleanup function**.
+2.  **A dependency array** `[dependencies]` that controls when the effect should re-run.
+
+The effect runs after the component has rendered, and re-runs whenever any of the dependencies change.
+
+## Interactive Example
+
+We built a simple "Auto-Save Notes" application:
+
+- The user types into a text area, updating the `text` state.
+- `useEffect` watches for changes in `text`.
+- Whenever `text` changes, it sets the status to "Saving..." and starts a 1-second timer.
+- If the user stops typing for 1 second, the effect saves the text and updates the status to "Saved".
+- If the user types again before 1 second, the previous timer is cleared and a new one is started (debouncing).
+
+<UseEffectExample />
+
+## Best Practices
+
+- **Declare Effects at the Top:** Always place your `useEffect` calls at the top level of your component, never inside loops, conditions, or nested functions.
+- **Use Cleanup Correctly:** If you start a timer, subscription, or add an event listener, return a cleanup function to properly clean it up.
+- **Specify Dependencies Properly:** Always list all the variables your effect depends on inside the `[dependencies]` array. This ensures your effect stays in sync with your component state.
+- **Use Multiple Effects:** It's better to have multiple small, focused `useEffect` calls than one big one trying to handle unrelated logic.
+- **Avoid Unnecessary Effects:** Not all code belongs inside `useEffect`. If something can be handled directly during render (like deriving a value), you don't need an effect.

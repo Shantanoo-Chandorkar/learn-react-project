@@ -1,0 +1,34 @@
+# Component Lifecycle
+
+The **component lifecycle** refers to the series of phases a React component goes through from creation to destruction.
+
+## Three Main Phases
+
+1.  **Mounting:** Component is being created and inserted into the DOM.
+2.  **Updating:** Component is re-rendered due to changes in props or state.
+3.  **Unmounting:** Component is removed from the DOM.
+
+## Lifecycle in Class Components
+
+- `constructor()`: Initialize state.
+- `componentDidMount()`: Called after mounting. Ideal for data fetching.
+- `componentDidUpdate()`: Called after updates.
+- `componentWillUnmount()`: Called before removal. Ideal for cleanup.
+
+## Lifecycle in Functional Components
+
+Hooks allow functional components to tap into lifecycle behavior using `useEffect`.
+
+```javascript
+useEffect(() => {
+  // Runs on mount and update
+
+  return () => {
+    // Cleanup logic (runs before unmount)
+  };
+}, [dependencies]);
+```
+
+## Why it Matters
+
+Managing the lifecycle properly ensures your app avoids memory leaks, unnecessary re-renders, and broken state. For example, you should always remove event listeners in the cleanup phase to prevent memory leaks.

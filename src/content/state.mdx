@@ -1,0 +1,35 @@
+# What is State?
+
+In simple terms, **state** refers to any data that can change over time. In React, _state_ is a special built-in object that holds information about a component's current situation. When the state changes, the component automatically **re-renders** to reflect those changes.
+
+## Technical Definition
+
+State is a `mutable` piece of data that belongs to a component and controls how that component behaves and renders. In other words, _state is how React keeps track of things that should cause a UI update when they change_.
+
+## Common Examples
+
+- **Loading status:** Showing a spinner while data loads.
+- **Form inputs:** Tracking user input values.
+- **Modal visibility:** Toggling open/close state of a popup.
+- **Authentication state:** Knowing if a user is logged in or not.
+
+## Creating State
+
+In functional components, you create state using the `useState` Hook:
+
+```javascript
+import { useState } from 'react';
+
+function Example() {
+  const [count, setCount] = useState(0);
+
+  return <button onClick={() => setCount(count + 1)}>Clicked {count} times</button>;
+}
+```
+
+## Important Rules
+
+- **Triggering Re-renders:** Changing state triggers a re-render.
+- **Asynchronous Updates:** State updates are asynchronous and may be batched.
+- **Never Mutate Directly:** Always use the updater function (e.g., `setCount`); never do `state.value = newValue`.
+- **Independence:** Each instance of a component has its own independent state.

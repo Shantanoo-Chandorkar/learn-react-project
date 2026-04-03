@@ -1,0 +1,29 @@
+# What are Side Effects?
+
+A **side effect** is anything that happens as a consequence of a certain action or interaction that is not purely internal to a component's rendering logic. It is an interaction with the outside world or a system outside of the component.
+
+## Common Examples
+
+- Fetching data from an API.
+- Directly manipulating the DOM (e.g., focusing an input).
+- Setting up subscriptions or event listeners.
+- Timers like `setTimeout` and `setInterval`.
+- Logging values or analytics.
+
+## Why separate them?
+
+React's rendering should be **pure** — meaning for the same inputs (state/props), a component should always return the same output (JSX). Side effects introduce interactions with external systems that can't be predicted by just looking at inputs.
+
+To keep components predictable, React provides special Hooks like `useEffect` to manage these side effects.
+
+## Rules for Side Effects
+
+- **Don't run during render:** Side effects should only happen inside `useEffect` or event handlers.
+- **Clean up:** Always clean up side effects (e.g., clear timers) to prevent memory leaks.
+- **Dependencies:** Use the dependency array in `useEffect` carefully to control when effects run.
+
+## React Tools
+
+- `useEffect`: The standard Hook for side effects.
+- `useLayoutEffect`: Fires synchronously after all DOM mutations.
+- `useInsertionEffect`: Used mainly for CSS-in-JS libraries.

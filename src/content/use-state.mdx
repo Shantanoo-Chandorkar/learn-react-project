@@ -1,0 +1,29 @@
+# Understanding the `useState` Hook
+
+The `useState` hook is one of the most fundamental React hooks. It allows you to add state to functional components. Before hooks, state was only available in class components.
+
+## How it works
+
+When you call `useState`, it returns an array with two elements:
+
+1.  **The current state value.**
+2.  **A function to update that state.**
+
+```javascript
+const [count, setCount] = useState(0);
+```
+
+In the example above, `count` starts at 0. When you call `setCount(newCount)`, React re-renders the component with the new `count` value.
+
+## Interactive Example
+
+Try it yourself below! This is a live React component embedded directly in this article.
+
+<UseStateExample />
+
+## Key Rules
+
+- Only call hooks at the **top level** of your component.
+- Only call hooks from **React functions** (components or custom hooks).
+- State updates are **asynchronous**.
+- When updating state based on the previous state, always use the **functional update** pattern: `setCount(prev => prev + 1)`.
