@@ -1,8 +1,10 @@
-import { useState, useMemo, useEffect } from "react";
-import "./style.css";
+import React, { useState, useMemo, useEffect, useCallback, memo } from 'react';
+import PropTypes from 'prop-types';
+import './style.css';
 
 const generateProducts = () => {
-  const categories = ["Electronics", "Books", "Clothing", "Furniture", "Beauty"];
+  const categories = ['Electronics', 'Books', 'Clothing', 'Furniture', 'Beauty'];
+  // Reduce size for better dev experience if needed, but keeping 2M as per original
   return new Array(2000000).fill(null).map((_, index) => ({
     id: index,
     name: `Product ${index + 1}`,
@@ -14,37 +16,69 @@ const generateProducts = () => {
 const allProducts = generateProducts();
 
 const heavyFilterAndSort = (products, query) => {
-  console.log("🔄 Filtering and Sorting products...");
+  console.log('🔄 Filtering and Sorting products...');
   let result = products;
   if (query) {
-    result = products.filter(p =>
-      p.name.toLowerCase().includes(query.toLowerCase()) ||
-      p.category.toLowerCase().includes(query.toLowerCase())
+    const lowerQuery = query.toLowerCase();
+    result = products.filter(
+      (p) =>
+        p.name.toLowerCase().includes(lowerQuery) || p.category.toLowerCase().includes(lowerQuery),
     );
   }
-  return result.sort((a, b) => b.price - a.price);
+  return [...result].sort((a, b) => b.price - a.price);
 };
 
-const UseMemoComponentExample = () => {
-  const [searchText, setSearchText] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState(""); // 👈 Debounced search
+/**
+ * Custom hook for product catalog logic
+ */
+const useProductCatalog = () => {
+  const [searchText, setSearchText] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [cart, setCart] = useState(0);
   const [useMemoEnabled, setUseMemoEnabled] = useState(true);
 
-  // 👇 Debounce effect
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedSearch(searchText);
     }, 500);
-
     return () => clearTimeout(handler);
   }, [searchText]);
 
-  const visibleProducts = useMemo(() => {
-    return heavyFilterAndSort(allProducts, debouncedSearch);
-  }, useMemoEnabled ? [debouncedSearch] : [debouncedSearch, cart]);
+  const incrementCart = useCallback(() => setCart((c) => c + 1), []);
+  const toggleMemo = useCallback(() => setUseMemoEnabled((v) => !v), []);
 
-  return (
+  const visibleProducts = useMemo(
+    () => {
+      return heavyFilterAndSort(allProducts, debouncedSearch);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [debouncedSearch, useMemoEnabled ? undefined : cart],
+  );
+
+  return {
+    searchText,
+    setSearchText,
+    cart,
+    incrementCart,
+    useMemoEnabled,
+    toggleMemo,
+    visibleProducts,
+  };
+};
+
+/**
+ * Pure presentational component for Product Catalog UI
+ */
+const ProductCatalogUI = memo(
+  ({
+    searchText,
+    onSearchChange,
+    cart,
+    onIncrementCart,
+    useMemoEnabled,
+    onToggleMemo,
+    visibleProducts,
+  }) => (
     <div className="heavy-example-outer-container">
       <h2 className="heavy-example-header">🛍️ Product Catalog</h2>
 
@@ -53,27 +87,22 @@ const UseMemoComponentExample = () => {
           type="text"
           placeholder="Search by name or category..."
           value={searchText}
-          onChange={(e) => setSearchText(e.target.value)}
+          onChange={(e) => onSearchChange(e.target.value)}
           className="heavy-example-input"
+          aria-label="Search products"
         />
 
-        <button
-          onClick={() => setCart(cart + 1)}
-          className="heavy-example-cart-button"
-        >
+        <button onClick={onIncrementCart} className="heavy-example-cart-button">
           Add to Cart ({cart})
         </button>
 
-        <button
-          onClick={() => setUseMemoEnabled(prev => !prev)}
-          className="heavy-example-toggle-button"
-        >
-          {useMemoEnabled ? "Disable useMemo" : "Enable useMemo"}
+        <button onClick={onToggleMemo} className="heavy-example-toggle-button">
+          {useMemoEnabled ? 'Disable useMemo' : 'Enable useMemo'}
         </button>
       </div>
 
       <div className="heavy-example-mode-indicator">
-        <strong>useMemo is {useMemoEnabled ? "ENABLED" : "DISABLED"}</strong>
+        <strong>useMemo is {useMemoEnabled ? 'ENABLED' : 'DISABLED'}</strong>
       </div>
 
       <div className="heavy-example-results">
@@ -87,7 +116,27 @@ const UseMemoComponentExample = () => {
         </ul>
       </div>
     </div>
-  );
+  ),
+);
+
+ProductCatalogUI.displayName = 'ProductCatalogUI';
+ProductCatalogUI.propTypes = {
+  searchText: PropTypes.string.isRequired,
+  onSearchChange: PropTypes.func.isRequired,
+  cart: PropTypes.number.isRequired,
+  onIncrementCart: PropTypes.func.isRequired,
+  useMemoEnabled: PropTypes.bool.isRequired,
+  onToggleMemo: PropTypes.func.isRequired,
+  visibleProducts: PropTypes.array.isRequired,
+};
+
+/**
+ * Container component for the UseMemo example
+ */
+const UseMemoComponentExample = () => {
+  const props = useProductCatalog();
+
+  return <ProductCatalogUI {...props} onSearchChange={props.setSearchText} />;
 };
 
 export default UseMemoComponentExample;
