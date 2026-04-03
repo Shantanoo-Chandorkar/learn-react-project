@@ -38,7 +38,7 @@ const MDXComponents = {
   code: (props) => (
     <code
       style={{
-        backgroundColor: '#f3f4f6',
+        backgroundColor: '#efeff1',
         padding: '0.2rem 0.4rem',
         borderRadius: '0.25rem',
         fontFamily: 'monospace',
@@ -49,8 +49,8 @@ const MDXComponents = {
   pre: (props) => (
     <pre
       style={{
-        backgroundColor: '#1f2937',
-        color: '#f3f4f6',
+        backgroundColor: '#efeff1',
+        color: '#1f2937',
         padding: '1rem',
         borderRadius: '0.5rem',
         overflowX: 'auto',
