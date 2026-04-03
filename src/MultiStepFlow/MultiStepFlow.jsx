@@ -9,8 +9,6 @@ import Step4_Success from './Step4_Success';
 const MultiStepFlow = () => {
   const [step, setStep] = useState(1);
   const [htmlContent, setHtmlContent] = useState('');
-  const [saveAsText, setSaveAsText] = useState(false);
-  const [saveAsXml, setSaveAsXml] = useState(false);
 
   const handleCardClick = () => {
     // Simulate API fetch with setTimeout
@@ -20,9 +18,7 @@ const MultiStepFlow = () => {
     }, 1000);
   };
 
-  const handleOptionsSubmit = ({ text, xml }) => {
-    setSaveAsText(text);
-    setSaveAsXml(xml);
+  const handleOptionsSubmit = () => {
     setStep(3);
   };
 
@@ -34,10 +30,7 @@ const MultiStepFlow = () => {
     <div className="multi-step-container">
       {step === 1 && <Step1_CardSelection onCardClick={handleCardClick} />}
       {step === 2 && (
-        <Step2_ImportOptions
-          htmlContent={htmlContent}
-          onSubmit={handleOptionsSubmit}
-        />
+        <Step2_ImportOptions htmlContent={htmlContent} onSubmit={handleOptionsSubmit} />
       )}
       {step === 3 && <Step3_ProgressBar onComplete={handleProcessingComplete} />}
       {step === 4 && <Step4_Success />}

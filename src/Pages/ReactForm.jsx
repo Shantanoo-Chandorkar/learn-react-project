@@ -1,6 +1,6 @@
-import React, { useState } from "react";
-import { useForm } from "react-hook-form";
-import "./styles/ReactForm.css"
+import React, { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import './styles/ReactForm.css';
 
 const sanitizeInput = (input) => {
   return input
@@ -8,7 +8,7 @@ const sanitizeInput = (input) => {
     .replace(/<script.*?>.*?<\/script>/gi, '')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
-}
+};
 
 const ReactForm = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -34,7 +34,7 @@ const ReactForm = () => {
     // Simulate secure submissions
     setSubmittedData(sanitizedData);
     reset();
-  }
+  };
 
   return (
     <div className="react-form-container">
@@ -47,23 +47,20 @@ const ReactForm = () => {
 
           <input
             type="email"
-            {
-            ...register('email', {
+            {...register('email', {
               required: 'Email is required',
               pattern: {
                 value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
                 message: 'Enter a valid email address',
               },
               maxLength: {
-                value: "100",
-                message: "Too Long",
+                value: '100',
+                message: 'Too Long',
               },
-            })
-            }
+            })}
           />
           {errors.email && <p className="react-form-error">{errors.email.message}</p>}
         </div>
-
 
         {/* Password Field */}
         <div className="react-form-group">
@@ -92,7 +89,8 @@ const ReactForm = () => {
           </div>
           {errors.password && <p className="react-form-error">{errors.password.message}</p>}
           <small className="react-form-note">
-            Password must be at least 8 characters and include uppercase, lowercase, a number, and a special character.
+            Password must be at least 8 characters and include uppercase, lowercase, a number, and a
+            special character.
           </small>
         </div>
 
@@ -102,15 +100,18 @@ const ReactForm = () => {
             <label>Confirm Password</label>
             <div className="react-form-password-wrapper">
               <input
-                type={showConfirmPassword ? 'text' : "password"}
+                type={showConfirmPassword ? 'text' : 'password'}
                 autoComplete="off"
                 {...register('confirmPassword', {
                   required: 'Please confirm your password',
-                  validate: (value) =>
-                    value === watch('password') || 'Passwords do not match',
+                  validate: (value) => value === watch('password') || 'Passwords do not match',
                 })}
               />
-              <button type="button" className="react-form-show-button" onClick={() => setShowConfirmPassword((prev) => !prev)}>
+              <button
+                type="button"
+                className="react-form-show-button"
+                onClick={() => setShowConfirmPassword((prev) => !prev)}
+              >
                 {showConfirmPassword ? 'Hide' : 'Show'}
               </button>
             </div>
@@ -148,13 +149,11 @@ const ReactForm = () => {
       <div className="react-form-toggle">
         {isLogin ? (
           <>
-            Don’t have an account?{' '}
-            <button onClick={() => setIsLogin(false)}>Sign up</button>
+            Don’t have an account? <button onClick={() => setIsLogin(false)}>Sign up</button>
           </>
         ) : (
           <>
-            Have an account?{' '}
-            <button onClick={() => setIsLogin(true)}>Log in</button>
+            Have an account? <button onClick={() => setIsLogin(true)}>Log in</button>
           </>
         )}
       </div>
@@ -166,7 +165,7 @@ const ReactForm = () => {
         </div>
       )}
     </div>
-  )
-}
+  );
+};
 
 export default ReactForm;
