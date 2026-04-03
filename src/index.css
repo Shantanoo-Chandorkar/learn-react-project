@@ -1,5 +1,40 @@
+:root {
+  --primary-color: #2563eb;
+  --secondary-color: #64748b;
+  --bg-color: #f8fafc;
+  --text-color: #1e293b;
+  --border-color: #e2e8f0;
+  --card-bg: #ffffff;
+  --font-serif: 'Georgia', 'Times New Roman', Times, serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
 body {
-  background-color: #000033CF;
-  color: #fff;
-  margin: 0px;
+  margin: 0;
+  font-family:
+    'Inter',
+    system-ui,
+    -apple-system,
+    sans-serif;
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  line-height: 1.5;
+}
+
+a {
+  color: var(--primary-color);
+  text-decoration: none;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  margin-top: 0;
+  color: #0f172a;
 }
