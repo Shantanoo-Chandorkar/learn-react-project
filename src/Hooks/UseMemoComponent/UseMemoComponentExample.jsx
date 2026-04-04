@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback, memo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, memo, useRef } from 'react';
 import PropTypes from 'prop-types';
 import './style.css';
 
@@ -37,6 +37,9 @@ const useProductCatalog = () => {
   const [cart, setCart] = useState(0);
   const [useMemoEnabled, setUseMemoEnabled] = useState(true);
 
+  // We use a ref to count how many times the filter is executed
+  const executionCount = useRef(0);
+
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedSearch(searchText);
@@ -49,8 +52,11 @@ const useProductCatalog = () => {
 
   const visibleProducts = useMemo(
     () => {
+      executionCount.current++;
       return heavyFilterAndSort(allProducts, debouncedSearch);
     },
+    // If useMemo is enabled, it only depends on the search query.
+    // If disabled, it also depends on 'cart', so it re-runs on every button click.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [debouncedSearch, useMemoEnabled ? undefined : cart],
   );
@@ -63,6 +69,7 @@ const useProductCatalog = () => {
     useMemoEnabled,
     toggleMemo,
     visibleProducts,
+    executionCount: executionCount.current,
   };
 };
 
@@ -78,9 +85,10 @@ const ProductCatalogUI = memo(
     useMemoEnabled,
     onToggleMemo,
     visibleProducts,
+    executionCount,
   }) => (
     <div className="heavy-example-outer-container">
-      <h2 className="heavy-example-header">🛍️ Product Catalog</h2>
+      <h3>🛍️ Product Catalog</h3>
 
       <div className="heavy-example-controls">
         <input
@@ -89,7 +97,6 @@ const ProductCatalogUI = memo(
           value={searchText}
           onChange={(e) => onSearchChange(e.target.value)}
           className="heavy-example-input"
-          aria-label="Search products"
         />
 
         <button onClick={onIncrementCart} className="heavy-example-cart-button">
@@ -102,11 +109,22 @@ const ProductCatalogUI = memo(
       </div>
 
       <div className="heavy-example-mode-indicator">
-        <strong>useMemo is {useMemoEnabled ? 'ENABLED' : 'DISABLED'}</strong>
+        <div>
+          <strong>useMemo is {useMemoEnabled ? 'ENABLED' : 'DISABLED'}</strong>
+        </div>
+        <div className="heavy-example-perf">
+          Total calculations performed: <span>{executionCount}</span>
+          <br />
+          <small>
+            {useMemoEnabled
+              ? '(Recalculates only when searching. Adding to cart is INSTANT.)'
+              : '(Recalculates every time you add to cart. UI will FREEZE.)'}
+          </small>
+        </div>
       </div>
 
       <div className="heavy-example-results">
-        <h4>Showing {visibleProducts.length} products:</h4>
+        <h4>Showing {visibleProducts.length} products (top 20):</h4>
         <ul>
           {visibleProducts.slice(0, 20).map((product) => (
             <li key={product.id}>
@@ -128,6 +146,7 @@ ProductCatalogUI.propTypes = {
   useMemoEnabled: PropTypes.bool.isRequired,
   onToggleMemo: PropTypes.func.isRequired,
   visibleProducts: PropTypes.array.isRequired,
+  executionCount: PropTypes.number.isRequired,
 };
 
 /**
