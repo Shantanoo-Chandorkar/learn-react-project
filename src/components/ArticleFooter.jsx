@@ -1,5 +1,6 @@
 import React from 'react';
 import PropTypes from 'prop-types';
+import { CheckCircleIcon } from '@heroicons/react/24/solid';
 import useStore from '../store/useStore';
 
 /**
@@ -44,9 +45,7 @@ const ArticleFooter = ({ slug }) => {
         {isCompleted ? (
           <>
             <span>Completed</span>
-            <span role="img" aria-label="checkmark">
-              ✅
-            </span>
+            <CheckCircleIcon style={{ width: '1.25rem', height: '1.25rem' }} />
           </>
         ) : (
           'Mark as Complete'

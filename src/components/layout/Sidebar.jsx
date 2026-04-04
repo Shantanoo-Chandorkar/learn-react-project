@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import topics from '../../content/topics.json';
+import { CheckCircleIcon } from '@heroicons/react/24/solid';
 import useStore from '../../store/useStore';
 
 /**
@@ -40,9 +41,7 @@ const Sidebar = ({ isOpen, onClose }) => {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span>{topic.title}</span>
             {isCompleted && (
-              <span role="img" aria-label="completed" style={{ fontSize: '0.8rem' }}>
-                ✅
-              </span>
+              <CheckCircleIcon style={{ width: '1rem', height: '1rem', color: '#10b981' }} />
             )}
           </div>
         </NavLink>
