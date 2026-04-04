@@ -1,6 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import topics from '../../content/topics.json';
+import { CheckCircleIcon } from '@heroicons/react/24/solid';
+import useStore from '../../store/useStore';
 
 /**
  * Presentational Sidebar Component
@@ -15,6 +17,7 @@ import topics from '../../content/topics.json';
 const Sidebar = ({ isOpen, onClose }) => {
   const location = useLocation();
   const sidebarRef = useRef(null);
+  const { completedTopics } = useStore();
 
   const hooks = topics.filter((t) => t.category === 'hooks');
   const relatedTopics = topics.filter((t) => t.category === 'related-topics');
@@ -29,6 +32,22 @@ const Sidebar = ({ isOpen, onClose }) => {
       });
     }
   }, [location.pathname]);
+
+  const renderTopicLink = (topic) => {
+    const isCompleted = completedTopics.includes(topic.slug);
+    return (
+      <li key={topic.id}>
+        <NavLink to={`/topic/${topic.slug}`} onClick={onClose}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>{topic.title}</span>
+            {isCompleted && (
+              <CheckCircleIcon style={{ width: '1rem', height: '1rem', color: '#10b981' }} />
+            )}
+          </div>
+        </NavLink>
+      </li>
+    );
+  };
 
   return (
     <aside className={`sidebar-container ${isOpen ? 'is-open' : ''}`} ref={sidebarRef}>
@@ -48,22 +67,10 @@ const Sidebar = ({ isOpen, onClose }) => {
           </li>
 
           <li className="sidebar-section-header">Hooks</li>
-          {hooks.map((topic) => (
-            <li key={topic.id}>
-              <NavLink to={`/topic/${topic.slug}`} onClick={onClose}>
-                {topic.title}
-              </NavLink>
-            </li>
-          ))}
+          {hooks.map(renderTopicLink)}
 
           <li className="sidebar-section-header">Related Topics</li>
-          {relatedTopics.map((topic) => (
-            <li key={topic.id}>
-              <NavLink to={`/topic/${topic.slug}`} onClick={onClose}>
-                {topic.title}
-              </NavLink>
-            </li>
-          ))}
+          {relatedTopics.map(renderTopicLink)}
 
           <li className="sidebar-divider">Other Resources</li>
           <li>

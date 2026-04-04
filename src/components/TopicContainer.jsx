@@ -2,6 +2,7 @@ import React, { lazy, Suspense, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import ErrorBoundary from './ErrorBoundary';
 import MDXComponents from './mdx/MDXComponents';
+import ArticleFooter from './ArticleFooter';
 
 /**
  * TopicContainer Component
@@ -45,6 +46,7 @@ const TopicContainer = () => {
             style={{ maxWidth: '700px', margin: '0 auto', padding: '2rem' }}
           >
             <Content components={MDXComponents} />
+            <ArticleFooter slug={slug} />
           </div>
         </Suspense>
       </ErrorBoundary>
