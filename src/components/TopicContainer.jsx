@@ -12,6 +12,14 @@ import MDXComponents from './mdx/MDXComponents';
 const TopicContainer = () => {
   const { slug } = useParams();
 
+  // Scroll content area to top on topic change
+  React.useEffect(() => {
+    const contentArea = document.querySelector('.layout-content');
+    if (contentArea) {
+      contentArea.scrollTo(0, 0);
+    }
+  }, [slug]);
+
   // Memoize the lazy component to prevent re-creation on every render
   // unless the slug changes.
   const Content = useMemo(() => {
