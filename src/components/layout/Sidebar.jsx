@@ -1,5 +1,5 @@
-import React from 'react';
-import { NavLink } from 'react-router-dom';
+import React, { useEffect, useRef } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
 import topics from '../../content/topics.json';
 
 /**
@@ -13,11 +13,25 @@ import topics from '../../content/topics.json';
  * @param {Function} props.onClose - Action to close the sidebar
  */
 const Sidebar = ({ isOpen, onClose }) => {
+  const location = useLocation();
+  const sidebarRef = useRef(null);
+
   const hooks = topics.filter((t) => t.category === 'hooks');
   const relatedTopics = topics.filter((t) => t.category === 'related-topics');
 
+  // Auto-scroll to active link on mount and location change
+  useEffect(() => {
+    const activeLink = sidebarRef.current?.querySelector('a.active');
+    if (activeLink) {
+      activeLink.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+      });
+    }
+  }, [location.pathname]);
+
   return (
-    <aside className={`sidebar-container ${isOpen ? 'is-open' : ''}`}>
+    <aside className={`sidebar-container ${isOpen ? 'is-open' : ''}`} ref={sidebarRef}>
       <div className="sidebar-header">
         <h2>Topics</h2>
         <button className="close-sidebar" onClick={onClose} aria-label="Close sidebar">
