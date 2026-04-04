@@ -1,0 +1,33 @@
+# React Router
+
+**React Router** is the standard routing library for React. It enables navigation among views of various components in a React Application, and allows for dynamic URL handling to facilitate single-page applications (SPAs).
+
+## Core Concepts
+
+- **Route:** A component that maps a URL path to a React component.
+- **Link:** A component that enables navigation to different routes without page reloads.
+- **BrowserRouter:** A component that enables the use of the HTML5 history API for URL management.
+- **Routes & Route:** Used to define the mapping between paths and components.
+
+## Routing with Params
+
+React Router allows passing parameters in the URL, which can be captured in the component using `:paramName`.
+
+Example:
+
+```jsx
+<Route path="/user/:userId" element={<UserPage />} />
+```
+
+Inside `UserPage`, you can access `userId` via the `useParams()` hook.
+
+## How it Works
+
+React Router uses the `history` object to listen to changes in the URL and update the view accordingly. The application doesn't reload the page; instead, it uses JavaScript to render different views, making the app feel like a single-page application (SPA).
+
+## Best Practices
+
+- **Use Dynamic Paths:** Handle dynamic views based on the URL params.
+- **Keep Routes Declarative:** Define your route structure clearly in a central location.
+- **Utilize Route Nesting:** Organize nested views (e.g., dashboard tabs) using nested routes.
+- **Use `NavLink` for Active States:** Automatically style active links in your navigation.

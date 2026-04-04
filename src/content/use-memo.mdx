@@ -1,0 +1,34 @@
+# Understanding the `useMemo` Hook
+
+The `useMemo` Hook is a special function in React that lets you memoize (remember) the result of a calculation between renders. It optimizes performance by recomputing a value **only when its dependencies change**, instead of on every render.
+
+## Syntax
+
+```javascript
+const memoizedValue = useMemo(() => computeSomething(a, b), [a, b]);
+```
+
+The `useMemo` function takes two arguments:
+
+1.  **A function** that returns the computed value.
+2.  **An array of dependencies**. The memoized value will only recompute when one of these dependencies changes.
+
+It returns the memoized (cached) result.
+
+## Interactive Example
+
+In our Product Catalog example, we have:
+
+- A huge list of **2 million products** generated at runtime.
+- A function `heavyFilterAndSort()` that filters and sorts the products based on a user's search query.
+
+Without optimization, filtering and sorting would re-execute every time the component rendered — even when unrelated state (like the cart) changed. Using `useMemo` ensures that expensive operations happen only when necessary.
+
+<UseMemoExample />
+
+## Best Practices
+
+- **Don't Prematurely Optimize:** Only use `useMemo` when you actually face performance problems or expect heavy calculations.
+- **Choose Dependencies Carefully:** Always include every value your computation relies on inside the dependency array to avoid bugs or stale values.
+- **Use Pure Functions:** The computation function should be pure — no side effects — so React can safely cache it without issues.
+- **Profile First:** Use React DevTools or browser profiling to verify performance issues before introducing `useMemo`.

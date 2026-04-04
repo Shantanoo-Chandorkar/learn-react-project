@@ -1,0 +1,174 @@
+.layout-root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+  overflow: hidden;
+}
+
+.layout-body {
+  display: flex;
+  flex: 1;
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+.layout-content {
+  flex: 1;
+  padding: 2rem;
+  overflow-y: auto;
+}
+
+/* Sidebar Styles */
+.sidebar-container {
+  width: 250px;
+  background-color: #f8f9fa;
+  border-right: 1px solid #dee2e6;
+  padding: 1.5rem 0;
+  transition: transform 0.3s ease-in-out;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+/* Custom scrollbar for Webkit browsers (Chrome, Safari, Edge) */
+.sidebar-container::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sidebar-container::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 10px;
+}
+
+.sidebar-container:hover::-webkit-scrollbar-thumb {
+  background-color: #adb5bd;
+}
+
+.sidebar-container:hover::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  padding: 0 1.5rem;
+}
+
+.sidebar-header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: #333;
+}
+
+.close-sidebar {
+  display: none;
+  background: none;
+  border: none;
+  font-size: 2rem;
+  cursor: pointer;
+  color: #666;
+}
+
+.sidebar-nav ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.sidebar-nav li {
+  margin-bottom: 0.25rem;
+}
+
+/* Base link styles */
+.sidebar-nav a {
+  display: block;
+  padding: 0.75rem 1.5rem;
+  text-decoration: none;
+  color: #495057;
+  transition: background-color 0.2s;
+  font-size: 0.95rem;
+}
+
+/* Visual Nesting for topics */
+.sidebar-nav li:not(.sidebar-section-header) a {
+  padding-left: 2.5rem;
+}
+
+/* Special case for Home link - should not be nested as much */
+.sidebar-nav li:first-child a {
+  padding-left: 1.5rem;
+}
+
+.sidebar-nav a:hover,
+.sidebar-nav a.active {
+  background-color: #e9ecef;
+  color: #007bff;
+  border-right: 3px solid #007bff;
+}
+
+.sidebar-section-header {
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+  padding: 0.5rem 1.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #6c757d;
+  letter-spacing: 0.05rem;
+}
+
+.sidebar-divider {
+  margin: 1.5rem 0 0.5rem;
+  padding: 0 1rem;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  color: #6c757d;
+  letter-spacing: 0.05rem;
+}
+
+/* Mobile Responsive Styles */
+@media (max-width: 1024px) {
+  .sidebar-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 1000;
+    transform: translateX(-100%);
+  }
+
+  .sidebar-container.is-open {
+    transform: translateX(0);
+  }
+
+  .close-sidebar {
+    display: block;
+  }
+
+  .layout-content {
+    padding: 1rem;
+  }
+}
+
+.mobile-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+}
+
+/* Error Boundary Fallback */
+.error-boundary-fallback {
+  padding: 2rem;
+  border: 2px dashed #dc3545;
+  border-radius: 8px;
+  background-color: #f8d7da;
+  color: #721c24;
+  margin: 2rem;
+}

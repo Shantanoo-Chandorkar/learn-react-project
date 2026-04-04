@@ -23,10 +23,7 @@ const Step3_ProgressBar = ({ onComplete }) => {
     <div className="step3-container">
       <h2 className="step3-title">Processing Your Import...</h2>
       <div className="step3-progress-bar">
-        <div
-          className="step3-progress-fill"
-          style={{ width: `${Math.min(progress, 100)}%` }}
-        ></div>
+        <div className="step3-progress-fill" style={{ width: `${Math.min(progress, 100)}%` }}></div>
       </div>
       <p className="step3-progress-text">{Math.min(progress, 100)}%</p>
     </div>

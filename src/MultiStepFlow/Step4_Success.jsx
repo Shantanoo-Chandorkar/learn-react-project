@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import './styles/Step4_Success.css';
 
 const Step4_Success = () => {

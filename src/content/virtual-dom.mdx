@@ -1,0 +1,23 @@
+# What is the Virtual DOM?
+
+The **Virtual DOM (VDOM)** is a lightweight JavaScript representation of the actual DOM (Document Object Model). It acts as a copy of the real DOM that React uses to optimize UI rendering.
+
+## Why was it introduced?
+
+Directly manipulating the real DOM is slow and expensive in terms of performance. The Virtual DOM allows React to **batch and minimize** updates by comparing old and new versions of the virtual DOM and only applying the necessary changes to the actual DOM.
+
+## How does it work?
+
+1.  **Render:** React creates a Virtual DOM when the component renders.
+2.  **Change:** When state or props change, a new Virtual DOM is created.
+3.  **Diffing:** React compares the old and new Virtual DOMs.
+4.  **Reconciliation:** Only the changed elements (called _patches_) are updated in the real DOM.
+
+## Benefits
+
+- **Performance:** Minimizes actual DOM operations.
+- **Efficiency:** Updates are batched and optimized.
+- **Declarative code:** Lets you describe "what" the UI should look like.
+- **Cross-platform:** Enables frameworks like React Native to use similar concepts.
+
+> **Analogy:** Think of the Virtual DOM like a _draft paper_. Instead of making changes directly on the final artwork (real DOM), you make changes on the draft (Virtual DOM), compare it with the previous version, and only change the parts that differ on the final copy.

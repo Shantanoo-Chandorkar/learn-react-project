@@ -1,0 +1,36 @@
+# Understanding the `useReducer` Hook
+
+The `useReducer` Hook in React is used to manage more complex component state logic. It's an alternative to `useState` and is especially useful when:
+
+- State depends on previous state.
+- State transitions are complex or involve multiple sub-values.
+- You want a more predictable, centralized way to handle actions.
+
+## Syntax
+
+```javascript
+const [state, dispatch] = useReducer(reducerFunction, initialState);
+```
+
+### Key Concepts
+
+- **state**: Current state object.
+- **dispatch**: Function to send an action that describes what you want to do.
+- **reducer**: Pure function that receives `(state, action)` and returns a new state based on action type and payload.
+
+## Interactive Example
+
+In our **Shopping Cart** app:
+
+- The `initialState` contains **cart items**, **discount**, and **shipping fee**.
+- The `reducer` handles three action types: **ADD_ITEM**, **REMOVE_ITEM**, and **CLEAR_CART**.
+- We have a helper function `calculateTotals` that recalculates discount and shipping fee after every update.
+
+<UseReducerExample />
+
+## Best Practices
+
+- **Keep the reducer pure:** No side effects (like async calls) inside reducer — just compute and return new state.
+- **Use a helper function** (like `calculateTotals`) if the state transformation is complex.
+- **Use clear action types:** Always describe actions in a consistent and human-readable way (e.g., `"ADD_ITEM"`).
+- **Group related actions:** If you have many actions, group them into an `ACTION_TYPES` object to avoid typos.

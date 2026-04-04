@@ -1,83 +1,102 @@
-import { useState, useCallback } from "react";
-import "./style.css"; // External CSS
+import React, { useState, useCallback, memo } from 'react';
+import PropTypes from 'prop-types';
+import './style.css';
 
-const ChildButton = ({ label, onAction }) => {
+/**
+ * Pure presentational component for a child button.
+ * Uses React.memo to prevent unnecessary re-renders when props haven't changed.
+ */
+const ChildButton = memo(({ label, onAction }) => {
+  console.log(`Rendering ChildButton: ${label}`);
   return (
     <button className="child-button" onClick={onAction}>
       {label}
     </button>
   );
+});
+
+ChildButton.displayName = 'ChildButton';
+ChildButton.propTypes = {
+  label: PropTypes.string.isRequired,
+  onAction: PropTypes.func.isRequired,
 };
 
-const UseCallbackComponentExample = () => {
-  const [cartCount, setCartCount] = useState(0);
-  const [checkoutCount, setCheckoutCount] = useState(0);
-  const [removeCount, setRemoveCount] = useState(0);
+/**
+ * Custom hook to manage the useCallback demo state and memoized callbacks.
+ */
+const useCallbackDemo = () => {
   const [messages, setMessages] = useState([]);
   const [useCallbackEnabled, setUseCallbackEnabled] = useState(false);
 
-  // Always call hooks! Don't conditionally call them.
-
-  const memoizedAddToCart = useCallback(() => {
-    setCartCount((prev) => prev + 1);
-    setMessages((prev) => [...prev, `🛒 Added to Cart (${prev.length + 1})`]);
+  const addMessage = useCallback((msg) => {
+    setMessages((prev) => [...prev, `${msg} (${prev.length + 1})`]);
   }, []);
+
+  // Memoized callbacks
+  const memoizedAddToCart = useCallback(() => {
+    addMessage('🛒 Added to Cart');
+  }, [addMessage]);
 
   const memoizedCheckout = useCallback(() => {
-    setCheckoutCount((prev) => prev + 1);
-    setMessages((prev) => [...prev, `✅ Checkout Completed (${prev.length + 1})`]);
-  }, []);
+    addMessage('✅ Checkout Completed');
+  }, [addMessage]);
 
   const memoizedRemoveFromCart = useCallback(() => {
-    setRemoveCount((prev) => prev + 1);
-    setMessages((prev) => [...prev, `❌ Removed from Cart (${prev.length + 1})`]);
-  }, []);
+    addMessage('❌ Removed from Cart');
+  }, [addMessage]);
 
+  // Non-memoized callbacks (re-created on every render)
   const nonMemoizedAddToCart = () => {
-    setCartCount((prev) => prev + 1);
-    setMessages((prev) => [...prev, `🛒 Added to Cart (${prev.length + 1})`]);
+    addMessage('🛒 Added to Cart');
   };
 
   const nonMemoizedCheckout = () => {
-    setCheckoutCount((prev) => prev + 1);
-    setMessages((prev) => [...prev, `✅ Checkout Completed (${prev.length + 1})`]);
+    addMessage('✅ Checkout Completed');
   };
 
   const nonMemoizedRemoveFromCart = () => {
-    setRemoveCount((prev) => prev + 1);
-    setMessages((prev) => [...prev, `❌ Removed from Cart (${prev.length + 1})`]);
+    addMessage('❌ Removed from Cart');
   };
 
+  const toggleUseCallback = () => {
+    setUseCallbackEnabled((prev) => !prev);
+  };
+
+  return {
+    messages,
+    useCallbackEnabled,
+    toggleUseCallback,
+    actions: {
+      addToCart: useCallbackEnabled ? memoizedAddToCart : nonMemoizedAddToCart,
+      checkout: useCallbackEnabled ? memoizedCheckout : nonMemoizedCheckout,
+      removeFromCart: useCallbackEnabled ? memoizedRemoveFromCart : nonMemoizedRemoveFromCart,
+    },
+  };
+};
+
+/**
+ * Pure presentational component for the useCallback demo view.
+ */
+const UseCallbackView = memo(({ messages, useCallbackEnabled, toggleUseCallback, actions }) => {
   return (
     <div className="use-callback-outer-container">
       <h2 className="use-callback-header">useCallback Demo</h2>
 
       <div className="use-callback-controls">
-        <button
-          className="use-callback-toggle-button"
-          onClick={() => setUseCallbackEnabled((prev) => !prev)}
-        >
-          {useCallbackEnabled ? "Disable useCallback" : "Enable useCallback"}
+        <button className="use-callback-toggle-button" onClick={toggleUseCallback}>
+          {useCallbackEnabled ? 'Disable useCallback' : 'Enable useCallback'}
         </button>
 
         <p className="use-callback-status">
-          <strong>useCallback is {useCallbackEnabled ? "ENABLED" : "DISABLED"}</strong>
+          <strong>useCallback is {useCallbackEnabled ? 'ENABLED' : 'DISABLED'}</strong>
         </p>
+        <small>(Check console to see re-renders of ChildButton when disabled)</small>
       </div>
 
       <div className="use-callback-buttons-group">
-        <ChildButton
-          label="Add to Cart"
-          onAction={useCallbackEnabled ? memoizedAddToCart : nonMemoizedAddToCart}
-        />
-        <ChildButton
-          label="Remove from Cart"
-          onAction={useCallbackEnabled ? memoizedRemoveFromCart : nonMemoizedRemoveFromCart}
-        />
-        <ChildButton
-          label="Checkout"
-          onAction={useCallbackEnabled ? memoizedCheckout : nonMemoizedCheckout}
-        />
+        <ChildButton label="Add to Cart" onAction={actions.addToCart} />
+        <ChildButton label="Remove from Cart" onAction={actions.removeFromCart} />
+        <ChildButton label="Checkout" onAction={actions.checkout} />
       </div>
 
       <div className="use-callback-messages">
@@ -90,6 +109,26 @@ const UseCallbackComponentExample = () => {
       </div>
     </div>
   );
+});
+
+UseCallbackView.displayName = 'UseCallbackView';
+UseCallbackView.propTypes = {
+  messages: PropTypes.arrayOf(PropTypes.string).isRequired,
+  useCallbackEnabled: PropTypes.bool.isRequired,
+  toggleUseCallback: PropTypes.func.isRequired,
+  actions: PropTypes.shape({
+    addToCart: PropTypes.func.isRequired,
+    checkout: PropTypes.func.isRequired,
+    removeFromCart: PropTypes.func.isRequired,
+  }).isRequired,
+};
+
+/**
+ * Container component that connects the custom hook to the view.
+ */
+const UseCallbackComponentExample = () => {
+  const demoProps = useCallbackDemo();
+  return <UseCallbackView {...demoProps} />;
 };
 
 export default UseCallbackComponentExample;

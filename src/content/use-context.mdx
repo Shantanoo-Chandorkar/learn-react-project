@@ -1,0 +1,31 @@
+# Understanding the `useContext` Hook
+
+The `useContext` Hook in React is used to access data from a Context directly inside a component, without manually passing props down multiple levels.
+
+## Syntax
+
+```javascript
+const value = useContext(MyContext);
+```
+
+### Key Concepts
+
+- **Context**: A way to share global data (like themes, authentication) across the component tree.
+- **Provider**: A special component that supplies the context value to its descendants.
+- **Consumer**: An older pattern; `useContext` is the modern, simpler way to consume context data.
+
+## Interactive Example
+
+In our example:
+
+- **NotificationProvider** handles showing and hiding temporary notification messages.
+- **ThemeProvider** manages light/dark mode switching.
+- Components consume these contexts using `useContext` without prop drilling.
+
+<UseContextExample />
+
+## Best Practices
+
+- **Keep Providers Small:** Don't overload a single context with unrelated data.
+- **Memoize Complex Values:** If your context value is complex, consider memoizing it to avoid unnecessary re-renders.
+- **Use Multiple Contexts:** Prefer multiple smaller contexts (like `ThemeContext` and `AuthContext`) instead of one giant one.

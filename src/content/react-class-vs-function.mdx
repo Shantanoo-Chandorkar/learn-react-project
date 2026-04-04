@@ -1,0 +1,41 @@
+# Class vs Functional Components
+
+In React, components can be created using either **classes** or **functions**. While both serve the same purpose, functional components are the modern standard.
+
+## Class Components
+
+Traditional way to define components. They use ES6 classes, maintain internal state via `this.state`, and use lifecycle methods.
+
+```jsx
+class MyComponent extends React.Component {
+  render() {
+    return <div>Hello, {this.props.name}</div>;
+  }
+}
+```
+
+## Functional Components
+
+Modern way to define components. They are simpler, use Hooks for state and side effects, and are generally easier to test and reason about.
+
+```jsx
+function MyComponent({ name }) {
+  return <div>Hello, {name}</div>;
+}
+```
+
+## Key Differences
+
+| Aspect          | Class Components     | Functional Components |
+| :-------------- | :------------------- | :-------------------- |
+| **Syntax**      | Verbose, uses `this` | Concise and cleaner   |
+| **State**       | via `this.state`     | via `useState` Hook   |
+| **Lifecycle**   | Lifecycle methods    | `useEffect` Hook      |
+| **Performance** | Slightly heavier     | Lighter and preferred |
+
+## Why Functional is Preferred
+
+- **Shorter syntax:** Less boilerplate code.
+- **Hooks:** Enable powerful logic reuse through custom hooks.
+- **Testability:** Easier to write unit tests for pure functions.
+- **Future-proof:** React's future optimizations are focused on functional components.

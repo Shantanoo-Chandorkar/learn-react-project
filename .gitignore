@@ -22,3 +22,13 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Review Output
+learn-react-project-review-p2/
+
+# Markdown Files
+*.md
+!README.md
+
+# Agent Files
+.gemini

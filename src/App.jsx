@@ -1,109 +1,49 @@
-import { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import React from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { MDXProvider } from '@mdx-js/react';
 import './App.css';
 
-// Import Dependencies
-import RenderTopicListPanel from './RenderTopicListPanel/RenderTopicListPanel';
-import { topics } from './topics/topic-list';
-import RenderTopicInformationPanel from './RenderTopicInformationPanel/RenderTopicInformationPanel';
-import RenderTopicExamplePanel from './RenderTopicExamplePanel/RenderTopicExamplePanel';
+// Layout and Core Components
+import Layout from './components/layout/Layout';
+import Home from './Pages/Home';
+import TopicContainer from './components/TopicContainer';
+import MDXComponents from './components/mdx/MDXComponents';
 
-// Import Utilities
-import Header from './Header/Header';
+// Router Page Components (Imported directly to be merged into the main route tree)
+import ReactForm from './Pages/ReactForm';
+import MultiPageForm from './Pages/MultiPageForm';
+import MultiStepFlow from './MultiStepFlow/MultiStepFlow';
 
-// Import Routes
-import AppRoutes from './Router/Routes';
-
+/**
+ * Main App Component
+ *
+ * This component sets up the primary routing for the application.
+ * It uses the Layout component to wrap all routes and provide consistent UI.
+ */
 function App() {
-  const location = useLocation();
-  const [selectedTopic, setSelectedTopic] = useState(null);
-
-  // Responsive Code
-  const [activeMobilePanel, setActiveMobilePanel] = useState('info');
-  const [isMobileView, setIsMobileView] = useState(window.innerWidth <= 1024);
-
-  useEffect(() => {
-    const handleResize = () => {
-      setIsMobileView(window.innerWidth <= 1024);
-    };
-
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  const handleSelectedTopic = (topicId) => {
-    const topic = topics.find(t => t.id === topicId);
-    setSelectedTopic(topic);
-
-    // Switch to the "info" tab automatically when a topic is selected on mobile
-    if (isMobileView) {
-      setActiveMobilePanel('info');
-    }
-  };
-
-  const hasExample = selectedTopic && selectedTopic.example;
-
-  // These are the routes where we want to show the paths
-  const isRouterPath = location.pathname.startsWith("/react-router") ||
-    location.pathname.startsWith("/react-form") ||
-    location.pathname.startsWith("/multi-form") ||
-    location.pathname.startsWith("/multi-step-flow");
-
   return (
-    <div className='learn-react-project-outer-container'>
-      {/* Move the header to the component afterwards */}
-      <Header />
+    <MDXProvider components={MDXComponents}>
+      <Routes>
+        <Route path="/" element={<Layout />}>
+          {/* Home page route */}
+          <Route index element={<Home />} />
 
-      {isRouterPath ? (
-        <AppRoutes />
-      ) : (
-        <>
-          {isMobileView ? (
-            <>
-              <div className="mobile-tab-buttons">
-                <button onClick={() => setActiveMobilePanel('list')}>Topics</button>
-                <button onClick={() => setActiveMobilePanel('info')}>Info</button>
-                {hasExample && <button onClick={() => setActiveMobilePanel('example')}>Example</button>}
-              </div>
+          {/* Redirect old path /react-router to topic/react-router */}
+          <Route path="react-router" element={<Navigate to="/topic/react-router" replace />} />
 
-              <div className="mobile-tab-content">
-                {activeMobilePanel === 'list' && (
-                  <RenderTopicListPanel topics={topics} onSelect={handleSelectedTopic} />
-                )}
-                {activeMobilePanel === 'info' && (
-                  <RenderTopicInformationPanel topic={selectedTopic} />
-                )}
-                {activeMobilePanel === 'example' && hasExample && (
-                  <RenderTopicExamplePanel topic={selectedTopic} />
-                )}
-              </div>
-            </>
-          ) : (
-            <div className='learn-react-project-topic-container'>
-              <div className='learn-react-project-left-section-outer-container'>
-                <RenderTopicListPanel topics={topics} onSelect={handleSelectedTopic} />
-              </div>
+          {/* Dynamic Topic route */}
+          <Route path="topic/:slug" element={<TopicContainer />} />
 
-              <div className={
-                hasExample ? 'learn-react-project-middle-section-outer-container' :
-                  'learn-react-project-middle-section-expanded-outer-container'
-              }>
-                <RenderTopicInformationPanel topic={selectedTopic} />
-              </div>
+          <Route path="react-form" element={<ReactForm />} />
+          <Route path="multi-form" element={<MultiPageForm />} />
+          <Route path="multi-step-flow" element={<MultiStepFlow />} />
 
-              {hasExample && (
-                <div className='learn-react-project-right-section-outer-container'>
-                  <RenderTopicExamplePanel topic={selectedTopic} />
-                </div>
-              )}
-            </div>
-          )}
-        </>
-      )}
-
-
-    </div>
-  )
+          {/* Catch-all for unknown routes */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
+    </MDXProvider>
+  );
 }
 
-export default App
+export default App;

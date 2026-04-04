@@ -1,0 +1,29 @@
+# Understanding the `useRef` Hook
+
+The `useRef` Hook is a special function in React that creates a mutable object that persists across renders. It is often used to reference DOM elements, store mutable values, or persist information without causing re-renders.
+
+## Syntax
+
+```javascript
+const myRef = useRef(initialValue);
+```
+
+The `useRef` function returns a **ref object** with a single property called `current`. You can read and write to `current` without triggering a component re-render.
+
+## Interactive Example
+
+In our Advanced Form Tracker example, we used `useRef` in several powerful ways:
+
+- **`currentInputRef`**: Always holds the latest input value typed by the user (without causing re-renders).
+- **`previousInputRef`**: Stores the value before the latest change, allowing us to track previous input instantly.
+- **`isDirtyRef`**: Tracks whether the form has unsaved changes.
+- **`saveTimeoutRef`**: Holds a timeout ID to debounce saving the draft.
+
+<UseRefExample />
+
+## Best Practices
+
+- **Only Use for Mutables or DOM:** Prefer `useRef` for values that need to persist across renders but don't need to trigger UI updates.
+- **Don't Read/Write `current` During Render:** Avoid accessing or changing `ref.current` during the render phase — only do it inside event handlers, effects, or callbacks.
+- **Keep Code Clear:** Always add meaningful names to your refs (e.g., `inputRef`, `timerRef`).
+- **Use `useRef` Over `useState` for Imperative Values:** If a value changes frequently but should not affect the UI, `useRef` is almost always the better choice.
