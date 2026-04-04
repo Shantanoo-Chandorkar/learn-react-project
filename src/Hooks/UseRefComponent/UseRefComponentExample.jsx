@@ -161,9 +161,9 @@ FormTrackerUI.propTypes = {
  * Container component for the UseRef example
  */
 const UseRefComponentExample = () => {
-  const props = useFormTracker();
+  const { handleInputChange, handleSubmit, ...rest } = useFormTracker();
 
-  return <FormTrackerUI {...props} />;
+  return <FormTrackerUI onInputChange={handleInputChange} onSubmit={handleSubmit} {...rest} />;
 };
 
 export default UseRefComponentExample;
