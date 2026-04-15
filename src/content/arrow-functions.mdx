@@ -1,0 +1,324 @@
+# Arrow Functions
+
+### The mental model first
+
+Arrow functions are not just shorthand syntax for regular functions. They are a **fundamentally different kind of function** with specific behaviors removed on purpose. Understanding what they deliberately lack is more important than knowing their syntax.
+
+What arrow functions do NOT have:
+- Their own `this`
+- Their own `arguments` object
+- A `prototype` property
+- The ability to be used as constructors
+
+Every one of these omissions is intentional, not a limitation.
+
+---
+
+### Syntax variations (quick reference)
+
+```js
+// Regular function
+function add(a, b) { return a + b; }
+
+// Arrow: full body
+const add = (a, b) => { return a + b; };
+
+// Arrow: implicit return (expression body, no braces)
+const add = (a, b) => a + b;
+
+// Single parameter: parens optional
+const double = x => x * 2;
+
+// No parameters: parens required
+const greet = () => "hello";
+
+// Returning an object literal: must wrap in parens
+// (otherwise the {} is parsed as a function body)
+const makeObj = (x) => ({ value: x });
+```
+
+That last one is a frequent MCQ trap:
+
+```js
+const makeObj = (x) => { value: x };
+console.log(makeObj(5)); // undefined, not { value: 5 }
+```
+
+The `{}` is treated as a block, `value: x` is parsed as a label followed by an expression. The function has no explicit return, so it returns `undefined`. Wrap in parens to return an object literal.
+
+---
+
+### `this`: lexical, not dynamic
+
+Covered in 1.4, but worth restating precisely here. Arrow functions capture `this` from their **enclosing lexical scope at definition time**. `call`, `apply`, and `bind` cannot override it.
+
+```js
+function Timer() {
+  this.seconds = 0;
+
+  setInterval(() => {
+    this.seconds++; // this = Timer instance, inherited lexically
+    console.log(this.seconds);
+  }, 1000);
+}
+
+const t = new Timer(); // logs 1, 2, 3...
+```
+
+Replace the arrow with a regular function:
+
+```js
+setInterval(function () {
+  this.seconds++; // this = window/undefined, lost
+}, 1000);
+```
+
+The regular function callback is called by `setInterval` without an object, so `this` is the global object or `undefined` in strict mode. Arrow functions solve this without needing `.bind(this)`.
+
+---
+
+### No `arguments` object
+
+Regular functions have an `arguments` object, an array-like (not an actual array) containing all passed arguments:
+
+```js
+function sum() {
+  console.log(arguments); // { 0: 1, 1: 2, 2: 3 }
+  return Array.from(arguments).reduce((a, b) => a + b, 0);
+}
+
+sum(1, 2, 3); // 6
+```
+
+Arrow functions have no `arguments`. Accessing it inside an arrow function gives you the `arguments` of the nearest enclosing regular function, or a `ReferenceError` if none exists:
+
+```js
+const sum = () => {
+  console.log(arguments); // ReferenceError in strict mode
+};
+```
+
+```js
+function outer() {
+  const inner = () => {
+    console.log(arguments); // outer's arguments, not inner's
+  };
+  inner(99, 88);
+}
+
+outer(1, 2, 3); // logs Arguments[1, 2, 3], NOT [99, 88]
+```
+
+This is a clean MCQ trap. The correct modern approach is rest parameters:
+
+```js
+const sum = (...args) => args.reduce((a, b) => a + b, 0);
+sum(1, 2, 3); // 6
+```
+
+---
+
+### No `prototype` property, cannot be used with `new`
+
+Regular functions have a `prototype` property because they can be constructors. Arrow functions skip this entirely:
+
+```js
+function Regular() {}
+const Arrow = () => {};
+
+console.log(Regular.prototype); // { constructor: f }
+console.log(Arrow.prototype);   // undefined
+
+new Regular(); // works
+new Arrow();   // TypeError: Arrow is not a constructor
+```
+
+This is not just a quirk. Arrow functions are not designed to create objects. If you need a constructor, use a regular function or a `class`.
+
+---
+
+### When NOT to use arrow functions
+
+This is the most important section for interviews. Arrow functions are often overused.
+
+**1. Object methods that need `this` to refer to the object**
+
+```js
+const counter = {
+  count: 0,
+  increment: () => {
+    this.count++; // this = global, not counter
+  }
+};
+
+counter.increment();
+console.log(counter.count); // 0, nothing happened
+```
+
+Use a regular function or method shorthand:
+
+```js
+const counter = {
+  count: 0,
+  increment() {
+    this.count++; // this = counter
+  }
+};
+```
+
+**2. Prototype methods**
+
+```js
+function Person(name) {
+  this.name = name;
+}
+
+Person.prototype.greet = () => {
+  return `Hi, I'm ${this.name}`; // this = global
+};
+
+const p = new Person("shan");
+p.greet(); // "Hi, I'm undefined"
+```
+
+**3. Event handlers where you need `this` to be the DOM element**
+
+```js
+button.addEventListener("click", () => {
+  console.log(this); // window, not the button
+});
+
+button.addEventListener("click", function () {
+  console.log(this); // the button element
+});
+```
+
+**4. Functions that use `arguments`**
+
+As covered above. If the calling convention relies on a dynamic argument list without rest params, a regular function is needed.
+
+**5. Generator functions**
+
+Arrow functions cannot be generators. `() => {}` with `function*` syntax is invalid:
+
+```js
+const gen = *() => {}; // SyntaxError
+```
+
+---
+
+### Arrow functions and `call`/`apply`/`bind` (the silent no-op trap)
+
+```js
+const obj = { name: "shan" };
+
+const greet = () => `Hello, ${this.name}`;
+
+console.log(greet.call(obj));  // "Hello, undefined"
+console.log(greet.apply(obj)); // "Hello, undefined"
+console.log(greet.bind(obj)()); // "Hello, undefined"
+```
+
+None of these override `this`. They execute without error, which makes the bug silent and confusing. This is a very common MCQ trap because it looks like it should work.
+
+---
+
+### Implicit return gotchas
+
+```js
+// Multi-line implicit return: only works with expression body
+const compute = (x) =>
+  x * 2 + 1; // fine, single expression across lines
+
+// Trying to put multiple statements without braces
+const broken = (x) =>
+  const y = x * 2; // SyntaxError
+  y + 1;
+
+// Correct multi-statement form needs braces + explicit return
+const correct = (x) => {
+  const y = x * 2;
+  return y + 1;
+};
+```
+
+---
+
+### Comparison table
+
+| | Regular function | Arrow function |
+|---|---|---|
+| `this` | Dynamic (call site) | Lexical (definition site) |
+| `arguments` | Own `arguments` object | Inherits from enclosing scope |
+| `prototype` | Has it | Does not have it |
+| `new` | Can be constructor | Cannot, TypeError |
+| `call`/`apply`/`bind` | Works | Executes but ignores `this` override |
+| Generator | Can be (`function*`) | Cannot |
+| Method shorthand | No | No (different syntax) |
+| Hoisting | Fully hoisted (declarations) | Not hoisted (const/let assignment) |
+
+---
+
+### Self-test: 5 questions
+
+**Q1.** What does this log?
+```js
+const obj = {
+  name: "shan",
+  getName: () => this.name,
+  getNameRegular() { return this.name; }
+};
+
+console.log(obj.getName());
+console.log(obj.getNameRegular());
+```
+
+**Q2.** What does this log?
+```js
+function outer() {
+  const arrow = () => arguments[0];
+  return arrow(99);
+}
+
+console.log(outer(42));
+```
+
+**Q3.** What does this return?
+```js
+const makeUser = (name) => { name: name, active: true };
+console.log(makeUser("shan"));
+```
+
+**Q4.** What does this log?
+```js
+const double = (x) => x * 2;
+
+const result = double.call({ multiplier: 3 }, 5);
+console.log(result);
+```
+
+**Q5.** Which of these will throw a TypeError and why?
+```js
+const A = () => {};
+function B() {}
+
+new A();
+new B();
+```
+
+---
+
+<details>
+<summary>Answers</summary>
+
+**A1.** `undefined`, `"shan"`. `getName` is an arrow defined at object literal construction time in global scope, so `this` is global. `getNameRegular` uses method shorthand (regular function semantics), called on `obj`, so `this` is `obj`.
+
+**A2.** `42`, not `99`. The arrow function has no own `arguments`. It inherits `outer`'s `arguments`, which is `[42]` from `outer(42)`. The `99` passed to `arrow(99)` is completely ignored.
+
+**A3.** `undefined`. The `{}` is parsed as a block, not an object literal. `name: name` is a labeled statement. No `return` statement, so the function returns `undefined`. Fix: `({ name: name, active: true })`.
+
+**A4.** `10`. `call` cannot override `this` on an arrow function, but it still passes arguments normally. `double` receives `5` and returns `5 * 2 = 10`. The `{ multiplier: 3 }` context is silently ignored.
+
+**A5.** `new A()` throws `TypeError: A is not a constructor`. Arrow functions have no `prototype` and cannot be used with `new`. `new B()` works fine.
+
+</details>
