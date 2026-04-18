@@ -1,18 +1,23 @@
 # Frontend Interview Assessment — Q&A Review
 
-## Section 3: JavaScript Web
+---
+
+## Section 1: JavaScript Web
 
 ---
 
-### Q7 — JavaScript in Head (async vs defer)
+### Q1 — JavaScript in Head (async vs defer)
 
-**Question:**
 Two scripts are in `<head>`: `file1.js` and `file2.js`. `file2.js` depends on `file1.js`. Loading them is slowing down rendering. The HTML can render without JS (fallbacks exist). Which statements are true? (Pick all that apply)
+
 1. It is not possible for the webpage to start rendering before loading the JS files, as long as `<script>` is in `<head>`
 2. This problem can be fixed by using `async` on both `<script>` tags
 3. This problem can be fixed by using `defer` on both `<script>` tags
 4. This problem can be fixed by using `async` for file1.js and `defer` for file2.js
 5. This problem can be fixed by using `defer` for file1.js and `async` for file2.js
+
+<details>
+<summary>Answer (expand after you've thought through it)</summary>
 
 **Answer: Option 3 only**
 
@@ -24,16 +29,21 @@ Two scripts are in `<head>`: `file1.js` and `file2.js`. `file2.js` depends on `f
 - ❌ Option 4: `async` on file1 could execute after file2 (defer)
 - ❌ Option 5: `async` on file2 could fire before file1 resolves
 
+</details>
+
 ---
 
-### Q8 — JavaScript Selector
+### Q2 — JavaScript Selector
 
-**Question:**
 Consider `<div id="abc" class="def">xyz</div>`. Which is the correct way to select this element using pure JavaScript? (Select closest option)
+
 1. `$("#abc")`
 2. `document.getElementByClass("def")`
 3. `document.getElementById("#abc")`
 4. `document.getElementById("abc")`
+
+<details>
+<summary>Answer (expand after you've thought through it)</summary>
 
 **Answer: Option 4**
 
@@ -42,12 +52,14 @@ Consider `<div id="abc" class="def">xyz</div>`. Which is the correct way to sele
 - ❌ `document.getElementById("#abc")`: should not include `#`
 - ✅ `document.getElementById("abc")`: correct syntax, selects unique element
 
+</details>
+
 ---
 
-### Q9 — Async Callback (doStuff)
+### Q3 — Async Callback (doStuff)
 
-**Question:**
 `doStuff(callback)` is an async function that calls `callback(results, err)`. If error, `err` is non-null. Consider:
+
 ```javascript
 console.log("A");
 doStuff((results, err) => {
@@ -56,12 +68,17 @@ doStuff((results, err) => {
 });
 console.log("D");
 ```
+
 Which output sequences can NEVER be produced? (Pick all that apply)
+
 - A B C D
 - A C D
 - A D C
 - A D B C
 - None of the above
+
+<details>
+<summary>Answer (expand after you've thought through it)</summary>
 
 **Answer: A B C D and A C D can NEVER be produced**
 
@@ -71,17 +88,22 @@ Which output sequences can NEVER be produced? (Pick all that apply)
 - ✅ `A D C`: Possible — no error case
 - ✅ `A D B C`: Possible — error case
 
+</details>
+
 ---
 
-### Q10 — setTimeout
+### Q4 — setTimeout
 
-**Question:**
 Consider `setTimeout(f, 2000)`. Which statement most accurately describes when `f` is guaranteed to be called? (Select closest option)
+
 1. More than 1000ms but less than 3000ms after setTimeout
 2. Exactly 2000ms after setTimeout
 3. More than 1999ms but less than 2001ms after setTimeout
 4. More than 2000ms but less than 2001ms after setTimeout
 5. More than 2000ms after setTimeout — but there is no guarantee of how much more
+
+<details>
+<summary>Answer (expand after you've thought through it)</summary>
 
 **Answer: Option 5**
 
@@ -89,54 +111,66 @@ Consider `setTimeout(f, 2000)`. Which statement most accurately describes when `
 - Callback only runs when the call stack is empty
 - If the main thread is busy, `f` can be delayed well beyond 2000ms
 
+</details>
+
 ---
 
-### Q11 — Noscript
+### Q5 — Noscript
 
-**Question:**
 The `<noscript>` tag: (Select closest option)
+
 1. Is executed when the `<script>` tag is empty
 2. Is used to programmatically turn off script execution on a webpage
 3. Is executed when the page is loaded with scripts disabled
 4. Was used in IE6 and older browsers, no longer supported by newer browsers
 5. Was used with HTML4.0, no longer supported by HTML5
 
+<details>
+<summary>Answer (expand after you've thought through it)</summary>
+
 **Answer: Option 3**
 
 - `<noscript>` renders fallback content when JS is disabled or unsupported
 - Still valid and fully supported in HTML5
 
----
-
-## Section 4: ECMAScript 6
+</details>
 
 ---
 
-### Q12 — ES6 const
+## Section 2: ECMAScript 6
 
-**Question:**
+---
+
+### Q6 — ES6 const
+
 ```javascript
 const X = {a: 1, b: 2};
 X.a = 3;
 console.log(X.a);
 ```
+
 What is the result? (Select closest option)
+
 1. Error: X is read-only
 2. Error: X.a is already defined
 3. It will print 1
 4. It will print 3
 5. It will print undefined
 
+<details>
+<summary>Answer (expand after you've thought through it)</summary>
+
 **Answer: Option 4 — prints 3**
 
 - `const` prevents reassignment of `X` itself, not mutation of its properties
 - `X.a = 3` is valid → prints 3
 
+</details>
+
 ---
 
-### Q13 — ES6 for..of
+### Q7 — ES6 for..of
 
-**Question:**
 ```javascript
 let a = [1, 2, 3];
 a.x = "foo";
@@ -146,12 +180,17 @@ for (i of a) {
 }
 console.log(b);
 ```
+
 What is the result? (Select closest option)
+
 1. Compilation error
 2. Prints `123`
 3. Prints `123foo`
 4. Prints `012foo`
 5. Prints `foo012`
+
+<details>
+<summary>Answer (expand after you've thought through it)</summary>
 
 **Answer: Option 2 — prints 123**
 
@@ -159,11 +198,12 @@ What is the result? (Select closest option)
 - `a.x = "foo"` is skipped entirely
 - `b = "" + 1 + 2 + 3 = "123"` (string concatenation)
 
+</details>
+
 ---
 
-### Q14 — ES6 Let
+### Q8 — ES6 Let
 
-**Question:**
 ```javascript
 var a = 10;
 if (a < 20) {
@@ -173,12 +213,17 @@ if (a < 20) {
 }
 console.log(b);
 ```
+
 What is the result? (Select closest option)
+
 1. Compilation error
 2. ReferenceError: b is not defined (or similar)
 3. Prints Yes
 4. Prints No
 5. Prints undefined
+
+<details>
+<summary>Answer (expand after you've thought through it)</summary>
 
 **Answer: Option 2 — ReferenceError**
 
@@ -186,11 +231,12 @@ What is the result? (Select closest option)
 - `b` does not exist outside the if/else blocks
 - With `var` this would work fine (function-scoped)
 
+</details>
+
 ---
 
-### Q15 — Promises with async/await
+### Q9 — Promises with async/await
 
-**Question:**
 ```javascript
 var async_f = async function() {
   var p1 = promised_function('first');
@@ -201,12 +247,17 @@ var async_f = async function() {
 }
 async_f();
 ```
+
 Where `promised_function` resolves after 3 seconds. What happens? (Select closest option)
+
 1. After 3 seconds, first, second, and done are all printed together
 2. done is printed immediately. After 3 seconds first is printed. After 3 more seconds second is printed.
 3. done is printed immediately. After 3 seconds, first and second are both printed together.
 4. After 3 seconds, first is printed. After 3 more seconds, second and done are printed together.
 5. done is printed immediately. 6 seconds later, first and second are both printed together.
+
+<details>
+<summary>Answer (expand after you've thought through it)</summary>
 
 **Answer: Option 1**
 
@@ -216,129 +267,16 @@ Where `promised_function` resolves after 3 seconds. What happens? (Select closes
 - `console.log('done')` fires right after
 - All three print at the ~3 second mark
 
----
-
-## Section 6: Angular Knowledge
+</details>
 
 ---
 
-### Q16 — Angular URL #1
-
-**Question:**
-An Angular app is accessed as `https://example.com/myapp?query=string`. The component has `constructor(private rt: ActivatedRoute) {}`. Which is the right way to get the `query` parameter value in `ngOnInit`? (Select closest option)
-1. `const qStr: string = this.rt.snapshot.params.query`
-2. `const qStr: string = this.rt.snapshot.params.get('query')`
-3. `const qStr: string = this.route.snapshot.queryParamMap.get('query')`
-4. `const qStr: string = this.rt.snapshot.queryParamMap.get('query')`
-5. `const qStr: string = this.rt.snapshot.queryParamMap.get('query=string')`
-
-**Answer: Option 4**
-
-- `?query=string` is a query parameter, not a route param
-- `snapshot.params` is for route params like `/path/:id`
-- `queryParamMap.get()` is the correct API for query params
-- `this.route` doesn't exist — injected reference is `rt`
-- Option 5 is wrong — pass only the key name, not `'query=string'`
+## Section 3: React.js (Functional Components)
 
 ---
 
-### Q17 — Restricted Area #2 (CanLoad)
+### Q10 — React.js Error
 
-**Question:**
-A lazy-loaded route uses `loadChildren`. The `RestrictedModule` should only load when a logged-in admin navigates to `restricted`. If not logged in, the module should NOT be loaded. What guard is needed? (Pick all that apply)
-1. Use the CanActivate route guard
-2. Use the CanActivateChildren route guard
-3. Use the Resolve route guard
-4. Use the CanLoad route guard
-5. Nothing needs to be done, this is automatically handled by Angular
-
-**Answer: Option 4 — CanLoad**
-
-- `CanLoad` prevents the lazy-loaded bundle from even being downloaded when guard returns false
-- `CanActivate` blocks navigation but the module can still download in the background
-- Since `loadChildren` is used, `CanLoad` is the precise guard needed
-
----
-
-### Q18 — Restricted Area Statements
-
-**Question:**
-Given the same `loadChildren` route config with NO guards, which statements are true? (Pick all that apply)
-1. This code ensures the route `restricted` is not active unless an admin is logged in
-2. This code ensures `RestrictedModule` is not loaded unless someone navigates to `restricted`
-3. If a user who is not logged in navigates to `restricted`, the module will get loaded
-4. If a logged-in user without admin rights navigates to `restricted`, the module will get loaded
-5. Each time a user with the right permissions navigates to `restricted`, the module will get re-loaded again
-
-**Answer: Options 2, 3, and 4**
-
-- No guards exist — only `loadChildren`
-- ❌ Option 1: No auth guard, so no access restriction
-- ✅ Option 2: Lazy loading — module only loads on navigation
-- ✅ Option 3: No `CanLoad` → unauthenticated user still triggers the load
-- ✅ Option 4: Non-admin logged-in user also triggers the load
-- ❌ Option 5: Lazy modules are loaded once and cached by Angular
-
----
-
-### Q19 — Input Binding
-
-**Question:**
-```html
-<input #userval>
-<p>You typed: {{userval.value}}</p>
-```
-This doesn't update as the user types. Which fix is correct? (Select closest option)
-1. Change input to `<input $userval>`
-2. Change input to `<input userval>`
-3. Change input to `<input #userval (keyup)="0">`
-4. Change last line to `<p>You typed: {{#userval.value}}</p>`
-5. Change last line to `<p>You typed: {{onKeyup(userval.value)}}</p>`
-
-**Answer: Option 3**
-
-- `#userval` is a valid template reference variable
-- Problem: Angular's change detection isn't triggered by typing alone
-- `(keyup)="0"` binds a keyup event, triggering change detection on every keystroke
-- `"0"` is a no-op expression, just there to fire the event binding
-
----
-
-### Q20 — Pipe Parameter
-
-**Question:**
-```typescript
-@Pipe({name: 'discount'})
-export class DiscountPipe implements PipeTransform {
-  transform(value: cost, percent?: number): number {
-    return cost * (isNaN(percent) ? 90 : percent) / 100;
-  }
-}
-```
-Which expressions result in exactly 90% of price? (Pick all that apply)
-1. `{{price|discount}}`
-2. `{{price|discount|90}}`
-3. `{{price|discount:90}}`
-4. `{{price|discount:0.9}}`
-5. `{{price|discount(90)}}`
-
-**Answer: Options 1 and 3**
-
-- ✅ Option 1: No arg → `percent` is undefined → `isNaN` = true → uses 90
-- ❌ Option 2: `|90` tries to chain a pipe named "90", invalid
-- ✅ Option 3: Passes 90 → `price * 90/100`
-- ❌ Option 4: Passes 0.9 → `price * 0.9/100` (0.9%, not 90%)
-- ❌ Option 5: Invalid Angular pipe syntax
-
----
-
-## Section 7: React.js Knowledge
-
----
-
-### Q21 — React.js Error
-
-**Question:**
 ```javascript
 function attr(props) {
   return <div>The value is {props.value}</div>
@@ -348,12 +286,17 @@ ReactDOM.render(
   document.getElementById('mydiv')
 );
 ```
+
 This code has an error. What is the problem? (Pick all that apply)
+
 1. The first argument of ReactDOM.render must be a JavaScript object, not HTML/JSX
 2. The second argument must be `document.getElementById('root')`
 3. The function attr should return a string or JS object, not HTML/JSX
 4. `attr` needs to be capitalized as `Attr`
 5. None of the above
+
+<details>
+<summary>Answer (expand after you've thought through it)</summary>
 
 **Answer: Option 4**
 
@@ -361,11 +304,12 @@ This code has an error. What is the problem? (Pick all that apply)
 - `<attr .../>` is treated as an unknown HTML tag, not the function
 - Fix: rename to `Attr` and use `<Attr value="v1"/>`
 
+</details>
+
 ---
 
-### Q22 — useState #3
+### Q11 — useState #3
 
-**Question:**
 ```javascript
 function MyComp() {
   for (let i=0; i<3; i++) {
@@ -375,12 +319,17 @@ function MyComp() {
   console.log('cnt is ' + cnt);
 }
 ```
+
 Which statement is true? (Pick all that apply)
+
 1. First time MyComp is called, it will print `cnt is 3`
 2. Second time MyComp is called, it will print `cnt is 6`
 3. First time MyComp is called, it will print `cnt is 1`
 4. First time MyComp is called, it will print `cnt is 2`
 5. This is illegal because useState cannot be used in a for loop
+
+<details>
+<summary>Answer (expand after you've thought through it)</summary>
 
 **Answer: Option 5 only**
 
@@ -388,11 +337,12 @@ Which statement is true? (Pick all that apply)
 - Hook call order must be consistent across every render
 - React will throw a rules-of-hooks violation at runtime
 
+</details>
+
 ---
 
-### Q23 — React preventDefault
+### Q12 — React preventDefault
 
-**Question:**
 ```javascript
 function eventAction() {
   function doClick(e) {
@@ -404,29 +354,39 @@ function eventAction() {
   );
 }
 ```
+
 `return false` is not preventing the default navigation. What is the recommended fix? (Select closest option)
+
 1. The doClick function should return `true`
 2. The onClick attribute should be `onClick="doClick(); return false;"`
 3. The doClick function should call `e.preventDefault()` instead of returning false
 4. Replace `href={someUrl}` with `href="#"`
 5. None of the above
 
+<details>
+<summary>Answer (expand after you've thought through it)</summary>
+
 **Answer: Option 3**
 
 - In React, `return false` does nothing to prevent default behavior
 - React's synthetic event system requires `e.preventDefault()` explicitly
 
+</details>
+
 ---
 
-### Q24 — Sibling State
+### Q13 — Sibling State
 
-**Question:**
 Component `Money` has two children: `Rupees` and `Paisa`, both with an `amount` state. You need `addPaisa(amt)` in `Paisa` to increment `Paisa`'s amount, and if total > 100, decrement it by 100 and increment `Rupees`' amount by 1. What is the right way for `addPaisa` in `Paisa` to access `Rupees`' state? (Select closest option)
+
 1. Using `this.parent.rupees.setState`
 2. Using `this.parent.rupees.state.amount`
 3. Using `this.getParent().getChildren()[0].setState`
 4. Using `window.Money.rupees.setState`
 5. It is not possible for a component to access a sibling component's state
+
+<details>
+<summary>Answer (expand after you've thought through it)</summary>
 
 **Answer: Option 5**
 
@@ -434,11 +394,12 @@ Component `Money` has two children: `Rupees` and `Paisa`, both with an `amount` 
 - Correct pattern: lift state up to parent `Money`, pass state and update callback as props
 - `this.parent`, `this.getParent()`, `window.Money` are not valid React APIs
 
+</details>
+
 ---
 
-### Q25 — Counter HTML
+### Q14 — Counter HTML
 
-**Question:**
 ```javascript
 counter_var = 1;
 function counter_html() {
@@ -456,12 +417,17 @@ function counter_update() {
 }
 setInterval(counter_update, 1000);
 ```
+
 What code should replace `// ?????` to efficiently update only the counter span every second? (Select closest option)
+
 1. `ReactDOM.update(counter_var, document.GetElementByID('counter'))`
 2. `ReactDOM.render(counter_var, document.GetElementByID('counter'))`
 3. `ReactDOM.render(counter_html(), document.getElementById('root'));`
 4. `$('#counter').update(counter_var)`
 5. This cannot be done without modifying counter_html
+
+<details>
+<summary>Answer (expand after you've thought through it)</summary>
 
 **Answer: Option 3**
 
@@ -470,25 +436,29 @@ What code should replace `// ?????` to efficiently update only the counter span 
 - React's reconciliation handles the efficiency, no need to target `#counter` directly
 - Options 1 and 4 use non-existent APIs
 
----
-
-## Section 8: Coding
+</details>
 
 ---
 
-### Q26 — Expensive Service
+## Section 4: Coding
 
-**Question:**
+---
+
+### Q15 — Expensive Service
+
 Given a JSON string like:
+
 ```json
 [
   ["Swiggy", 123], ["Swiggy", 227], ["Zomato", 103],
   ["Zomato", 171], ["Dunzo", 131], ["Zomato", 122], ["Swiggy", 181]
 ]
 ```
+
 Write a JavaScript function that takes such a string and returns the name of the service with the highest average payment. For the above input, it should return "Swiggy". Aim for O(n) time complexity.
 
-**Answer:**
+<details>
+<summary>Answer (expand after you've thought through it)</summary>
 
 ```javascript
 // Time complexity: O(n)
@@ -507,7 +477,7 @@ function mostExpensiveService(jsonString) {
   }
 
   let bestService = null;
-  let bestAverage = Number.NEGATIVE_INFINITY; // ensures any real average will be higher on first comparison
+  let bestAverage = Number.NEGATIVE_INFINITY;
 
   for (const [service, data] of map) {
     const avg = data.total / data.count;
@@ -521,9 +491,10 @@ function mostExpensiveService(jsonString) {
 }
 ```
 
-Verification:
 - Swiggy: (123 + 227 + 181) / 3 = 177
 - Zomato: (103 + 171 + 122) / 3 = 132
 - Dunzo: 131 / 1 = 131
 
 Returns "Swiggy" ✓
+
+</details>
