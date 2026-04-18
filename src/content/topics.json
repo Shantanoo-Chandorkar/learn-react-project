@@ -160,5 +160,11 @@
     "title": "Tricky React MCQs Pt 1",
     "slug": "tricky-react-mcqs-part-1",
     "category": "interview-prep"
+  },
+  {
+    "id": 28,
+    "title": "Tricky React MCQs Pt 2",
+    "slug": "tricky-react-mcqs-part-2",
+    "category": "interview-prep"
   }
 ]
