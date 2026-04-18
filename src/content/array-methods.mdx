@@ -15,20 +15,24 @@ All three methods are **non-mutating**. They never change the original array. Th
 ```js
 const nums = [1, 2, 3];
 
-const doubled = nums.map(n => n * 2);
+const doubled = nums.map((n) => n * 2);
 console.log(doubled); // [2, 4, 6]
-console.log(nums);    // [1, 2, 3], untouched
+console.log(nums); // [1, 2, 3], untouched
 ```
 
 **The implicit return trap:**
 
 ```js
 // Braces without return → callback returns undefined
-const broken = nums.map(n => { n * 2 });
+const broken = nums.map((n) => {
+  n * 2;
+});
 console.log(broken); // [undefined, undefined, undefined]
 
 // Correct with braces
-const correct = nums.map(n => { return n * 2; });
+const correct = nums.map((n) => {
+  return n * 2;
+});
 ```
 
 This is the single most common `map` MCQ trap. Braces turn it into a function body. Without an explicit `return`, you get `undefined` for every element.
@@ -40,20 +44,22 @@ This is the single most common `map` MCQ trap. Braces turn it into a function bo
 All three methods receive these three arguments. Knowing this is critical because passing a function that accepts more arguments than you intend causes bugs:
 
 ```js
-["1", "2", "3"].map(parseInt);
+['1', '2', '3'].map(parseInt);
 // Expected: [1, 2, 3]
 // Actual:   [1, NaN, NaN]
 ```
 
 Why? `parseInt(string, radix)` accepts two arguments. `map` passes `(element, index, array)`. So the calls become:
+
 - `parseInt("1", 0)` → `1` (radix 0 treated as 10)
 - `parseInt("2", 1)` → `NaN` (radix 1 is invalid)
 - `parseInt("3", 2)` → `NaN` (3 is not valid in base 2)
 
 Fix:
+
 ```js
-["1", "2", "3"].map(s => parseInt(s, 10)); // [1, 2, 3]
-["1", "2", "3"].map(Number); // [1, 2, 3], Number takes one arg
+['1', '2', '3'].map((s) => parseInt(s, 10)); // [1, 2, 3]
+['1', '2', '3'].map(Number); // [1, 2, 3], Number takes one arg
 ```
 
 This exact `map(parseInt)` example is one of the most famous JS interview MCQ traps. Recognize it on sight.
@@ -68,10 +74,10 @@ A sparse array has holes, indices with no assigned value. `map` skips holes and 
 const sparse = [1, , , 4]; // holes at index 1 and 2
 console.log(sparse.length); // 4
 
-const result = sparse.map(n => n * 2);
-console.log(result);        // [2, empty × 2, 8]
-console.log(result[1]);     // undefined
-console.log(1 in result);   // false, the hole exists but index is unset
+const result = sparse.map((n) => n * 2);
+console.log(result); // [2, empty × 2, 8]
+console.log(result[1]); // undefined
+console.log(1 in result); // false, the hole exists but index is unset
 ```
 
 The callback is never called for holes. `result[1]` reads as `undefined` but the index is not set. `1 in result` is `false`, distinguishing a hole from an explicitly assigned `undefined`.
@@ -81,19 +87,22 @@ The callback is never called for holes. `result[1]` reads as `undefined` but the
 ### `map` does not flatten
 
 ```js
-const nested = [[1, 2], [3, 4]];
-nested.map(arr => arr);        // [[1,2],[3,4]], same structure
-nested.map(arr => arr[0]);     // [1, 3]
+const nested = [
+  [1, 2],
+  [3, 4],
+];
+nested.map((arr) => arr); // [[1,2],[3,4]], same structure
+nested.map((arr) => arr[0]); // [1, 3]
 
 // For map + flatten use flatMap
-nested.flatMap(arr => arr);    // [1, 2, 3, 4]
+nested.flatMap((arr) => arr); // [1, 2, 3, 4]
 ```
 
 `flatMap` is `map` followed by one level of `flat`. It is the correct method when your callback returns arrays and you want a flat result.
 
 ```js
-const sentences = ["hello world", "foo bar"];
-sentences.flatMap(s => s.split(" ")); // ["hello", "world", "foo", "bar"]
+const sentences = ['hello world', 'foo bar'];
+sentences.flatMap((s) => s.split(' ')); // ["hello", "world", "foo", "bar"]
 ```
 
 ---
@@ -106,9 +115,9 @@ sentences.flatMap(s => s.split(" ")); // ["hello", "world", "foo", "bar"]
 
 ```js
 const nums = [1, 2, 3, 4, 5];
-const evens = nums.filter(n => n % 2 === 0);
+const evens = nums.filter((n) => n % 2 === 0);
 console.log(evens); // [2, 4]
-console.log(nums);  // [1, 2, 3, 4, 5]
+console.log(nums); // [1, 2, 3, 4, 5]
 ```
 
 ---
@@ -118,7 +127,7 @@ console.log(nums);  // [1, 2, 3, 4, 5]
 Because `filter` uses truthiness, not strict boolean, any falsy value drops the element:
 
 ```js
-const mixed = [0, 1, "", "hello", null, undefined, false, true, NaN];
+const mixed = [0, 1, '', 'hello', null, undefined, false, true, NaN];
 mixed.filter(Boolean);
 // [1, "hello", true]
 // 0, "", null, undefined, false, NaN all removed
@@ -128,8 +137,8 @@ mixed.filter(Boolean);
 
 ```js
 const scores = [0, 10, 20, 0, 30];
-scores.filter(Boolean);         // [10, 20, 30] — drops the 0s, probably wrong
-scores.filter(s => s !== null); // [0, 10, 20, 0, 30] — keeps 0s, correct
+scores.filter(Boolean); // [10, 20, 30] — drops the 0s, probably wrong
+scores.filter((s) => s !== null); // [0, 10, 20, 0, 30] — keeps 0s, correct
 ```
 
 ---
@@ -140,20 +149,19 @@ After `filter`, the indices of surviving elements change. The index property in 
 
 ```js
 const arr = [10, 20, 30, 40, 50];
-const result = arr
-  .filter((n, i) => {
-    console.log(i); // 0, 1, 2, 3, 4 — original indices
-    return n > 20;
-  });
+const result = arr.filter((n, i) => {
+  console.log(i); // 0, 1, 2, 3, 4 — original indices
+  return n > 20;
+});
 
-console.log(result);   // [30, 40, 50]
+console.log(result); // [30, 40, 50]
 console.log(result[0]); // 30, not the original index 2
 ```
 
 This bites people when they chain `filter` then `map` and assume index continuity:
 
 ```js
-const data = ["a", "b", "c", "d"];
+const data = ['a', 'b', 'c', 'd'];
 data
   .filter((_, i) => i % 2 === 0) // keeps "a" (i=0), "c" (i=2)
   .map((item, i) => `${i}:${item}`); // ["0:a", "1:c"], not ["0:a", "2:c"]
@@ -167,12 +175,12 @@ After `filter`, `map` receives a fresh array starting at index `0`. The original
 
 ```js
 const users = [
-  { name: "shan", active: true },
-  { name: "ghost", active: false }
+  { name: 'shan', active: true },
+  { name: 'ghost', active: false },
 ];
 
-const active = users.filter(u => u.active);
-active[0].name = "updated"; // mutates the original object
+const active = users.filter((u) => u.active);
+active[0].name = 'updated'; // mutates the original object
 
 console.log(users[0].name); // "updated"
 ```
@@ -231,9 +239,9 @@ Always provide an initial value unless you have a specific reason not to and you
 
 ```js
 const users = [
-  { id: 1, name: "shan" },
-  { id: 2, name: "alex" },
-  { id: 3, name: "rita" }
+  { id: 1, name: 'shan' },
+  { id: 2, name: 'alex' },
+  { id: 3, name: 'rita' },
 ];
 
 const byId = users.reduce((acc, user) => {
@@ -249,7 +257,7 @@ Forgetting `return acc` is the most common `reduce` bug. Without it, `acc` becom
 **Grouping:**
 
 ```js
-const words = ["cat", "car", "bar", "bat", "bus"];
+const words = ['cat', 'car', 'bar', 'bat', 'bus'];
 
 const grouped = words.reduce((acc, word) => {
   const key = word[0];
@@ -273,7 +281,7 @@ nested.reduce((acc, arr) => acc.concat(arr), []);
 **Counting occurrences:**
 
 ```js
-const fruits = ["apple", "banana", "apple", "cherry", "banana", "apple"];
+const fruits = ['apple', 'banana', 'apple', 'cherry', 'banana', 'apple'];
 
 fruits.reduce((acc, fruit) => {
   acc[fruit] = (acc[fruit] || 0) + 1;
@@ -289,18 +297,25 @@ fruits.reduce((acc, fruit) => {
 Same as `reduce` but iterates right-to-left. The initial value is the starting point for the rightmost element.
 
 ```js
-[[1, 2], [3, 4], [5, 6]].reduceRight((acc, arr) => acc.concat(arr), []);
+[
+  [1, 2],
+  [3, 4],
+  [5, 6],
+].reduceRight((acc, arr) => acc.concat(arr), []);
 // [5, 6, 3, 4, 1, 2]
 ```
 
 A real use case is composing functions right-to-left, which is the mathematical definition of function composition `f(g(h(x)))`:
 
 ```js
-const compose = (...fns) => x => fns.reduceRight((v, fn) => fn(v), x);
+const compose =
+  (...fns) =>
+  (x) =>
+    fns.reduceRight((v, fn) => fn(v), x);
 
-const add1   = x => x + 1;
-const double = x => x * 2;
-const square = x => x * x;
+const add1 = (x) => x + 1;
+const double = (x) => x * 2;
+const square = (x) => x * x;
 
 const transform = compose(add1, double, square);
 transform(3); // square(3)=9, double(9)=18, add1(18)=19
@@ -318,24 +333,25 @@ The classic interview pattern: solve a problem in one chain.
 const nums = [1, 2, 3, 4, 5, 6];
 
 nums
-  .filter(n => n % 2 === 0)   // [2, 4, 6]
-  .map(n => n * n)             // [4, 16, 36]
+  .filter((n) => n % 2 === 0) // [2, 4, 6]
+  .map((n) => n * n) // [4, 16, 36]
   .reduce((acc, n) => acc + n, 0); // 56
 ```
 
 **Most frequent element:**
 
 ```js
-const arr = ["a", "b", "a", "c", "b", "a"];
+const arr = ['a', 'b', 'a', 'c', 'b', 'a'];
 
 const freq = arr.reduce((acc, el) => {
   acc[el] = (acc[el] || 0) + 1;
   return acc;
 }, {});
 
-Object.entries(freq).reduce((top, [key, count]) =>
-  count > top[1] ? [key, count] : top
-, ["", 0])[0]; // "a"
+Object.entries(freq).reduce(
+  (top, [key, count]) => (count > top[1] ? [key, count] : top),
+  ['', 0],
+)[0]; // "a"
 ```
 
 ---
@@ -345,7 +361,7 @@ Object.entries(freq).reduce((top, [key, count]) =>
 `forEach` always returns `undefined`. It is for side effects only. `map` returns a new array.
 
 ```js
-const result = [1, 2, 3].forEach(n => n * 2);
+const result = [1, 2, 3].forEach((n) => n * 2);
 console.log(result); // undefined, not [2, 4, 6]
 ```
 
@@ -353,10 +369,10 @@ You cannot chain off `forEach`. You cannot assign its result. If you need a tran
 
 ```js
 // forEach: logging, DOM mutations, pushing to external array
-[1, 2, 3].forEach(n => console.log(n));
+[1, 2, 3].forEach((n) => console.log(n));
 
 // map: transformation, building new data
-const doubled = [1, 2, 3].map(n => n * 2);
+const doubled = [1, 2, 3].map((n) => n * 2);
 ```
 
 ---
@@ -364,25 +380,29 @@ const doubled = [1, 2, 3].map(n => n * 2);
 ### Self-test: 6 questions
 
 **Q1.** What does this log?
+
 ```js
-const result = [1, 2, 3].map(n => {
+const result = [1, 2, 3].map((n) => {
   n * 2;
 });
 console.log(result);
 ```
 
 **Q2.** What does this log?
+
 ```js
-console.log(["1", "2", "3"].map(parseInt));
+console.log(['1', '2', '3'].map(parseInt));
 ```
 
 **Q3.** What does this log?
+
 ```js
-const arr = [false, 0, "", null, undefined, NaN, 1, "hello"];
+const arr = [false, 0, '', null, undefined, NaN, 1, 'hello'];
 console.log(arr.filter(Boolean).length);
 ```
 
 **Q4.** What does this log?
+
 ```js
 const nums = [1, 2, 3];
 const result = nums.reduce((acc, n) => {
@@ -392,15 +412,15 @@ console.log(result);
 ```
 
 **Q5.** What does this log?
+
 ```js
 const arr = [1, 2, 3, 4, 5];
-const result = arr
-  .filter(n => n > 2)
-  .map((n, i) => `${i}-${n}`);
+const result = arr.filter((n) => n > 2).map((n, i) => `${i}-${n}`);
 console.log(result);
 ```
 
 **Q6.** What does this log and why?
+
 ```js
 [].reduce((acc, n) => acc + n);
 ```

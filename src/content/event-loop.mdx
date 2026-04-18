@@ -13,14 +13,21 @@ There are four distinct components. Understand each one in isolation first, then
 The call stack is where synchronous code executes. It is a LIFO (last in, first out) structure. Every time a function is called, a new frame is pushed. When it returns, the frame is popped.
 
 ```js
-function c() { console.log("c"); }
-function b() { c(); }
-function a() { b(); }
+function c() {
+  console.log('c');
+}
+function b() {
+  c();
+}
+function a() {
+  b();
+}
 
 a();
 ```
 
 Stack progression:
+
 ```
 [a]
 [a, b]
@@ -39,9 +46,9 @@ The event loop only picks up new work when **the call stack is completely empty*
 When you call `setTimeout`, `fetch`, `addEventListener`, etc., you are handing work off to the browser (or Node) runtime. These run outside the JS engine, in separate threads managed by the environment. JS does not wait. It continues executing the rest of the synchronous code immediately.
 
 ```js
-console.log("1");
-setTimeout(() => console.log("2"), 0);
-console.log("3");
+console.log('1');
+setTimeout(() => console.log('2'), 0);
+console.log('3');
 // Output: 1, 3, 2
 ```
 
@@ -54,6 +61,7 @@ Even with a `0ms` delay, `setTimeout` goes to the Web API layer. Its callback on
 When a Web API operation completes (timer fires, event triggers, fetch resolves at the network level), its callback is placed in the **task queue**. Callbacks in the task queue wait until the call stack is empty, then the event loop picks up exactly **one task** per loop iteration.
 
 Sources of macrotasks:
+
 - `setTimeout`
 - `setInterval`
 - `setImmediate` (Node only)
@@ -68,6 +76,7 @@ Sources of macrotasks:
 The microtask queue is a separate, higher-priority queue. After every task (and after the initial synchronous script finishes), **the entire microtask queue is drained before the next task is picked up**. Not one microtask, all of them. And if a microtask enqueues another microtask, that new one also runs before the next task.
 
 Sources of microtasks:
+
 - `Promise` callbacks (`.then`, `.catch`, `.finally`)
 - `queueMicrotask()`
 - `MutationObserver`
@@ -92,13 +101,13 @@ This is the loop. Every single async ordering question in interviews collapses t
 ### The foundational example
 
 ```js
-console.log("1");
+console.log('1');
 
-setTimeout(() => console.log("2"), 0);
+setTimeout(() => console.log('2'), 0);
 
-Promise.resolve().then(() => console.log("3"));
+Promise.resolve().then(() => console.log('3'));
 
-console.log("4");
+console.log('4');
 ```
 
 Walk through it:
@@ -121,12 +130,12 @@ This ordering, specifically that Promise callbacks always run before `setTimeout
 ```js
 Promise.resolve()
   .then(() => {
-    console.log("microtask 1");
-    Promise.resolve().then(() => console.log("microtask 2"));
+    console.log('microtask 1');
+    Promise.resolve().then(() => console.log('microtask 2'));
   })
-  .then(() => console.log("microtask 3"));
+  .then(() => console.log('microtask 3'));
 
-console.log("sync");
+console.log('sync');
 ```
 
 Output: `sync`, `microtask 1`, `microtask 2`, `microtask 3`
@@ -143,19 +152,20 @@ After the first `.then` runs and logs `microtask 1`, it enqueues a new microtask
 
 ```js
 async function foo() {
-  console.log("foo start");
+  console.log('foo start');
   await Promise.resolve();
-  console.log("foo after await");
+  console.log('foo after await');
 }
 
-console.log("before foo");
+console.log('before foo');
 foo();
-console.log("after foo call");
+console.log('after foo call');
 ```
 
 Output: `before foo`, `foo start`, `after foo call`, `foo after await`
 
 Walk through:
+
 1. `before foo` - sync.
 2. `foo()` called. Enters `foo`. `foo start` - sync inside foo.
 3. Hits `await`. Foo is paused. The continuation (`foo after await`) is scheduled as a microtask.
@@ -168,15 +178,15 @@ Walk through:
 
 ```js
 async function run() {
-  console.log("A");
+  console.log('A');
   await null;
-  console.log("B");
+  console.log('B');
   await null;
-  console.log("C");
+  console.log('C');
 }
 
 run();
-console.log("D");
+console.log('D');
 ```
 
 Output: `A`, `D`, `B`, `C`
@@ -197,7 +207,7 @@ function infinite() {
 }
 
 infinite();
-setTimeout(() => console.log("this never runs"), 0);
+setTimeout(() => console.log('this never runs'), 0);
 ```
 
 `setTimeout` never fires. The page freezes. This is also why a synchronous infinite loop (`while(true)`) blocks everything, but an async loop using `setInterval` doesn't: `setInterval` callbacks are macrotasks, and the event loop can interleave other tasks between them.
@@ -207,12 +217,12 @@ setTimeout(() => console.log("this never runs"), 0);
 ### `setTimeout` vs `setInterval` vs `setImmediate` vs `queueMicrotask`
 
 ```js
-setTimeout(() => console.log("setTimeout"), 0);
-setImmediate(() => console.log("setImmediate")); // Node only
-queueMicrotask(() => console.log("microtask"));
-Promise.resolve().then(() => console.log("promise"));
+setTimeout(() => console.log('setTimeout'), 0);
+setImmediate(() => console.log('setImmediate')); // Node only
+queueMicrotask(() => console.log('microtask'));
+Promise.resolve().then(() => console.log('promise'));
 
-console.log("sync");
+console.log('sync');
 ```
 
 Output in Node: `sync`, `microtask`, `promise`, `setImmediate`, `setTimeout`
@@ -224,18 +234,18 @@ Output in Node: `sync`, `microtask`, `promise`, `setImmediate`, `setTimeout`
 ### The classic interview trap: mixing all four
 
 ```js
-console.log("1");
+console.log('1');
 
-setTimeout(() => console.log("2"), 0);
+setTimeout(() => console.log('2'), 0);
 
 Promise.resolve()
   .then(() => {
-    console.log("3");
-    setTimeout(() => console.log("4"), 0);
+    console.log('3');
+    setTimeout(() => console.log('4'), 0);
   })
-  .then(() => console.log("5"));
+  .then(() => console.log('5'));
 
-console.log("6");
+console.log('6');
 ```
 
 Work through this before reading the answer.
@@ -269,53 +279,57 @@ Note that `4` comes after `2` because `setTimeout("4")` was enqueued during the 
 Work through the output order for each one before expanding the answer.
 
 **Q1.** What is the output?
+
 ```js
-console.log("A");
+console.log('A');
 
-setTimeout(() => console.log("B"), 0);
-setTimeout(() => console.log("C"), 0);
+setTimeout(() => console.log('B'), 0);
+setTimeout(() => console.log('C'), 0);
 
-Promise.resolve().then(() => console.log("D"));
-Promise.resolve().then(() => console.log("E"));
+Promise.resolve().then(() => console.log('D'));
+Promise.resolve().then(() => console.log('E'));
 
-console.log("F");
+console.log('F');
 ```
 
 **Q2.** What is the output?
+
 ```js
 async function foo() {
-  console.log("1");
+  console.log('1');
   await Promise.resolve();
-  console.log("2");
+  console.log('2');
   await Promise.resolve();
-  console.log("3");
+  console.log('3');
 }
 
 foo();
-console.log("4");
+console.log('4');
 ```
 
 **Q3.** What is the output?
+
 ```js
-setTimeout(() => console.log("timeout"), 0);
+setTimeout(() => console.log('timeout'), 0);
 
 Promise.resolve()
   .then(() => {
-    console.log("p1");
+    console.log('p1');
     return Promise.resolve();
   })
-  .then(() => console.log("p2"));
+  .then(() => console.log('p2'));
 ```
 
 **Q4.** True or false: if the microtask queue keeps getting new microtasks added to it, the macrotask queue will never be processed.
 
 **Q5.** What is the output and why is it different from Q3?
+
 ```js
-setTimeout(() => console.log("timeout"), 0);
+setTimeout(() => console.log('timeout'), 0);
 
 Promise.resolve()
-  .then(() => console.log("p1"))
-  .then(() => console.log("p2"));
+  .then(() => console.log('p1'))
+  .then(() => console.log('p2'));
 ```
 
 ---

@@ -13,11 +13,7 @@ Topics covered in order: hooks, keys & reconciliation, rendering & batching, con
 ```jsx
 function App() {
   const [state, setState] = useState({ a: 1, b: 2 });
-  return (
-    <div onClick={() => setState({ a: 10 })}>
-      {state.b}
-    </div>
-  );
+  return <div onClick={() => setState({ a: 10 })}>{state.b}</div>;
 }
 ```
 
@@ -172,9 +168,7 @@ Classic stale closure. The `useEffect` with empty deps runs once at mount and cl
 **Q6.** The array changes from `['A', 'B', 'C']` to `['B', 'C', 'A']`. What do the inputs show?
 
 ```jsx
-items.map((item, index) => (
-  <input key={index} defaultValue={item} />
-));
+items.map((item, index) => <input key={index} defaultValue={item} />);
 ```
 
 - A) `B`, `C`, `A` (correctly updated)
@@ -332,7 +326,7 @@ function Parent() {
   const [count, setCount] = useState(0);
   return (
     <>
-      <button onClick={() => setCount(c => c + 1)}>{count}</button>
+      <button onClick={() => setCount((c) => c + 1)}>{count}</button>
       <Child style={{ color: 'red' }} />
     </>
   );
@@ -370,7 +364,7 @@ function App() {
     <Ctx.Provider value={val}>
       <A />
       <B />
-      <button onClick={() => setVal(v => v + 1)}>Inc</button>
+      <button onClick={() => setVal((v) => v + 1)}>Inc</button>
     </Ctx.Provider>
   );
 }
@@ -419,7 +413,7 @@ function App() {
   return (
     <Ctx.Provider value={count}>
       <Child />
-      <button onClick={() => setCount(c => c + 1)}>+</button>
+      <button onClick={() => setCount((c) => c + 1)}>+</button>
     </Ctx.Provider>
   );
 }
@@ -516,7 +510,9 @@ function useData(id) {
   if (id) {
     const [data, setData] = useState(null);
     useEffect(() => {
-      fetch(`/api/${id}`).then(r => r.json()).then(setData);
+      fetch(`/api/${id}`)
+        .then((r) => r.json())
+        .then(setData);
     }, [id]);
     return data;
   }
@@ -648,9 +644,7 @@ function App() {
     });
   }, []);
 
-  return (
-    <button onClick={() => setCount(c => c + 1)}>{count}</button>
-  );
+  return <button onClick={() => setCount((c) => c + 1)}>{count}</button>;
 }
 ```
 

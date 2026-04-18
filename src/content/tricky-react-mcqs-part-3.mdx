@@ -1,7 +1,5 @@
 # Practice Questions — JavaScript Web, ES6, React.js
 
----
-
 ## Section 1: JavaScript Web
 
 ---
@@ -73,9 +71,9 @@ What is logged?
 
 ```javascript
 fetch('https://api.example.com/data')
-  .then(response => response.json())
-  .then(data => console.log(data))
-  .catch(err => console.log('Error:', err));
+  .then((response) => response.json())
+  .then((data) => console.log(data))
+  .catch((err) => console.log('Error:', err));
 ```
 
 The server returns a 404 response with a valid JSON body. What happens?
@@ -165,7 +163,7 @@ const obj = {
   name: 'Shan',
   greet: () => {
     console.log('Hello ' + this.name);
-  }
+  },
 };
 obj.greet();
 ```
@@ -258,8 +256,8 @@ const p2 = Promise.reject('error');
 const p3 = Promise.resolve(3);
 
 Promise.all([p1, p2, p3])
-  .then(values => console.log(values))
-  .catch(err => console.log(err));
+  .then((values) => console.log(values))
+  .catch((err) => console.log(err));
 ```
 
 What is logged?
@@ -325,8 +323,8 @@ function UserProfile({ userId }) {
 
   useEffect(() => {
     fetch(`/api/users/${userId}`)
-      .then(res => res.json())
-      .then(data => setUser(data));
+      .then((res) => res.json())
+      .then((data) => setUser(data));
   }, []);
 
   return <div>{user?.name}</div>;
@@ -443,7 +441,7 @@ function Timer() {
   const intervalRef = useRef(null);
 
   function start() {
-    intervalRef.current = setInterval(() => setCount(c => c + 1), 1000);
+    intervalRef.current = setInterval(() => setCount((c) => c + 1), 1000);
   }
 
   function stop() {
@@ -489,7 +487,9 @@ function useData(url) {
 
   if (url) {
     useEffect(() => {
-      fetch(url).then(r => r.json()).then(setData);
+      fetch(url)
+        .then((r) => r.json())
+        .then(setData);
     }, [url]);
   }
 
@@ -517,7 +517,9 @@ What is wrong with this custom hook?
 ```javascript
 useEffect(() => {
   if (url) {
-    fetch(url).then(r => r.json()).then(setData);
+    fetch(url)
+      .then((r) => r.json())
+      .then(setData);
   }
 }, [url]);
 ```

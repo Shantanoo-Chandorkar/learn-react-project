@@ -20,9 +20,9 @@ What the engine actually sees:
 
 ```js
 var x = undefined; // hoisted and initialized
-console.log(x);    // undefined
+console.log(x); // undefined
 x = 10;
-console.log(x);    // 10
+console.log(x); // 10
 ```
 
 `var` is function-scoped, not block-scoped. This is the root cause of most classic JS bugs:
@@ -54,13 +54,13 @@ console.log(y); // ReferenceError: Cannot access 'y' before initialization
 let y = 10;
 ```
 
-This is different from an undeclared variable, which throws `ReferenceError: y is not defined`. The TDZ error message specifically says "before initialization", meaning the engine *knows* `y` exists, it just refuses to let you touch it yet. That's proof it was hoisted.
+This is different from an undeclared variable, which throws `ReferenceError: y is not defined`. The TDZ error message specifically says "before initialization", meaning the engine _knows_ `y` exists, it just refuses to let you touch it yet. That's proof it was hoisted.
 
 ```js
 {
   // TDZ starts here for 'z'
   console.log(z); // ReferenceError
-  let z = 5;      // TDZ ends here
+  let z = 5; // TDZ ends here
   console.log(z); // 5
 }
 ```
@@ -77,9 +77,9 @@ const b; // SyntaxError: Missing initializer in const declaration
 `const` does NOT mean immutable. It means the binding cannot be reassigned. The value it points to can still be mutated if it's an object or array:
 
 ```js
-const obj = { name: "shan" };
-obj.name = "updated"; // fine
-obj = {};             // TypeError
+const obj = { name: 'shan' };
+obj.name = 'updated'; // fine
+obj = {}; // TypeError
 ```
 
 ---
@@ -110,13 +110,13 @@ Why does `let` fix it? Because `let` creates a **new binding** for `i` on each i
 
 ### Hoisting comparison table
 
-| | `var` | `let` | `const` |
-|---|---|---|---|
-| Hoisted? | Yes | Yes | Yes |
-| Initialized on hoist? | Yes (`undefined`) | No (TDZ) | No (TDZ) |
-| Scope | Function | Block | Block |
-| Re-declarable in same scope? | Yes | No | No |
-| Re-assignable? | Yes | Yes | No |
+|                              | `var`             | `let`    | `const`  |
+| ---------------------------- | ----------------- | -------- | -------- |
+| Hoisted?                     | Yes               | Yes      | Yes      |
+| Initialized on hoist?        | Yes (`undefined`) | No (TDZ) | No (TDZ) |
+| Scope                        | Function          | Block    | Block    |
+| Re-declarable in same scope? | Yes               | No       | No       |
+| Re-assignable?               | Yes               | Yes      | No       |
 
 ---
 
@@ -138,6 +138,7 @@ let y = 2; // SyntaxError: Identifier 'y' has already been declared
 Try to answer these before reading the answers.
 
 **Q1.** What does this log?
+
 ```js
 var x = 1;
 function foo() {
@@ -148,6 +149,7 @@ foo();
 ```
 
 **Q2.** What does this log?
+
 ```js
 let a = 1;
 {
@@ -157,6 +159,7 @@ let a = 1;
 ```
 
 **Q3.** What does this log?
+
 ```js
 const arr = [1, 2, 3];
 arr.push(4);
@@ -164,6 +167,7 @@ console.log(arr);
 ```
 
 **Q4.** What does this output and why?
+
 ```js
 for (var i = 0; i < 3; i++) {
   setTimeout(() => console.log(i), 1000);

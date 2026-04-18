@@ -11,10 +11,10 @@ This is the foundational rule that closures, module systems, and `this` confusio
 ### Scope is determined at author time, not runtime
 
 ```js
-const x = "global";
+const x = 'global';
 
 function outer() {
-  const x = "outer";
+  const x = 'outer';
 
   function inner() {
     console.log(x); // "outer"
@@ -78,14 +78,14 @@ JS uses lexical scope. Some other languages (like early Bash or Perl) use dynami
 This distinction matters for interviews because it explains a classic gotcha:
 
 ```js
-const x = "global";
+const x = 'global';
 
 function foo() {
   console.log(x);
 }
 
 function bar() {
-  const x = "bar";
+  const x = 'bar';
   foo(); // what logs here?
 }
 
@@ -105,11 +105,11 @@ This exact pattern appears in MCQs and verbal rounds constantly.
 When a variable in an inner scope has the same name as one in an outer scope, the inner one **shadows** the outer one within that scope. The outer one still exists, it's just unreachable by that name from inside.
 
 ```js
-const x = "outer";
+const x = 'outer';
 
 function foo() {
-  const x = "inner"; // shadows outer x
-  console.log(x);    // "inner"
+  const x = 'inner'; // shadows outer x
+  console.log(x); // "inner"
 }
 
 foo();
@@ -119,11 +119,11 @@ console.log(x); // "outer", unchanged
 A common MCQ trap combines shadowing with `var` hoisting:
 
 ```js
-var x = "global";
+var x = 'global';
 
 function test() {
   console.log(x); // what logs?
-  var x = "local";
+  var x = 'local';
 }
 
 test();
@@ -156,15 +156,16 @@ This is the sentence that unifies lexical scope, closures, and the `foo`/`bar` g
 ### Self-test: 4 rapid-fire questions
 
 **Q1.** What does this log?
+
 ```js
-const val = "top";
+const val = 'top';
 
 function a() {
   console.log(val);
 }
 
 function b() {
-  const val = "b-level";
+  const val = 'b-level';
   a();
 }
 
@@ -172,6 +173,7 @@ b();
 ```
 
 **Q2.** What does this log?
+
 ```js
 var x = 1;
 
@@ -188,12 +190,13 @@ fn();
 ```
 
 **Q3.** What does this log and why?
+
 ```js
-var y = "global";
+var y = 'global';
 
 function test() {
   console.log(y);
-  var y = "local";
+  var y = 'local';
   console.log(y);
 }
 

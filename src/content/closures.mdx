@@ -30,8 +30,12 @@ This is the single most important thing to understand about closures, and the ro
 function makeCounter() {
   let count = 0;
   return {
-    increment() { count++; },
-    get()       { return count; }
+    increment() {
+      count++;
+    },
+    get() {
+      return count;
+    },
   };
 }
 
@@ -105,7 +109,7 @@ An IIFE is a function that is defined and called in the same expression. Its pri
 
 ```js
 (function () {
-  const private = "only lives here";
+  const private = 'only lives here';
   console.log(private); // works
 })();
 
@@ -132,7 +136,7 @@ const result = (function () {
 })();
 
 console.log(result); // 20
-console.log(x);      // ReferenceError
+console.log(x); // ReferenceError
 ```
 
 ---
@@ -183,11 +187,13 @@ funcs[2](); // 2
 const funcs = [];
 
 for (var i = 0; i < 3; i++) {
-  funcs.push((function (j) {
-    return function () {
-      console.log(j);
-    };
-  })(i));
+  funcs.push(
+    (function (j) {
+      return function () {
+        console.log(j);
+      };
+    })(i),
+  );
 }
 
 funcs[0](); // 0
@@ -216,15 +222,15 @@ function createUser(name) {
     },
     getCount() {
       return loginCount;
-    }
+    },
   };
 }
 
-const user = createUser("shan");
-user.login();       // shan logged in. Count: 1
-user.login();       // shan logged in. Count: 2
-user.getCount();    // 2
-user.loginCount;    // undefined, no direct access
+const user = createUser('shan');
+user.login(); // shan logged in. Count: 1
+user.login(); // shan logged in. Count: 2
+user.getCount(); // 2
+user.loginCount; // undefined, no direct access
 ```
 
 `loginCount` is completely private. There's no way to read or mutate it except through the two returned methods.
@@ -234,6 +240,7 @@ user.loginCount;    // undefined, no direct access
 ### Self-test: 5 questions
 
 **Q1.** What does this log?
+
 ```js
 function make() {
   let x = 0;
@@ -241,12 +248,13 @@ function make() {
 }
 
 const inc = make();
-console.log(inc()); 
-console.log(inc()); 
-console.log(inc()); 
+console.log(inc());
+console.log(inc());
+console.log(inc());
 ```
 
 **Q2.** What does this log and why?
+
 ```js
 const funcs = [];
 
@@ -258,6 +266,7 @@ console.log(funcs[0]() + funcs[1]() + funcs[2]());
 ```
 
 **Q3.** What does this log?
+
 ```js
 function outer() {
   let count = 0;
@@ -275,13 +284,14 @@ console.log(outer());
 ```
 
 **Q4.** What is the output?
+
 ```js
-let x = "global";
+let x = 'global';
 
 const foo = () => x;
 
 function run() {
-  let x = "local";
+  let x = 'local';
   console.log(foo());
 }
 
@@ -289,6 +299,7 @@ run();
 ```
 
 **Q5.** Fix this without using `let` in the loop:
+
 ```js
 for (var i = 0; i < 3; i++) {
   setTimeout(() => console.log(i), 0);
@@ -309,13 +320,15 @@ for (var i = 0; i < 3; i++) {
 **A4.** `"global"`. Lexical scope rules: `foo` is defined in global scope, so it resolves `x` from global, regardless of being called inside `run`.
 
 **A5.** Wrap in an IIFE:
+
 ```js
 for (var i = 0; i < 3; i++) {
-  (function(j) {
+  (function (j) {
     setTimeout(() => console.log(j), 0);
   })(i);
 }
 ```
+
 Each IIFE call creates a new `j` binding with the current value of `i` frozen in it.
 
 </details>
