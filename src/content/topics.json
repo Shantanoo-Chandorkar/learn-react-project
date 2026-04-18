@@ -82,5 +82,95 @@
     "title": "React Router Best Practices",
     "slug": "react-router-best-practices",
     "category": "related-topics"
+  },
+  {
+    "id": 15,
+    "title": "Var, Let, Const",
+    "slug": "var-let-const",
+    "category": "interview-prep"
+  },
+  {
+    "id": 16,
+    "title": "Lexical Scope & Scope Chain",
+    "slug": "lexical-scope-and-scope-chain",
+    "category": "interview-prep"
+  },
+  {
+    "id": 17,
+    "title": "Closures",
+    "slug": "closures",
+    "category": "interview-prep"
+  },
+  {
+    "id": 18,
+    "title": "'this' Keyword",
+    "slug": "this-keyword",
+    "category": "interview-prep"
+  },
+  {
+    "id": 19,
+    "title": "Prototype & Class",
+    "slug": "prototype-and-class",
+    "category": "interview-prep"
+  },
+  {
+    "id": 20,
+    "title": "Arrow Functions",
+    "slug": "arrow-functions",
+    "category": "interview-prep"
+  },
+  {
+    "id": 21,
+    "title": "Modules: ESM vs CJS",
+    "slug": "modules-esm-vs-cjs",
+    "category": "interview-prep"
+  },
+  {
+    "id": 22,
+    "title": "Event Loop",
+    "slug": "event-loop",
+    "category": "interview-prep"
+  },
+  {
+    "id": 23,
+    "title": "Promises & Async/Await",
+    "slug": "promises-and-async-await",
+    "category": "interview-prep"
+  },
+  {
+    "id": 24,
+    "title": "DOM & Browser APIs",
+    "slug": "dom-and-browser-apis",
+    "category": "interview-prep"
+  },
+  {
+    "id": 25,
+    "title": "Array Methods",
+    "slug": "array-methods",
+    "category": "interview-prep"
+  },
+  {
+    "id": 26,
+    "title": "Array MCQ Traps",
+    "slug": "array-mcq-traps",
+    "category": "interview-prep"
+  },
+  {
+    "id": 27,
+    "title": "Tricky React MCQs Pt 1",
+    "slug": "tricky-react-mcqs-part-1",
+    "category": "interview-prep"
+  },
+  {
+    "id": 28,
+    "title": "Tricky React MCQs Pt 2",
+    "slug": "tricky-react-mcqs-part-2",
+    "category": "interview-prep"
+  },
+  {
+    "id": 29,
+    "title": "Tricky React MCQs Pt 3",
+    "slug": "tricky-react-mcqs-part-3",
+    "category": "interview-prep"
   }
 ]

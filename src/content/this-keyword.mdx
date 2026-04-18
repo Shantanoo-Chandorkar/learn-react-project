@@ -1,0 +1,344 @@
+# `this` Keyword
+
+### The core mental model
+
+`this` is not about where a function is written. It is about **how a function is called.** That single sentence is what makes `this` feel inconsistent if you don't know the rules, and completely predictable once you do.
+
+There are exactly four rules that determine what `this` is at any call site. They have a strict priority order. You evaluate them top to bottom and stop at the first match.
+
+---
+
+### Rule 1: `new` binding (highest priority)
+
+When a function is called with `new`, `this` is the **newly created object**.
+
+```js
+function User(name) {
+  this.name = name;
+}
+
+const u = new User("shan");
+console.log(u.name); // "shan"
+```
+
+What `new` actually does, step by step:
+1. Creates a fresh empty object `{}`.
+2. Sets its `__proto__` to `User.prototype`.
+3. Binds `this` to that new object inside the call.
+4. Returns the object (unless the function explicitly returns a different object).
+
+---
+
+### Rule 2: Explicit binding (`call`, `apply`, `bind`)
+
+You directly specify what `this` should be.
+
+```js
+function greet() {
+  console.log(`Hello, ${this.name}`);
+}
+
+const user = { name: "shan" };
+
+greet.call(user);         // Hello, shan
+greet.apply(user);        // Hello, shan
+
+const bound = greet.bind(user);
+bound();                  // Hello, shan
+```
+
+The difference between the three:
+
+| Method | Invokes immediately? | Arguments |
+|---|---|---|
+| `call` | Yes | Passed individually |
+| `apply` | Yes | Passed as an array |
+| `bind` | No, returns new function | Passed individually |
+
+`bind` returns a **permanently bound** function. Its `this` cannot be overridden, not even by `new` (well, `new` does override `bind`, but that's an extremely rare edge case not worth memorizing for interviews).
+
+```js
+function add(a, b) {
+  return a + b;
+}
+
+const addFrom5 = add.bind(null, 5); // partial application
+console.log(addFrom5(3)); // 8
+```
+
+`null` as the first argument to `call`/`apply`/`bind` means "I don't care about `this`", typically used for utility functions.
+
+---
+
+### Rule 3: Implicit binding
+
+When a function is called as a **method on an object**, `this` is that object. Specifically, whatever is to the left of the dot at the call site.
+
+```js
+const user = {
+  name: "shan",
+  greet() {
+    console.log(this.name);
+  }
+};
+
+user.greet(); // "shan", this = user
+```
+
+The critical phrase is "at the call site." The object the function is assigned to doesn't matter. Only the object it is called on does.
+
+```js
+const user = {
+  name: "shan",
+  greet() {
+    console.log(this.name);
+  }
+};
+
+const anotherUser = { name: "someone" };
+anotherUser.greet = user.greet;
+
+anotherUser.greet(); // "someone", this = anotherUser
+```
+
+---
+
+### Lost `this`: the most common bug
+
+This is where implicit binding breaks, and it's the single highest-frequency `this` trap in interviews.
+
+```js
+const user = {
+  name: "shan",
+  greet() {
+    console.log(this.name);
+  }
+};
+
+const fn = user.greet; // extract the function
+fn();                  // undefined (or TypeError in strict mode)
+```
+
+When you assign `user.greet` to `fn` and call `fn()`, there is **no object to the left of the dot**. The implicit binding is lost. `this` falls through to the default binding, which is `window` in browsers (non-strict) or `undefined` in strict mode.
+
+This exact scenario happens constantly in React class components and event handlers:
+
+```js
+class Button {
+  constructor() {
+    this.label = "click me";
+  }
+
+  handleClick() {
+    console.log(this.label);
+  }
+}
+
+const btn = new Button();
+
+// Later, passed as a callback
+document.addEventListener("click", btn.handleClick);
+// When fired: this = the DOM element, not btn
+// this.label is undefined
+```
+
+**Three fixes for lost `this`:**
+
+```js
+// Fix 1: bind in constructor
+this.handleClick = this.handleClick.bind(this);
+
+// Fix 2: arrow function as class field (most common in modern React)
+handleClick = () => {
+  console.log(this.label);
+};
+
+// Fix 3: wrap in arrow at call site
+document.addEventListener("click", () => btn.handleClick());
+```
+
+---
+
+### Rule 4: Default binding (lowest priority)
+
+When none of the above rules apply, `this` defaults to the **global object** (`window` in browsers) in non-strict mode, and `undefined` in strict mode.
+
+```js
+function show() {
+  console.log(this);
+}
+
+show(); // window (non-strict) or undefined (strict mode)
+```
+
+---
+
+### Arrow functions: no `this` of their own
+
+Arrow functions do not have their own `this`. They **inherit `this` lexically** from the enclosing scope at the time they are defined. This is a compile-time decision, not runtime.
+
+```js
+const user = {
+  name: "shan",
+  greet() {
+    const inner = () => {
+      console.log(this.name); // this = user, inherited from greet
+    };
+    inner();
+  }
+};
+
+user.greet(); // "shan"
+```
+
+Compare to a regular function in the same position:
+
+```js
+const user = {
+  name: "shan",
+  greet() {
+    const inner = function () {
+      console.log(this.name); // this = undefined (strict) or window
+    };
+    inner();
+  }
+};
+
+user.greet(); // undefined
+```
+
+The regular `inner` is called without an object to the left of the dot, so implicit binding doesn't apply. The arrow version bypasses all four rules entirely and just inherits from `greet`'s `this`, which is `user`.
+
+---
+
+### When NOT to use arrow functions for methods
+
+Because arrow functions inherit `this` lexically, they are wrong for object methods when you need `this` to refer to the object:
+
+```js
+const user = {
+  name: "shan",
+  greet: () => {
+    console.log(this.name); // this = global/undefined, NOT user
+  }
+};
+
+user.greet(); // undefined
+```
+
+The arrow function was defined when the object literal was being constructed, in global scope. So `this` is whatever `this` is in global scope, not `user`. This is a very common MCQ trap.
+
+---
+
+### `call`/`apply`/`bind` on arrow functions
+
+Explicit binding has no effect on arrow functions. They simply ignore it.
+
+```js
+const arrow = () => {
+  console.log(this);
+};
+
+arrow.call({ name: "shan" }); // still logs global/undefined, not { name: "shan" }
+```
+
+---
+
+### Priority cheatsheet
+
+```
+new binding
+    > explicit (call / apply / bind)
+        > implicit (object method call)
+            > default (bare function call)
+
+Arrow functions: none of the above apply, always inherit lexically
+```
+
+---
+
+### Self-test: 5 questions
+
+**Q1.** What does this log?
+```js
+const obj = {
+  val: 42,
+  getVal: function () {
+    return this.val;
+  }
+};
+
+const fn = obj.getVal;
+console.log(fn());
+```
+
+**Q2.** What does this log?
+```js
+function Person(name) {
+  this.name = name;
+  this.sayName = () => {
+    console.log(this.name);
+  };
+}
+
+const p = new Person("shan");
+const say = p.sayName;
+say();
+```
+
+**Q3.** What does this log?
+```js
+const obj = {
+  name: "obj",
+  greet: () => {
+    console.log(this.name);
+  }
+};
+
+obj.greet();
+```
+
+**Q4.** What does this log?
+```js
+function greet() {
+  console.log(this.name);
+}
+
+const a = { name: "a" };
+const b = { name: "b" };
+
+const bound = greet.bind(a);
+bound.call(b);
+```
+
+**Q5.** What does this log?
+```js
+const user = {
+  name: "shan",
+  tasks: ["code", "review"],
+  showTasks() {
+    this.tasks.forEach(function (task) {
+      console.log(`${this.name}: ${task}`);
+    });
+  }
+};
+
+user.showTasks();
+```
+
+---
+
+<details>
+<summary>Answers</summary>
+
+**A1.** `undefined` (strict) or empty string / error depending on environment. `fn` is called without an object, so implicit binding is lost. `this` becomes `window` or `undefined`, neither of which has `val`.
+
+**A2.** `"shan"`. The arrow function is defined inside the `Person` constructor when `new` is in effect, so `this` is the new `Person` instance. Arrow functions inherit `this` lexically, and `bind`/`call`/reassignment cannot change it.
+
+**A3.** `undefined`. The arrow function is defined at object literal construction time, in global scope. `this` is the global object (or `undefined` in strict mode), not `obj`. Classic trap.
+
+**A4.** `"a"`. `bind` creates a permanently bound function. `call` on a bound function is silently ignored. `this` remains `a`.
+
+**A5.** Logs `undefined: code` and `undefined: review`. The `forEach` callback is a regular function called without an object, so `this` inside it is `window`/`undefined`, not `user`. Fix: use an arrow function for the `forEach` callback, which would inherit `this` from `showTasks`.
+
+</details>

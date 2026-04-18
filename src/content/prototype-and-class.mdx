@@ -1,0 +1,354 @@
+# Prototype & class
+
+### The core mental model
+
+JavaScript has no classical inheritance. There are no classes in the traditional OOP sense. What JS has is **objects linked to other objects**. When you access a property on an object and it isn't there, the engine walks up a chain of linked objects looking for it. That chain is the **prototype chain**.
+
+`class` syntax introduced in ES6 does not change this. It is purely syntactic sugar over the same prototype mechanism.
+
+---
+
+### Every object has a `[[Prototype]]`
+
+Every object in JS has an internal slot called `[[Prototype]]`. You can think of it as a hidden pointer to another object. When a property lookup fails on the current object, the engine follows that pointer and tries again on the linked object. This repeats until the chain ends at `null`.
+
+```js
+const animal = {
+  breathe() {
+    return "breathing";
+  }
+};
+
+const dog = {
+  bark() {
+    return "woof";
+  }
+};
+
+Object.setPrototypeOf(dog, animal); // link dog -> animal
+
+console.log(dog.bark());    // "woof", found on dog
+console.log(dog.breathe()); // "breathing", not on dog, found on animal
+console.log(dog.toString()); // found on Object.prototype, top of chain
+```
+
+---
+
+### `__proto__` vs `prototype`: the distinction that trips everyone
+
+These are two different things that solve two different problems. Conflating them is the most common mistake in prototype MCQs.
+
+**`__proto__`** is the actual live link between an object instance and its prototype. It is the getter/setter that exposes `[[Prototype]]` for reading and writing. Every object has it.
+
+**`prototype`** is a property that exists only on **functions**. It is the object that will become `__proto__` of any instance created via `new` with that function.
+
+```js
+function Dog(name) {
+  this.name = name;
+}
+
+Dog.prototype.bark = function () {
+  return `${this.name} says woof`;
+};
+
+const rex = new Dog("rex");
+
+console.log(rex.__proto__ === Dog.prototype); // true
+console.log(rex.bark()); // "rex says woof"
+```
+
+The relationship visualized:
+
+```
+rex (instance)
+  .__proto__ ──► Dog.prototype
+                   .bark()
+                   .__proto__ ──► Object.prototype
+                                    .toString()
+                                    .hasOwnProperty()
+                                    .__proto__ ──► null
+```
+
+When you call `rex.bark()`, the engine:
+1. Looks for `bark` on `rex`. Not found.
+2. Follows `rex.__proto__` to `Dog.prototype`. Found. Calls it.
+
+---
+
+### What `new` actually does to the prototype chain
+
+```js
+function Person(name) {
+  this.name = name;
+}
+
+Person.prototype.greet = function () {
+  return `Hi, I'm ${this.name}`;
+};
+
+const shan = new Person("shan");
+```
+
+Step by step, `new Person("shan")`:
+1. Creates `{}`.
+2. Sets `{}.__proto__ = Person.prototype`.
+3. Calls `Person` with `this = {}`.
+4. `this.name = "shan"` writes `name` onto the new object.
+5. Returns the object (no explicit return in `Person`).
+
+```js
+console.log(shan.name);            // "shan" - own property
+console.log(shan.greet());         // "Hi, I'm shan" - found on Person.prototype
+console.log(shan.hasOwnProperty("name")); // true
+console.log(shan.hasOwnProperty("greet")); // false, it's on the prototype
+```
+
+---
+
+### Property shadowing
+
+If you assign a property directly on an instance that also exists on the prototype, the instance property **shadows** the prototype one. The prototype is not mutated.
+
+```js
+function Animal() {}
+Animal.prototype.sound = "generic";
+
+const cat = new Animal();
+console.log(cat.sound); // "generic", from prototype
+
+cat.sound = "meow";     // creates own property on cat
+console.log(cat.sound); // "meow", own property shadows prototype
+
+delete cat.sound;       // removes own property
+console.log(cat.sound); // "generic", prototype visible again
+```
+
+---
+
+### Prototype-based inheritance (pre-ES6)
+
+```js
+function Animal(name) {
+  this.name = name;
+}
+
+Animal.prototype.breathe = function () {
+  return `${this.name} is breathing`;
+};
+
+function Dog(name, breed) {
+  Animal.call(this, name); // borrow Animal's constructor
+  this.breed = breed;
+}
+
+// Link Dog.prototype -> Animal.prototype
+Dog.prototype = Object.create(Animal.prototype);
+Dog.prototype.constructor = Dog; // restore constructor reference
+
+Dog.prototype.bark = function () {
+  return `${this.name} barks`;
+};
+
+const rex = new Dog("rex", "labrador");
+console.log(rex.breathe()); // "rex is breathing"
+console.log(rex.bark());    // "rex barks"
+console.log(rex instanceof Dog);    // true
+console.log(rex instanceof Animal); // true
+```
+
+`Object.create(Animal.prototype)` creates a new object whose `__proto__` is `Animal.prototype`. This is the correct way to set up inheritance, because `Dog.prototype = Animal.prototype` would make them the same object (mutations to `Dog.prototype` would affect `Animal.prototype`).
+
+---
+
+### `class`: syntactic sugar over the same mechanism
+
+`class` does not introduce a new object model. It compiles down to exactly the prototype pattern above. The engine still uses `[[Prototype]]` chains under the hood.
+
+```js
+class Animal {
+  constructor(name) {
+    this.name = name;
+  }
+
+  breathe() {
+    return `${this.name} is breathing`;
+  }
+}
+
+class Dog extends Animal {
+  constructor(name, breed) {
+    super(name); // same as Animal.call(this, name)
+    this.breed = breed;
+  }
+
+  bark() {
+    return `${this.name} barks`;
+  }
+}
+
+const rex = new Dog("rex", "labrador");
+console.log(rex.breathe()); // "rex is breathing"
+console.log(rex.bark());    // "rex barks"
+```
+
+Proving it's just syntax sugar:
+
+```js
+console.log(typeof Animal); // "function", not "class"
+console.log(rex.__proto__ === Dog.prototype);         // true
+console.log(Dog.prototype.__proto__ === Animal.prototype); // true
+```
+
+`extends` sets up the prototype chain. `super()` calls the parent constructor. Both translate directly to the manual steps you saw above.
+
+---
+
+### Key differences `class` adds over raw prototype syntax
+
+Even though `class` is sugar, it enforces a few things raw functions don't:
+
+```js
+// 1. class declarations are NOT hoisted (TDZ applies)
+const d = new Dog(); // ReferenceError if Dog class defined below
+
+// 2. class bodies run in strict mode automatically
+
+// 3. constructor must be called with new, throws if not
+Animal(); // TypeError: Class constructor Animal cannot be invoked without 'new'
+
+// 4. methods defined in class body are non-enumerable
+// prototype methods added manually ARE enumerable by default
+```
+
+---
+
+### `instanceof` and how it works
+
+`instanceof` walks the prototype chain of the left operand looking for the `prototype` property of the right operand.
+
+```js
+rex instanceof Dog;    // is Dog.prototype anywhere in rex's chain? yes
+rex instanceof Animal; // is Animal.prototype anywhere in rex's chain? yes
+rex instanceof Array;  // no
+```
+
+MCQ trap with `instanceof`:
+
+```js
+function Foo() {}
+const obj = Object.create(Foo.prototype);
+
+console.log(obj instanceof Foo); // true, even though new was never used
+```
+
+`instanceof` only cares about the prototype chain, not how the object was created.
+
+---
+
+### `Object.create` vs `new` vs `{}`
+
+```js
+// {} shorthand
+const a = {}; 
+// a.__proto__ === Object.prototype
+
+// new
+const b = new Foo();
+// b.__proto__ === Foo.prototype
+
+// Object.create
+const c = Object.create(Foo.prototype);
+// c.__proto__ === Foo.prototype, but Foo constructor was never called
+
+const d = Object.create(null);
+// d has NO prototype, no toString, no hasOwnProperty, nothing
+```
+
+`Object.create(null)` is used for pure dictionary objects where you want zero prototype interference, common in performance-critical lookup tables.
+
+---
+
+### Self-test: 5 questions
+
+**Q1.** What does this log?
+```js
+function Foo() {}
+Foo.prototype.x = 10;
+
+const a = new Foo();
+const b = new Foo();
+
+a.x = 20;
+
+console.log(a.x);
+console.log(b.x);
+console.log(Foo.prototype.x);
+```
+
+**Q2.** What does this log?
+```js
+class A {
+  greet() { return "A"; }
+}
+
+class B extends A {
+  greet() { return super.greet() + "B"; }
+}
+
+class C extends B {
+  greet() { return super.greet() + "C"; }
+}
+
+console.log(new C().greet());
+```
+
+**Q3.** True or false: `typeof class Foo {}` returns `"class"`.
+
+**Q4.** What does this log?
+```js
+function Animal(name) {
+  this.name = name;
+}
+
+const cat = new Animal("whiskers");
+
+console.log(cat.hasOwnProperty("name"));
+console.log(cat.hasOwnProperty("hasOwnProperty"));
+```
+
+**Q5.** What does this log?
+```js
+class Counter {
+  count = 0; // class field
+
+  increment() {
+    this.count++;
+  }
+}
+
+const c1 = new Counter();
+const c2 = new Counter();
+
+c1.increment();
+c1.increment();
+
+console.log(c1.count);
+console.log(c2.count);
+```
+
+---
+
+<details>
+<summary>Answers</summary>
+
+**A1.** `20`, `10`, `10`. Setting `a.x = 20` creates an own property on `a`, shadowing the prototype's `x`. `b` has no own `x`, so it reads from the prototype. `Foo.prototype.x` is untouched.
+
+**A2.** `"ABC"`. Each `super.greet()` calls the parent class method. `C` calls `B`, which calls `A` returning `"A"`, then `B` appends `"B"` returning `"AB"`, then `C` appends `"C"`.
+
+**A3.** False. `typeof` returns `"function"`. Classes are functions under the hood.
+
+**A4.** `true`, `false`. `name` is set directly on the instance inside the constructor, so it is an own property. `hasOwnProperty` lives on `Object.prototype`, far up the chain, not on `cat` directly.
+
+**A5.** `2`, `0`. Class fields are created as own properties on each instance, not on the prototype. `c1` and `c2` each get their own `count = 0`. Incrementing `c1.count` does not affect `c2.count`.
+
+</details>

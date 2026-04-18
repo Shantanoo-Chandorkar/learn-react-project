@@ -1,0 +1,218 @@
+# Lexical Scope & Scope Chain
+
+### The core idea
+
+"Lexical" means "at the time of writing." Lexical scope means **where you write a function determines what variables it has access to**, not where or how it gets called.
+
+This is the foundational rule that closures, module systems, and `this` confusion all trace back to. Get this right and a lot of other JS behavior becomes predictable.
+
+---
+
+### Scope is determined at author time, not runtime
+
+```js
+const x = "global";
+
+function outer() {
+  const x = "outer";
+
+  function inner() {
+    console.log(x); // "outer"
+  }
+
+  inner();
+}
+
+outer();
+```
+
+`inner` logs `"outer"`, not `"global"`. It doesn't matter that `inner` is called from inside `outer`. What matters is that `inner` was **defined** inside `outer`. At the point of writing, `outer`'s `x` is the nearest `x` in the enclosing scope chain, so that's what gets used.
+
+---
+
+### The scope chain
+
+Every function has access to its own local scope, plus every scope that lexically contains it, all the way up to the global scope. This chain of scopes is called the **scope chain**, and the engine walks it **outward** to resolve any identifier.
+
+```js
+const a = 1;
+
+function level1() {
+  const b = 2;
+
+  function level2() {
+    const c = 3;
+
+    function level3() {
+      console.log(a); // found in global scope
+      console.log(b); // found in level1's scope
+      console.log(c); // found in level2's scope
+    }
+
+    level3();
+  }
+
+  level2();
+}
+
+level1();
+```
+
+The engine resolves `a`, `b`, `c` by walking the chain outward from `level3`. It never walks inward. A parent cannot see into a child's scope.
+
+```js
+function parent() {
+  function child() {
+    const secret = 42;
+  }
+  console.log(secret); // ReferenceError
+}
+```
+
+---
+
+### Lexical scope vs dynamic scope (the key distinction)
+
+JS uses lexical scope. Some other languages (like early Bash or Perl) use dynamic scope, where the scope depends on the **call stack at runtime**, not the write location.
+
+This distinction matters for interviews because it explains a classic gotcha:
+
+```js
+const x = "global";
+
+function foo() {
+  console.log(x);
+}
+
+function bar() {
+  const x = "bar";
+  foo(); // what logs here?
+}
+
+bar();
+```
+
+Output: `"global"`.
+
+If JS were dynamically scoped, `foo` would see `bar`'s `x` because `bar` called `foo`. But JS is lexically scoped. `foo` was **written** in global scope, so its scope chain points to global, regardless of who calls it.
+
+This exact pattern appears in MCQs and verbal rounds constantly.
+
+---
+
+### Shadowing
+
+When a variable in an inner scope has the same name as one in an outer scope, the inner one **shadows** the outer one within that scope. The outer one still exists, it's just unreachable by that name from inside.
+
+```js
+const x = "outer";
+
+function foo() {
+  const x = "inner"; // shadows outer x
+  console.log(x);    // "inner"
+}
+
+foo();
+console.log(x); // "outer", unchanged
+```
+
+A common MCQ trap combines shadowing with `var` hoisting:
+
+```js
+var x = "global";
+
+function test() {
+  console.log(x); // what logs?
+  var x = "local";
+}
+
+test();
+```
+
+Output: `undefined`. The `var x` inside `test` is hoisted to the top of `test`, which shadows the global `x` immediately. But at the `console.log` line, it hasn't been assigned yet, so you get `undefined`, not `"global"`. The outer `x` is already completely unreachable due to shadowing.
+
+---
+
+### How the engine builds scope chains (compile phase)
+
+The engine does a first pass over the code before executing a single line. During this pass it:
+
+1. Finds all declarations (`var`, `let`, `const`, `function`) in each scope.
+2. Registers them in that scope's environment record.
+3. Links each scope's environment record to its parent's, forming the chain.
+
+By the time execution starts, the engine already knows the complete shape of every scope. This is why lexical scope is a compile-time concept, not a runtime one.
+
+---
+
+### The practical rule to carry into interviews
+
+> A function's scope chain is fixed the moment the function is defined. It never changes, regardless of how, where, or when the function is called.
+
+This is the sentence that unifies lexical scope, closures, and the `foo`/`bar` gotcha above into one mental model.
+
+---
+
+### Self-test: 4 rapid-fire questions
+
+**Q1.** What does this log?
+```js
+const val = "top";
+
+function a() {
+  console.log(val);
+}
+
+function b() {
+  const val = "b-level";
+  a();
+}
+
+b();
+```
+
+**Q2.** What does this log?
+```js
+var x = 1;
+
+function outer() {
+  var x = 2;
+  function inner() {
+    console.log(x);
+  }
+  return inner;
+}
+
+const fn = outer();
+fn();
+```
+
+**Q3.** What does this log and why?
+```js
+var y = "global";
+
+function test() {
+  console.log(y);
+  var y = "local";
+  console.log(y);
+}
+
+test();
+```
+
+**Q4.** Can a parent function access a variable declared inside its child function?
+
+---
+
+<details>
+<summary>Answers</summary>
+
+**A1.** `"top"`. `a` is defined in global scope, so its scope chain points to global. `b`'s local `val` is invisible to `a`.
+
+**A2.** `2`. `inner` is defined inside `outer`, so it closes over `outer`'s `x = 2`. The returned function carries that scope chain with it.
+
+**A3.** `undefined`, then `"local"`. The `var y` inside `test` is hoisted and shadows the global `y` from the very start of `test`'s scope. At the first `console.log`, the local `y` exists but is uninitialized. This is the shadowing + hoisting combination trap.
+
+**A4.** No. Scope chain only walks outward, never inward. A child's scope is private to that child and anything nested further inside it.
+
+</details>

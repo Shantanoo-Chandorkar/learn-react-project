@@ -1,0 +1,321 @@
+# Closures
+
+### The definition that actually makes sense
+
+A closure is **a function that retains access to its lexical scope even after that scope has finished executing.**
+
+That's it. There's no special syntax for closures. Every function in JS is a closure by nature, because every function carries a reference to the scope chain it was defined in. The term becomes meaningful specifically when that function **outlives** the scope it was born in.
+
+```js
+function outer() {
+  const count = 0;
+  return function inner() {
+    console.log(count);
+  };
+}
+
+const fn = outer();
+fn(); // 0
+```
+
+`outer` has finished executing. Its local variables should be gone. But `fn` still logs `0` because `inner` holds a reference to `outer`'s scope. The garbage collector won't clean up `count` as long as `inner` is alive. That retained scope is the closure.
+
+---
+
+### Closures close over the binding, not the value
+
+This is the single most important thing to understand about closures, and the root cause of most closure bugs.
+
+```js
+function makeCounter() {
+  let count = 0;
+  return {
+    increment() { count++; },
+    get()       { return count; }
+  };
+}
+
+const counter = makeCounter();
+counter.increment();
+counter.increment();
+console.log(counter.get()); // 2
+```
+
+Both `increment` and `get` close over the same `count` binding. When `increment` mutates it, `get` sees the updated value. They share one live reference, not a snapshot.
+
+---
+
+### Stale closure bug
+
+This is the most common closure bug in React and the most frequent MCQ trap in frontend interviews.
+
+```js
+function makeAdder(x) {
+  return function (y) {
+    return x + y;
+  };
+}
+
+const add5 = makeAdder(5);
+console.log(add5(3)); // 8
+console.log(add5(10)); // 15
+```
+
+Fine here. Now the stale version:
+
+```js
+let value = 10;
+
+const getValue = () => value;
+
+function doSomething() {
+  value = 20;
+}
+
+console.log(getValue()); // 10
+doSomething();
+console.log(getValue()); // 20
+```
+
+Still fine, because `getValue` closes over the binding directly. Stale closures happen when you **capture a value at a specific point in time** and the original source changes but the closure doesn't see it. The classic React example:
+
+```js
+function Counter() {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      console.log(count); // always logs 0
+      setCount(count + 1); // always sets to 1
+    }, 1000);
+    return () => clearInterval(id);
+  }, []); // empty deps = closure captures count=0 at mount, never updates
+}
+```
+
+The closure inside `setInterval` captured `count = 0` at mount time. Every tick it reads the stale `0`. The fix is either adding `count` to the dependency array or using the functional update form `setCount(prev => prev + 1)`.
+
+The mental model: **a closure captures the scope's environment record, but if the variable was copied by value into a new binding, changes to the original won't propagate.**
+
+---
+
+### IIFE: Immediately Invoked Function Expression
+
+An IIFE is a function that is defined and called in the same expression. Its primary purpose is to create a **private scope** that doesn't pollute the surrounding scope.
+
+```js
+(function () {
+  const private = "only lives here";
+  console.log(private); // works
+})();
+
+console.log(private); // ReferenceError
+```
+
+The wrapping `()` turns the function declaration into an expression. The trailing `()` immediately invokes it. The result is a scope that runs once and vanishes, taking its variables with it.
+
+Arrow function IIFE, which you'll see more in modern code:
+
+```js
+(() => {
+  const x = 42;
+  console.log(x);
+})();
+```
+
+IIFEs were the primary module pattern before ES modules existed. You'll see them in legacy codebases and they still appear in MCQs because they test scope + closure together:
+
+```js
+const result = (function () {
+  let x = 10;
+  return x * 2;
+})();
+
+console.log(result); // 20
+console.log(x);      // ReferenceError
+```
+
+---
+
+### Closure in loops: the definitive breakdown
+
+This is one of the highest-frequency MCQ topics in JS interviews. You saw the surface version in Module 1.1. Here's the full picture.
+
+**The broken version:**
+
+```js
+const funcs = [];
+
+for (var i = 0; i < 3; i++) {
+  funcs.push(function () {
+    console.log(i);
+  });
+}
+
+funcs[0](); // 3
+funcs[1](); // 3
+funcs[2](); // 3
+```
+
+All three functions close over the **same `i` binding** because `var` is function-scoped. There is only one `i` in existence. By the time any function runs, the loop has finished and `i` is `3`.
+
+**Fix 1: use `let`**
+
+```js
+const funcs = [];
+
+for (let i = 0; i < 3; i++) {
+  funcs.push(function () {
+    console.log(i);
+  });
+}
+
+funcs[0](); // 0
+funcs[1](); // 1
+funcs[2](); // 2
+```
+
+`let` creates a **new `i` binding per iteration**. Each function closes over its own distinct `i`.
+
+**Fix 2: IIFE to freeze the value (pre-ES6 pattern)**
+
+```js
+const funcs = [];
+
+for (var i = 0; i < 3; i++) {
+  funcs.push((function (j) {
+    return function () {
+      console.log(j);
+    };
+  })(i));
+}
+
+funcs[0](); // 0
+funcs[1](); // 1
+funcs[2](); // 2
+```
+
+The IIFE is invoked immediately with the current value of `i`. That value is passed as `j`, which is a **new local binding** inside the IIFE. The returned function closes over `j`, not `i`. Each iteration creates a fresh `j`.
+
+This pattern is important to recognize in older codebases and MCQs, even if you'd use `let` today.
+
+---
+
+### Closure for data privacy (practical pattern)
+
+Closures are the mechanism behind the module pattern and private state, since JS had no private class fields until recently.
+
+```js
+function createUser(name) {
+  let loginCount = 0; // private, not accessible from outside
+
+  return {
+    login() {
+      loginCount++;
+      console.log(`${name} logged in. Count: ${loginCount}`);
+    },
+    getCount() {
+      return loginCount;
+    }
+  };
+}
+
+const user = createUser("shan");
+user.login();       // shan logged in. Count: 1
+user.login();       // shan logged in. Count: 2
+user.getCount();    // 2
+user.loginCount;    // undefined, no direct access
+```
+
+`loginCount` is completely private. There's no way to read or mutate it except through the two returned methods.
+
+---
+
+### Self-test: 5 questions
+
+**Q1.** What does this log?
+```js
+function make() {
+  let x = 0;
+  return () => ++x;
+}
+
+const inc = make();
+console.log(inc()); 
+console.log(inc()); 
+console.log(inc()); 
+```
+
+**Q2.** What does this log and why?
+```js
+const funcs = [];
+
+for (var i = 0; i < 3; i++) {
+  funcs.push(() => i);
+}
+
+console.log(funcs[0]() + funcs[1]() + funcs[2]());
+```
+
+**Q3.** What does this log?
+```js
+function outer() {
+  let count = 0;
+
+  function inner() {
+    count++;
+  }
+
+  inner();
+  inner();
+  return count;
+}
+
+console.log(outer());
+```
+
+**Q4.** What is the output?
+```js
+let x = "global";
+
+const foo = () => x;
+
+function run() {
+  let x = "local";
+  console.log(foo());
+}
+
+run();
+```
+
+**Q5.** Fix this without using `let` in the loop:
+```js
+for (var i = 0; i < 3; i++) {
+  setTimeout(() => console.log(i), 0);
+}
+```
+
+---
+
+<details>
+<summary>Answers</summary>
+
+**A1.** `1`, `2`, `3`. All three calls close over the same `x` binding. `++x` pre-increments and returns the new value each time.
+
+**A2.** `9`. All three functions close over the same `var i`. By the time they're called, `i` is `3`. So `3 + 3 + 3 = 9`.
+
+**A3.** `2`. `inner` closes over `outer`'s `count` binding directly. Two calls increment it to `2`. `outer` then returns `count`.
+
+**A4.** `"global"`. Lexical scope rules: `foo` is defined in global scope, so it resolves `x` from global, regardless of being called inside `run`.
+
+**A5.** Wrap in an IIFE:
+```js
+for (var i = 0; i < 3; i++) {
+  (function(j) {
+    setTimeout(() => console.log(j), 0);
+  })(i);
+}
+```
+Each IIFE call creates a new `j` binding with the current value of `i` frozen in it.
+
+</details>

@@ -1,0 +1,425 @@
+# Array Methods
+
+### The mental model first
+
+All three methods are **non-mutating**. They never change the original array. They each return something new: `map` returns a new array of the same length, `filter` returns a shorter (or equal length) array, `reduce` returns a single accumulated value of any type. Getting that contract wrong in an MCQ is the most common mistake.
+
+---
+
+## 2.1 `map`
+
+### The contract
+
+`map` calls a callback for every element and builds a new array from **whatever the callback returns**. If your callback returns nothing, the new array is full of `undefined`.
+
+```js
+const nums = [1, 2, 3];
+
+const doubled = nums.map(n => n * 2);
+console.log(doubled); // [2, 4, 6]
+console.log(nums);    // [1, 2, 3], untouched
+```
+
+**The implicit return trap:**
+
+```js
+// Braces without return → callback returns undefined
+const broken = nums.map(n => { n * 2 });
+console.log(broken); // [undefined, undefined, undefined]
+
+// Correct with braces
+const correct = nums.map(n => { return n * 2; });
+```
+
+This is the single most common `map` MCQ trap. Braces turn it into a function body. Without an explicit `return`, you get `undefined` for every element.
+
+---
+
+### Callback signature: `(element, index, array)`
+
+All three methods receive these three arguments. Knowing this is critical because passing a function that accepts more arguments than you intend causes bugs:
+
+```js
+["1", "2", "3"].map(parseInt);
+// Expected: [1, 2, 3]
+// Actual:   [1, NaN, NaN]
+```
+
+Why? `parseInt(string, radix)` accepts two arguments. `map` passes `(element, index, array)`. So the calls become:
+- `parseInt("1", 0)` → `1` (radix 0 treated as 10)
+- `parseInt("2", 1)` → `NaN` (radix 1 is invalid)
+- `parseInt("3", 2)` → `NaN` (3 is not valid in base 2)
+
+Fix:
+```js
+["1", "2", "3"].map(s => parseInt(s, 10)); // [1, 2, 3]
+["1", "2", "3"].map(Number); // [1, 2, 3], Number takes one arg
+```
+
+This exact `map(parseInt)` example is one of the most famous JS interview MCQ traps. Recognize it on sight.
+
+---
+
+### Sparse arrays
+
+A sparse array has holes, indices with no assigned value. `map` skips holes and preserves them in the output.
+
+```js
+const sparse = [1, , , 4]; // holes at index 1 and 2
+console.log(sparse.length); // 4
+
+const result = sparse.map(n => n * 2);
+console.log(result);        // [2, empty × 2, 8]
+console.log(result[1]);     // undefined
+console.log(1 in result);   // false, the hole exists but index is unset
+```
+
+The callback is never called for holes. `result[1]` reads as `undefined` but the index is not set. `1 in result` is `false`, distinguishing a hole from an explicitly assigned `undefined`.
+
+---
+
+### `map` does not flatten
+
+```js
+const nested = [[1, 2], [3, 4]];
+nested.map(arr => arr);        // [[1,2],[3,4]], same structure
+nested.map(arr => arr[0]);     // [1, 3]
+
+// For map + flatten use flatMap
+nested.flatMap(arr => arr);    // [1, 2, 3, 4]
+```
+
+`flatMap` is `map` followed by one level of `flat`. It is the correct method when your callback returns arrays and you want a flat result.
+
+```js
+const sentences = ["hello world", "foo bar"];
+sentences.flatMap(s => s.split(" ")); // ["hello", "world", "foo", "bar"]
+```
+
+---
+
+## 2.2 `filter`
+
+### The contract
+
+`filter` calls the callback for every element. If the callback returns a **truthy** value, the element is kept. If falsy, it is dropped. The original array is untouched.
+
+```js
+const nums = [1, 2, 3, 4, 5];
+const evens = nums.filter(n => n % 2 === 0);
+console.log(evens); // [2, 4]
+console.log(nums);  // [1, 2, 3, 4, 5]
+```
+
+---
+
+### Truthy/falsy trap
+
+Because `filter` uses truthiness, not strict boolean, any falsy value drops the element:
+
+```js
+const mixed = [0, 1, "", "hello", null, undefined, false, true, NaN];
+mixed.filter(Boolean);
+// [1, "hello", true]
+// 0, "", null, undefined, false, NaN all removed
+```
+
+`filter(Boolean)` is a common and clean idiom for removing all falsy values. Recognize it. But it is a trap when you want to keep `0` or `""`:
+
+```js
+const scores = [0, 10, 20, 0, 30];
+scores.filter(Boolean);         // [10, 20, 30] — drops the 0s, probably wrong
+scores.filter(s => s !== null); // [0, 10, 20, 0, 30] — keeps 0s, correct
+```
+
+---
+
+### Index after filter (the chaining trap)
+
+After `filter`, the indices of surviving elements change. The index property in the callback reflects the original array position, but the output array is re-indexed from `0`.
+
+```js
+const arr = [10, 20, 30, 40, 50];
+const result = arr
+  .filter((n, i) => {
+    console.log(i); // 0, 1, 2, 3, 4 — original indices
+    return n > 20;
+  });
+
+console.log(result);   // [30, 40, 50]
+console.log(result[0]); // 30, not the original index 2
+```
+
+This bites people when they chain `filter` then `map` and assume index continuity:
+
+```js
+const data = ["a", "b", "c", "d"];
+data
+  .filter((_, i) => i % 2 === 0) // keeps "a" (i=0), "c" (i=2)
+  .map((item, i) => `${i}:${item}`); // ["0:a", "1:c"], not ["0:a", "2:c"]
+```
+
+After `filter`, `map` receives a fresh array starting at index `0`. The original indices are gone.
+
+---
+
+### `filter` on objects: reference trap
+
+```js
+const users = [
+  { name: "shan", active: true },
+  { name: "ghost", active: false }
+];
+
+const active = users.filter(u => u.active);
+active[0].name = "updated"; // mutates the original object
+
+console.log(users[0].name); // "updated"
+```
+
+`filter` creates a new array but does not deep-clone the elements. The objects in the filtered array are the same references as in the original. Mutating them affects both arrays.
+
+---
+
+## 2.3 `reduce`
+
+### The contract
+
+`reduce` iterates through the array, passing an accumulator and the current element to the callback. Whatever the callback returns becomes the accumulator for the next iteration. After the last element, `reduce` returns the final accumulator value.
+
+```js
+const nums = [1, 2, 3, 4];
+const sum = nums.reduce((acc, n) => acc + n, 0);
+console.log(sum); // 10
+```
+
+Callback signature: `(accumulator, currentValue, currentIndex, array)`.
+
+---
+
+### No initial value: the gotcha
+
+The second argument to `reduce` is the initial value for the accumulator. If you omit it:
+
+- The first element becomes the initial accumulator.
+- Iteration starts from the second element.
+- On an empty array, it throws `TypeError: Reduce of empty array with no initial value`.
+
+```js
+[1, 2, 3, 4].reduce((acc, n) => acc + n);
+// acc=1, n=2 → 3
+// acc=3, n=3 → 6
+// acc=6, n=4 → 10
+// Result: 10, same in this case
+
+[].reduce((acc, n) => acc + n);
+// TypeError: Reduce of empty array with no initial value
+
+[].reduce((acc, n) => acc + n, 0);
+// 0, safe with initial value
+```
+
+Always provide an initial value unless you have a specific reason not to and you are certain the array is non-empty.
+
+---
+
+### Accumulator patterns
+
+`reduce` is not just for sums. The accumulator can be any type.
+
+**Building an object from an array:**
+
+```js
+const users = [
+  { id: 1, name: "shan" },
+  { id: 2, name: "alex" },
+  { id: 3, name: "rita" }
+];
+
+const byId = users.reduce((acc, user) => {
+  acc[user.id] = user;
+  return acc; // must return acc every iteration
+}, {});
+
+console.log(byId[2]); // { id: 2, name: "alex" }
+```
+
+Forgetting `return acc` is the most common `reduce` bug. Without it, `acc` becomes `undefined` on the next iteration and everything breaks silently.
+
+**Grouping:**
+
+```js
+const words = ["cat", "car", "bar", "bat", "bus"];
+
+const grouped = words.reduce((acc, word) => {
+  const key = word[0];
+  if (!acc[key]) acc[key] = [];
+  acc[key].push(word);
+  return acc;
+}, {});
+
+// { c: ["cat", "car"], b: ["bar", "bat", "bus"] }
+```
+
+**Flattening:**
+
+```js
+const nested = [[1, 2], [3, 4], [5]];
+nested.reduce((acc, arr) => acc.concat(arr), []);
+// [1, 2, 3, 4, 5]
+// Modern alternative: nested.flat()
+```
+
+**Counting occurrences:**
+
+```js
+const fruits = ["apple", "banana", "apple", "cherry", "banana", "apple"];
+
+fruits.reduce((acc, fruit) => {
+  acc[fruit] = (acc[fruit] || 0) + 1;
+  return acc;
+}, {});
+// { apple: 3, banana: 2, cherry: 1 }
+```
+
+---
+
+### `reduceRight`
+
+Same as `reduce` but iterates right-to-left. The initial value is the starting point for the rightmost element.
+
+```js
+[[1, 2], [3, 4], [5, 6]].reduceRight((acc, arr) => acc.concat(arr), []);
+// [5, 6, 3, 4, 1, 2]
+```
+
+A real use case is composing functions right-to-left, which is the mathematical definition of function composition `f(g(h(x)))`:
+
+```js
+const compose = (...fns) => x => fns.reduceRight((v, fn) => fn(v), x);
+
+const add1   = x => x + 1;
+const double = x => x * 2;
+const square = x => x * x;
+
+const transform = compose(add1, double, square);
+transform(3); // square(3)=9, double(9)=18, add1(18)=19
+```
+
+---
+
+### Chaining `map` / `filter` / `reduce` together
+
+The classic interview pattern: solve a problem in one chain.
+
+**Sum of squares of even numbers:**
+
+```js
+const nums = [1, 2, 3, 4, 5, 6];
+
+nums
+  .filter(n => n % 2 === 0)   // [2, 4, 6]
+  .map(n => n * n)             // [4, 16, 36]
+  .reduce((acc, n) => acc + n, 0); // 56
+```
+
+**Most frequent element:**
+
+```js
+const arr = ["a", "b", "a", "c", "b", "a"];
+
+const freq = arr.reduce((acc, el) => {
+  acc[el] = (acc[el] || 0) + 1;
+  return acc;
+}, {});
+
+Object.entries(freq).reduce((top, [key, count]) =>
+  count > top[1] ? [key, count] : top
+, ["", 0])[0]; // "a"
+```
+
+---
+
+### `forEach` vs `map`: the return value trap
+
+`forEach` always returns `undefined`. It is for side effects only. `map` returns a new array.
+
+```js
+const result = [1, 2, 3].forEach(n => n * 2);
+console.log(result); // undefined, not [2, 4, 6]
+```
+
+You cannot chain off `forEach`. You cannot assign its result. If you need a transformed array, use `map`. If you only need side effects and do not care about return, use `forEach`.
+
+```js
+// forEach: logging, DOM mutations, pushing to external array
+[1, 2, 3].forEach(n => console.log(n));
+
+// map: transformation, building new data
+const doubled = [1, 2, 3].map(n => n * 2);
+```
+
+---
+
+### Self-test: 6 questions
+
+**Q1.** What does this log?
+```js
+const result = [1, 2, 3].map(n => {
+  n * 2;
+});
+console.log(result);
+```
+
+**Q2.** What does this log?
+```js
+console.log(["1", "2", "3"].map(parseInt));
+```
+
+**Q3.** What does this log?
+```js
+const arr = [false, 0, "", null, undefined, NaN, 1, "hello"];
+console.log(arr.filter(Boolean).length);
+```
+
+**Q4.** What does this log?
+```js
+const nums = [1, 2, 3];
+const result = nums.reduce((acc, n) => {
+  acc.push(n * 2);
+}, []);
+console.log(result);
+```
+
+**Q5.** What does this log?
+```js
+const arr = [1, 2, 3, 4, 5];
+const result = arr
+  .filter(n => n > 2)
+  .map((n, i) => `${i}-${n}`);
+console.log(result);
+```
+
+**Q6.** What does this log and why?
+```js
+[].reduce((acc, n) => acc + n);
+```
+
+---
+
+<details>
+<summary>Answers</summary>
+
+**A1.** `[undefined, undefined, undefined]`. The callback has braces but no `return`. Every iteration returns `undefined`, which `map` places into the new array.
+
+**A2.** `[1, NaN, NaN]`. `map` passes three arguments to `parseInt`: `(element, index, array)`. `parseInt("1", 0)` → `1`, `parseInt("2", 1)` → `NaN` (invalid radix), `parseInt("3", 2)` → `NaN` (3 is not valid in base 2).
+
+**A3.** `2`. Only `1` and `"hello"` are truthy. `false`, `0`, `""`, `null`, `undefined`, and `NaN` are all falsy and are filtered out.
+
+**A4.** `TypeError`, then `undefined` if it somehow continued. The callback never returns `acc`. On the second iteration, `acc` is `undefined`. `undefined.push` throws `TypeError`. Always return the accumulator in `reduce`.
+
+**A5.** `["0-3", "1-4", "2-5"]`. After `filter`, the surviving elements `[3, 4, 5]` form a new array starting at index `0`. `map` receives fresh indices `0`, `1`, `2`, not the original `2`, `3`, `4`.
+
+**A6.** `TypeError: Reduce of empty array with no initial value`. No initial value was provided. On an empty array with no initial value, `reduce` has nothing to use as the starting accumulator and throws immediately.
+
+</details>

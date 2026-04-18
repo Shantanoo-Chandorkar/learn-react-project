@@ -1,0 +1,409 @@
+# DOM & Browser APIs
+
+### The mental model first
+
+The DOM is a tree. Every event that occurs on a node in that tree travels through that tree in a predictable, two-phase journey. Understanding that journey is the foundation of everything in this module, including why event delegation works, why `stopPropagation` does what it does, and why `preventDefault` is a completely different concept that gets conflated with it constantly.
+
+---
+
+### Event propagation: three phases
+
+When an event fires on a DOM element, it does not just fire on that element. It travels the entire path from the document root down to the target and back up again.
+
+```
+document
+  └── html
+        └── body
+              └── div#container
+                    └── button   ← click happens here
+```
+
+**Phase 1: Capturing (top → down)**
+The event travels from `document` down to the target element. By default, most handlers do not listen in this phase.
+
+**Phase 2: Target**
+The event is at the element it was fired on. Both capture and bubble handlers on the target itself fire here.
+
+**Phase 3: Bubbling (bottom → up)**
+The event travels back up from the target to `document`. This is the phase most handlers listen on by default.
+
+```js
+document.addEventListener("click", () => console.log("document"), true);  // capture
+document.querySelector("div").addEventListener("click", () => console.log("div"), true); // capture
+document.querySelector("button").addEventListener("click", () => console.log("button")); // bubble (default)
+
+// Clicking the button logs: "document", "div", "button"
+```
+
+The third argument to `addEventListener` controls the phase:
+- `true` = capture phase
+- `false` (default) = bubble phase
+- An options object: `{ capture: true, once: true, passive: true }`
+
+---
+
+### Which events bubble and which don't
+
+Not all events bubble. This is a common MCQ trap.
+
+| Bubbles | Does not bubble |
+|---|---|
+| `click`, `dblclick` | `focus`, `blur` |
+| `keydown`, `keyup` | `load`, `unload` |
+| `mousedown`, `mouseup` | `scroll` (on element, not window) |
+| `input`, `change` | `resize` |
+| `submit` | `mouseenter`, `mouseleave` |
+
+`focus` and `blur` not bubbling is the most common gotcha. If you try to delegate focus events from a parent, they will never arrive. The fix is to use `focusin` and `focusout`, which are the bubbling equivalents:
+
+```js
+// BROKEN: focus does not bubble
+form.addEventListener("focus", handler); // never fires for child inputs
+
+// CORRECT
+form.addEventListener("focusin", handler); // fires when any child gains focus
+```
+
+---
+
+### Event delegation
+
+Event delegation is the pattern of attaching a single listener to a parent element instead of attaching individual listeners to many child elements. It works because events bubble up from the target to the parent.
+
+**Without delegation (naive approach):**
+
+```js
+const buttons = document.querySelectorAll(".btn");
+buttons.forEach(btn => {
+  btn.addEventListener("click", handleClick); // N listeners for N buttons
+});
+```
+
+Problems: memory cost of N listeners, and newly added buttons are not covered.
+
+**With delegation:**
+
+```js
+document.querySelector("#container").addEventListener("click", (e) => {
+  if (e.target.matches(".btn")) {
+    handleClick(e);
+  }
+});
+```
+
+One listener. Works for dynamically added children. Lower memory footprint.
+
+The key properties on the event object:
+
+- `e.target`: the element the event actually fired on (the button that was clicked)
+- `e.currentTarget`: the element the listener is attached to (the container)
+
+```js
+container.addEventListener("click", (e) => {
+  console.log(e.target);        // the exact clicked element
+  console.log(e.currentTarget); // always the container
+});
+```
+
+**Delegation with nested elements (the real-world problem):**
+
+```html
+<ul id="list">
+  <li data-id="1">
+    <span>Item 1</span>   ← user might click the span, not the li
+  </li>
+</ul>
+```
+
+```js
+list.addEventListener("click", (e) => {
+  // e.target might be the <span>, not the <li>
+  const li = e.target.closest("li"); // walk up to the nearest li
+  if (!li) return;
+  console.log(li.dataset.id);
+});
+```
+
+`closest()` walks up the DOM from the target to find the nearest ancestor matching the selector. This is the correct production pattern for delegation with nested markup.
+
+---
+
+### `stopPropagation` vs `stopImmediatePropagation`
+
+`stopPropagation()` prevents the event from traveling further up (or down in capture) the DOM tree. It does NOT prevent other listeners on the same element from running.
+
+```js
+child.addEventListener("click", (e) => {
+  e.stopPropagation();
+  console.log("child handler 1"); // runs
+});
+
+child.addEventListener("click", (e) => {
+  console.log("child handler 2"); // also runs, stopPropagation doesn't stop this
+});
+
+parent.addEventListener("click", () => {
+  console.log("parent"); // BLOCKED, never runs
+});
+```
+
+`stopImmediatePropagation()` stops both propagation to ancestors AND prevents any other listeners on the same element from running:
+
+```js
+child.addEventListener("click", (e) => {
+  e.stopImmediatePropagation();
+  console.log("child handler 1"); // runs
+});
+
+child.addEventListener("click", () => {
+  console.log("child handler 2"); // BLOCKED
+});
+
+parent.addEventListener("click", () => {
+  console.log("parent"); // BLOCKED
+});
+```
+
+---
+
+### `preventDefault`: a completely separate concept
+
+`stopPropagation` controls event travel through the DOM tree. `preventDefault` controls the **browser's default action** for an event. They are orthogonal. Calling one has zero effect on the other.
+
+```js
+// Prevent form submission reload
+form.addEventListener("submit", (e) => {
+  e.preventDefault(); // browser does not navigate/reload
+  handleFormData();
+});
+
+// Prevent link navigation
+link.addEventListener("click", (e) => {
+  e.preventDefault(); // browser does not follow href
+  handleRouting();
+});
+
+// Prevent right-click context menu
+div.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  showCustomMenu();
+});
+```
+
+`preventDefault` does NOT stop the event from bubbling. The event still travels up the tree and fires all parent listeners. It only cancels what the browser itself would have done in response.
+
+The `cancelable` property on the event tells you whether `preventDefault` has any effect. Some events (like `scroll`) are not cancelable in certain contexts.
+
+```js
+document.addEventListener("click", (e) => {
+  console.log(e.cancelable); // true for click
+});
+```
+
+**The combination trap (classic MCQ):**
+
+```js
+link.addEventListener("click", (e) => {
+  e.stopPropagation();
+  // Does this prevent navigation? NO.
+  // stopPropagation only stops bubbling.
+  // The browser still follows the href.
+});
+
+link.addEventListener("click", (e) => {
+  e.preventDefault();
+  // Does this stop the parent handler from running? NO.
+  // preventDefault only cancels the default browser action.
+  // The event still bubbles.
+});
+```
+
+---
+
+### `event.target` vs `event.currentTarget` vs `event.relatedTarget`
+
+```js
+parent.addEventListener("click", (e) => {
+  e.target;        // element that was actually clicked
+  e.currentTarget; // element this listener is on (parent)
+                   // same as 'this' in a regular function handler
+});
+```
+
+`relatedTarget` applies to mouse transition events. For `mouseover`, it is the element the mouse came from. For `mouseout`, it is the element the mouse moved to.
+
+```js
+element.addEventListener("mouseover", (e) => {
+  console.log(e.relatedTarget); // previous element the cursor was over
+});
+```
+
+---
+
+### `once`, `passive`, `capture` options
+
+The modern `addEventListener` options object unlocks three useful behaviors:
+
+```js
+btn.addEventListener("click", handler, { once: true });
+// handler fires once then automatically removes itself
+```
+
+```js
+window.addEventListener("scroll", handler, { passive: true });
+// tells the browser: this handler will never call preventDefault
+// browser can skip waiting for JS before scrolling → smoother scrolling
+// calling preventDefault inside a passive listener is silently ignored
+```
+
+```js
+element.addEventListener("click", handler, { capture: true });
+// same as passing true as the third argument
+```
+
+`passive` matters for performance. On mobile, the browser normally waits after every `touchstart`/`touchmove` to see if you call `preventDefault` (which would block scroll). Marking listeners as `passive` removes that wait and makes touch scroll buttery.
+
+---
+
+### `removeEventListener` gotcha
+
+To remove a listener, you must pass the exact same function reference. An inline arrow function creates a new reference each time, making removal impossible.
+
+```js
+// BROKEN: can never be removed
+element.addEventListener("click", () => handleClick());
+element.removeEventListener("click", () => handleClick()); // different reference
+
+// CORRECT: named reference
+element.addEventListener("click", handleClick);
+element.removeEventListener("click", handleClick); // same reference, works
+```
+
+---
+
+### `MutationObserver` and `IntersectionObserver`
+
+Two browser APIs that come up in senior frontend interviews.
+
+**`MutationObserver`:** watches for DOM changes (added/removed nodes, attribute changes) without polling.
+
+```js
+const observer = new MutationObserver((mutations) => {
+  mutations.forEach(m => {
+    if (m.type === "childList") {
+      console.log("nodes added:", m.addedNodes);
+    }
+  });
+});
+
+observer.observe(document.querySelector("#app"), {
+  childList: true,  // watch for added/removed children
+  subtree: true,    // include all descendants
+  attributes: true  // watch for attribute changes
+});
+
+observer.disconnect(); // stop observing
+```
+
+**`IntersectionObserver`:** fires when an element enters or exits the viewport, without `scroll` event listeners. Used for lazy loading, infinite scroll, and animation triggers.
+
+```js
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.src = entry.target.dataset.src; // lazy load image
+      observer.unobserve(entry.target); // stop watching once loaded
+    }
+  });
+}, { threshold: 0.1 }); // fire when 10% of element is visible
+
+document.querySelectorAll("img[data-src]").forEach(img => {
+  observer.observe(img);
+});
+```
+
+---
+
+### `document.querySelector` vs `getElementById` vs `querySelectorAll`
+
+```js
+document.getElementById("app");          // fastest, returns single element or null
+document.querySelector(".btn");          // first match, CSS selector, null if none
+document.querySelectorAll(".btn");       // NodeList (static snapshot), not live
+document.getElementsByClassName("btn"); // HTMLCollection (live), updates with DOM
+document.getElementsByTagName("div");   // HTMLCollection (live)
+```
+
+The live vs static distinction is a frequent MCQ trap:
+
+```js
+const staticList = document.querySelectorAll(".item");   // snapshot at query time
+const liveList = document.getElementsByClassName("item"); // updates as DOM changes
+
+document.querySelector("#container").innerHTML += `<div class="item"></div>`;
+
+console.log(staticList.length); // unchanged, still the old count
+console.log(liveList.length);   // automatically includes the new element
+```
+
+---
+
+### Self-test: 5 questions
+
+**Q1.** What does this log when the button is clicked?
+```html
+<div id="outer">
+  <div id="inner">
+    <button id="btn">Click</button>
+  </div>
+</div>
+```
+```js
+outer.addEventListener("click", () => console.log("outer"), true);  // capture
+inner.addEventListener("click", () => console.log("inner"));        // bubble
+btn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  console.log("btn");
+});
+```
+
+**Q2.** Does clicking a link with only `e.stopPropagation()` in its handler prevent the browser from navigating to the `href`?
+
+**Q3.** What is wrong with this delegation code?
+```js
+document.querySelector("#nav").addEventListener("click", (e) => {
+  if (e.target === document.querySelector(".nav-link")) {
+    navigate(e.target.href);
+  }
+});
+```
+
+**Q4.** You have 1000 list items that are dynamically added. What is the most efficient way to handle click events on them?
+
+**Q5.** What does this log?
+```js
+const list = document.getElementsByClassName("item");
+const snap = document.querySelectorAll(".item");
+
+console.log(list.length); // assume 3 items exist
+document.querySelector("ul").innerHTML += '<li class="item">new</li>';
+console.log(list.length);
+console.log(snap.length);
+```
+
+---
+
+<details>
+<summary>Answers</summary>
+
+**A1.** `outer`, `btn`. The capture listener on `outer` fires first as the event travels down. Then the event reaches `btn` (target phase), which logs `btn` and calls `stopPropagation`. The bubble phase is cancelled, so `inner`'s bubble listener never fires.
+
+**A2.** No. `stopPropagation` only stops the event from bubbling up the DOM. It has no effect on the browser's default action. You need `e.preventDefault()` to prevent navigation.
+
+**A3.** `e.target === document.querySelector(".nav-link")` compares the clicked element against a single queried element. If there are multiple `.nav-link` elements, this only matches one of them. Use `e.target.matches(".nav-link")` instead, which checks the selector against any element. Also, `closest()` is safer for nested markup where the user might click a child element inside `.nav-link`.
+
+**A4.** Attach a single listener to the parent container using event delegation. Use `e.target.closest("li")` to identify which item was clicked. This is O(1) listeners regardless of how many items exist or get added dynamically.
+
+**A5.** `3`, `4`, `3`. `getElementsByClassName` returns a live `HTMLCollection`. When the new item is added, `list.length` automatically updates to `4`. `querySelectorAll` returns a static `NodeList` snapshot at query time, so `snap.length` remains `3`.
+
+</details>

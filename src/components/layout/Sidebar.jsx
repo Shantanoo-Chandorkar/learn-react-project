@@ -21,6 +21,7 @@ const Sidebar = ({ isOpen, onClose }) => {
 
   const hooks = topics.filter((t) => t.category === 'hooks');
   const relatedTopics = topics.filter((t) => t.category === 'related-topics');
+  const interviewPrep = topics.filter((t) => t.category === 'interview-prep');
 
   // Auto-scroll to active link on mount and location change
   useEffect(() => {
@@ -71,6 +72,9 @@ const Sidebar = ({ isOpen, onClose }) => {
 
           <li className="sidebar-section-header">Related Topics</li>
           {relatedTopics.map(renderTopicLink)}
+
+          <li className="sidebar-section-header">Interview Prep</li>
+          {interviewPrep.map(renderTopicLink)}
 
           <li className="sidebar-divider">Other Resources</li>
           <li>

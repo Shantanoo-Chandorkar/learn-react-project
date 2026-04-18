@@ -1,0 +1,186 @@
+# var, let, const
+
+### The mental model first
+
+JavaScript has two phases when it processes any scope: a **compilation phase** (where declarations are registered) and an **execution phase** (where code actually runs). This distinction is what makes hoisting make sense, rather than feeling like magic.
+
+---
+
+### `var`: function-scoped, hoisted and initialized
+
+`var` declarations are hoisted to the top of their **function scope** (or global scope), and immediately initialized to `undefined`. This means you can reference a `var` variable before its declaration line, and it won't throw, it just gives you `undefined`.
+
+```js
+console.log(x); // undefined, not ReferenceError
+var x = 10;
+console.log(x); // 10
+```
+
+What the engine actually sees:
+
+```js
+var x = undefined; // hoisted and initialized
+console.log(x);    // undefined
+x = 10;
+console.log(x);    // 10
+```
+
+`var` is function-scoped, not block-scoped. This is the root cause of most classic JS bugs:
+
+```js
+if (true) {
+  var a = 5;
+}
+console.log(a); // 5, leaks out of the block
+```
+
+```js
+function test() {
+  if (true) {
+    var b = 10;
+  }
+  console.log(b); // 10, visible anywhere in the function
+}
+```
+
+---
+
+### `let` / `const`: block-scoped, hoisted but NOT initialized (TDZ)
+
+`let` and `const` are also hoisted, but unlike `var`, they are **not initialized** until the engine reaches their declaration line. The window between the start of the block and the declaration is called the **Temporal Dead Zone (TDZ)**. Accessing the variable inside the TDZ throws a `ReferenceError`.
+
+```js
+console.log(y); // ReferenceError: Cannot access 'y' before initialization
+let y = 10;
+```
+
+This is different from an undeclared variable, which throws `ReferenceError: y is not defined`. The TDZ error message specifically says "before initialization", meaning the engine *knows* `y` exists, it just refuses to let you touch it yet. That's proof it was hoisted.
+
+```js
+{
+  // TDZ starts here for 'z'
+  console.log(z); // ReferenceError
+  let z = 5;      // TDZ ends here
+  console.log(z); // 5
+}
+```
+
+`const` behaves exactly like `let` regarding scoping and TDZ, with one addition: it must be initialized at declaration and cannot be reassigned.
+
+```js
+const a = 5;
+a = 10; // TypeError: Assignment to constant variable
+
+const b; // SyntaxError: Missing initializer in const declaration
+```
+
+`const` does NOT mean immutable. It means the binding cannot be reassigned. The value it points to can still be mutated if it's an object or array:
+
+```js
+const obj = { name: "shan" };
+obj.name = "updated"; // fine
+obj = {};             // TypeError
+```
+
+---
+
+### The loop gotcha (classic MCQ trap)
+
+This is one of the most common MCQ and verbal questions you'll face:
+
+```js
+for (var i = 0; i < 3; i++) {
+  setTimeout(() => console.log(i), 0);
+}
+// Output: 3, 3, 3
+```
+
+Why? Because `var i` is function-scoped, there is only one `i` shared across all iterations. By the time the callbacks fire, the loop has finished and `i` is `3`.
+
+```js
+for (let i = 0; i < 3; i++) {
+  setTimeout(() => console.log(i), 0);
+}
+// Output: 0, 1, 2
+```
+
+Why does `let` fix it? Because `let` creates a **new binding** for `i` on each iteration of the loop. Each closure captures a different `i`. This is a special behavior specific to `let` in `for` loop headers.
+
+---
+
+### Hoisting comparison table
+
+| | `var` | `let` | `const` |
+|---|---|---|---|
+| Hoisted? | Yes | Yes | Yes |
+| Initialized on hoist? | Yes (`undefined`) | No (TDZ) | No (TDZ) |
+| Scope | Function | Block | Block |
+| Re-declarable in same scope? | Yes | No | No |
+| Re-assignable? | Yes | Yes | No |
+
+---
+
+### Re-declaration trap
+
+```js
+var x = 1;
+var x = 2; // perfectly fine
+console.log(x); // 2
+
+let y = 1;
+let y = 2; // SyntaxError: Identifier 'y' has already been declared
+```
+
+---
+
+### Self-test: 4 rapid-fire questions
+
+Try to answer these before reading the answers.
+
+**Q1.** What does this log?
+```js
+var x = 1;
+function foo() {
+  console.log(x);
+  var x = 2;
+}
+foo();
+```
+
+**Q2.** What does this log?
+```js
+let a = 1;
+{
+  console.log(a);
+  let a = 2;
+}
+```
+
+**Q3.** What does this log?
+```js
+const arr = [1, 2, 3];
+arr.push(4);
+console.log(arr);
+```
+
+**Q4.** What does this output and why?
+```js
+for (var i = 0; i < 3; i++) {
+  setTimeout(() => console.log(i), 1000);
+}
+```
+
+---
+
+<details>
+<summary>Answers (expand after you've thought through them)</summary>
+
+**A1.** `undefined`. The `var x` inside `foo` is hoisted to the top of `foo`, shadowing the outer `x`. At the point of `console.log`, the inner `x` exists but hasn't been assigned yet.
+
+**A2.** `ReferenceError`. Even though `a` exists in the outer scope, the `let a` declaration inside the block creates a new binding that puts `a` in TDZ from the start of the block until the declaration line.
+
+**A3.** `[1, 2, 3, 4]`. `const` prevents reassignment of the binding, not mutation of the value.
+
+**A4.** `3, 3, 3`. `var` is function-scoped, one shared `i`. Loop finishes before callbacks fire.
+
+</details>

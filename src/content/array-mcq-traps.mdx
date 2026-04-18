@@ -1,0 +1,327 @@
+# Array MCQ Traps
+
+### The mental model first
+
+This module is pattern recognition, not new concepts. Every trap here exploits one of three underlying rules you already know:
+
+1. **Return value contract:** `map` returns a new array, `forEach` always returns `undefined`, `filter` returns a subset array, `reduce` returns the accumulated value.
+2. **Mutation vs transformation:** these methods do not prevent you from mutating the original array inside the callback. Non-mutating means the method itself does not mutate. Your callback can still do damage.
+3. **Reference semantics:** arrays of objects hold references. A new array from `map`/`filter` is a new array of the same references. Mutating an element inside a callback mutates the original.
+
+Every MCQ in this module is one of these three rules in disguise.
+
+---
+
+## Category 1: Return value traps
+
+**Trap 1: Assigning `forEach`**
+
+```js
+const nums = [1, 2, 3];
+const result = nums.forEach(n => n * 2);
+console.log(result);
+```
+
+`undefined`. `forEach` has no return value, ever. Assigning it is always `undefined`.
+
+---
+
+**Trap 2: `forEach` with push vs `map`**
+
+```js
+const nums = [1, 2, 3];
+const doubled = [];
+const result = nums.forEach(n => doubled.push(n * 2));
+
+console.log(doubled); // [2, 4, 6]
+console.log(result);  // [3, 3, 3] ?
+```
+
+`doubled` is `[2, 4, 6]` as expected. But `result`? `Array.push` returns the new length of the array. `forEach` still returns `undefined`. `result` is `undefined`, not `[3, 3, 3]`. The push return values are discarded by `forEach`.
+
+---
+
+**Trap 3: `map` with no return inside a block**
+
+```js
+const result = [1, 2, 3].map(n => {
+  if (n > 1) return n * 2;
+});
+console.log(result);
+```
+
+`[undefined, 4, 6]`. The first element hits the `if (n > 1)` check, fails it, and the callback returns nothing, which is `undefined`. `map` always produces an array of the same length, so that slot gets `undefined`.
+
+---
+
+**Trap 4: Chaining off `forEach`**
+
+```js
+const result = [1, 2, 3]
+  .forEach(n => n * 2)
+  .map(n => n + 1);
+```
+
+`TypeError: Cannot read properties of undefined (reading 'map')`. `forEach` returns `undefined`. You cannot chain `.map` off `undefined`. This is a common trap written to look like valid method chaining.
+
+---
+
+**Trap 5: `map` returning the callback result of a void function**
+
+```js
+const log = (n) => console.log(n); // returns undefined
+
+const result = [1, 2, 3].map(log);
+// Logs: 1, 2, 3 (side effect works)
+console.log(result); // [undefined, undefined, undefined]
+```
+
+`console.log` returns `undefined`. `map` dutifully collects three `undefined` returns.
+
+---
+
+## Category 2: Mutation side effects
+
+**Trap 6: Mutating inside `map`**
+
+```js
+const users = [
+  { name: "shan", score: 10 },
+  { name: "alex", score: 20 }
+];
+
+const updated = users.map(u => {
+  u.score += 5; // mutates the original object
+  return u;
+});
+
+console.log(users[0].score);   // 15
+console.log(updated[0].score); // 15
+console.log(users[0] === updated[0]); // true, same reference
+```
+
+`map` returns a new array but the elements are the same object references. Mutating `u.score` inside the callback modifies the original. Both `users` and `updated` now point to the same mutated objects. If you want a true copy:
+
+```js
+const updated = users.map(u => ({ ...u, score: u.score + 5 }));
+// users[0].score still 10, updated[0].score is 15
+```
+
+---
+
+**Trap 7: `filter` reference mutation**
+
+```js
+const items = [
+  { id: 1, active: true },
+  { id: 2, active: false },
+  { id: 3, active: true }
+];
+
+const active = items.filter(i => i.active);
+active[0].active = false;
+
+console.log(items[0].active); // false, original mutated
+console.log(active.length);   // 2, the filtered array is unchanged in length
+```
+
+The filtered array has two elements. Mutating the first element's `active` property changes it in both `active` and `items`, because it is the same object. The array length does not re-evaluate after mutation.
+
+---
+
+**Trap 8: Mutating the original array inside the callback**
+
+```js
+const arr = [1, 2, 3, 4];
+const result = arr.map((n, i, a) => {
+  a.reverse(); // mutates the original array mid-iteration
+  return n;
+});
+
+console.log(result);
+```
+
+The output is implementation-dependent and undefined behavior. You should never mutate the array being iterated inside a `map`/`filter`/`reduce` callback. The spec does not guarantee predictable results. This appears in MCQs specifically to test whether you know this is wrong.
+
+---
+
+**Trap 9: `reduce` accumulator mutation vs replacement**
+
+```js
+const nums = [1, 2, 3];
+
+// Version A
+const a = nums.reduce((acc, n) => {
+  acc.push(n * 2);
+  return acc;
+}, []);
+
+// Version B
+const b = nums.reduce((acc, n) => {
+  return [...acc, n * 2];
+}, []);
+
+console.log(a); // [2, 4, 6]
+console.log(b); // [2, 4, 6]
+```
+
+Same output, different behavior. Version A mutates the same array accumulator every iteration. Version B creates a new array each iteration. In interviews, both are valid, but Version B has `O(n²)` memory behavior because each iteration creates a new spread. Version A is more performant but mutates the accumulator, which can be a surprise if you hold a reference to it elsewhere.
+
+---
+
+## Category 3: Chaining and ordering traps
+
+**Trap 10: `reduce` without initial value on single-element array**
+
+```js
+const result = [42].reduce((acc, n) => {
+  console.log("callback ran");
+  return acc + n;
+});
+console.log(result);
+```
+
+`"callback ran"` never logs. `42` is returned directly as the result. With a single element and no initial value, `reduce` returns that element immediately without ever calling the callback. This is correct per spec but surprises people.
+
+```js
+[42].reduce((acc, n) => acc + n, 0); // callback runs once: acc=0, n=42, returns 42
+```
+
+---
+
+**Trap 11: `map` on an array with explicit `undefined` vs holes**
+
+```js
+const a = [1, undefined, 3];
+const b = [1, , 3]; // sparse
+
+const resultA = a.map(n => n * 2);
+const resultB = b.map(n => n * 2);
+
+console.log(resultA); // [2, NaN, 6]  — callback runs on undefined, NaN * 2 = NaN
+console.log(resultB); // [2, empty, 6] — callback skips the hole
+```
+
+`undefined` is a value. The callback runs on it. `undefined * 2` is `NaN`. A hole is not a value. The callback skips it entirely. The output length is the same in both cases, but the hole remains a hole.
+
+---
+
+**Trap 12: `filter` returning the index, not the element**
+
+```js
+const result = [10, 20, 30].filter((n, i) => i);
+console.log(result);
+```
+
+`[20, 30]`. `filter` uses the return value as a truthy/falsy test. The callback returns the index: `0`, `1`, `2`. Index `0` is falsy, so `10` is dropped. Indices `1` and `2` are truthy, so `20` and `30` are kept. This looks like it is filtering by value but it is actually filtering by index.
+
+---
+
+**Trap 13: `map` with `parseInt` revisited as a chain**
+
+```js
+const result = ["10", "10", "10"]
+  .map(parseInt);
+console.log(result);
+```
+
+`[10, NaN, 2]`. You saw this in 2.1 but here the radix effect is different:
+- `parseInt("10", 0)` → `10` (radix 0 treated as 10)
+- `parseInt("10", 1)` → `NaN` (radix 1 is invalid)
+- `parseInt("10", 2)` → `2` (10 in base 2 is 2 in decimal)
+
+The third element here is `2`, not `NaN`, because `"10"` in base 2 is valid and equals `2`. A variation on the classic trap.
+
+---
+
+**Trap 14: Chaining `map` then `filter` then checking length**
+
+```js
+const data = [1, 2, 3, 4, 5];
+
+const result = data
+  .map(n => n % 2 === 0 ? n : null)
+  .filter(n => n);
+
+console.log(result.length);
+console.log(data.length);
+```
+
+`result.length` is `2`. `data.length` is still `5`. `map` produces `[null, 2, null, 4, null]`, maintaining length. `filter(n => n)` removes the nulls, leaving `[2, 4]`. The original is untouched.
+
+---
+
+**Trap 15: `reduce` accumulator type mismatch**
+
+```js
+const result = ["a", "b", "c"].reduce((acc, s) => {
+  return acc + s;
+});
+console.log(result);
+console.log(typeof result);
+```
+
+`"abc"`, `"string"`. No initial value, so `"a"` is the initial accumulator. String concatenation proceeds. This works but is fragile. If the array were empty, it would throw. The trap is that the answer looks like it should be `NaN` or an error because `reduce` is often associated with numeric operations.
+
+---
+
+**Trap 16: `forEach` break impossibility**
+
+```js
+let found;
+[1, 2, 3, 4, 5].forEach(n => {
+  if (n === 3) {
+    found = n;
+    return; // does NOT break the loop
+  }
+  console.log(n); // still logs 4 and 5
+});
+console.log(found); // 3
+```
+
+`return` inside a `forEach` callback only exits that iteration's callback invocation. It does not break the outer loop. `1`, `2`, `4`, `5` are all logged. If you need early termination, use `for...of`, `some`, or `find`:
+
+```js
+const found = [1, 2, 3, 4, 5].find(n => n === 3); // stops at 3
+```
+
+---
+
+## Rapid-fire self-test: 7 questions
+
+No code for these. Answer from reading only.
+
+**Q1.** `[1, 2, 3].map(() => {})` — what does this return?
+
+**Q2.** `[1, 2, 3].forEach(n => n * 2)` — what does this return?
+
+**Q3.** You `filter` an array of objects, then mutate a property on the first element of the result. Does the original array reflect the change?
+
+**Q4.** `[5].reduce((acc, n) => acc + n)` — does the callback run?
+
+**Q5.** Inside a `forEach`, you call `return false`. Does iteration stop?
+
+**Q6.** `["1","2","3"].map(parseInt)` — what is the second element?
+
+**Q7.** `map` is called on a sparse array `[1, , 3]`. How many times does the callback run?
+
+---
+
+<details>
+<summary>Answers</summary>
+
+**A1.** `[undefined, undefined, undefined]`. The arrow function body `{}` with no `return` produces `undefined` for every element.
+
+**A2.** `undefined`. `forEach` always returns `undefined` regardless of what the callback does.
+
+**A3.** Yes. `filter` creates a new array but the elements are the same references. Mutating an object property through the filtered array mutates the same object in the original.
+
+**A4.** No. With a single element and no initial value, `reduce` returns that element directly without invoking the callback.
+
+**A5.** No. `return` exits the current callback invocation only. `forEach` has no mechanism to break early. All remaining elements are still processed.
+
+**A6.** `NaN`. `parseInt("2", 1)` is called with radix `1`, which is invalid. `parseInt` returns `NaN` for invalid radices.
+
+**A7.** Twice. `map` skips holes. The callback runs for index `0` (value `1`) and index `2` (value `3`). The hole at index `1` is skipped entirely.
+
+</details>

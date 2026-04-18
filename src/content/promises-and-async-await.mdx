@@ -1,0 +1,454 @@
+# Promises & async/await
+
+### The mental model first
+
+A Promise is an object representing the **eventual result of an async operation**. It is a placeholder that starts in a pending state and settles exactly once, either fulfilled with a value or rejected with a reason. Once settled, it never changes state. That immutability is the core guarantee Promises provide.
+
+```
+pending → fulfilled (value)
+pending → rejected  (reason)
+```
+
+---
+
+### Promise states and the `.then` / `.catch` / `.finally` contract
+
+```js
+const p = new Promise((resolve, reject) => {
+  // executor runs synchronously
+  setTimeout(() => resolve(42), 1000);
+});
+
+p.then(value => console.log(value))   // 42 after 1s
+ .catch(err => console.error(err))
+ .finally(() => console.log("done")); // always runs
+```
+
+The executor function runs synchronously. Only `resolve` and `reject` are async deferred.
+
+```js
+console.log("before");
+new Promise((resolve) => {
+  console.log("executor");  // sync
+  resolve();
+}).then(() => console.log("then")); // microtask
+console.log("after");
+
+// Output: before, executor, after, then
+```
+
+---
+
+### `.then` always returns a new Promise
+
+This is the mechanism behind chaining, and the source of most Promise confusion.
+
+```js
+Promise.resolve(1)
+  .then(v => v + 1)     // returns Promise<2>
+  .then(v => v * 3)     // returns Promise<6>
+  .then(v => console.log(v)); // 6
+```
+
+If a `.then` callback returns a plain value, the next Promise is fulfilled with that value. If it returns another Promise, the chain **waits** for that Promise to settle before continuing.
+
+```js
+Promise.resolve(1)
+  .then(v => {
+    return new Promise(resolve => setTimeout(() => resolve(v + 10), 500));
+  })
+  .then(v => console.log(v)); // 11, after 500ms
+```
+
+If a `.then` callback throws, the returned Promise is **rejected** with that error, which is caught by the next `.catch` in the chain:
+
+```js
+Promise.resolve("ok")
+  .then(() => { throw new Error("boom"); })
+  .then(() => console.log("skipped")) // skipped, chain short-circuits
+  .catch(err => console.log(err.message)); // "boom"
+```
+
+---
+
+### Error handling patterns
+
+**Pattern 1: `.catch` at the end of a chain**
+
+The cleanest pattern for sequential async operations where any failure should abort the whole chain:
+
+```js
+fetchUser(id)
+  .then(user => fetchPosts(user.id))
+  .then(posts => render(posts))
+  .catch(err => showError(err)); // catches any rejection in the chain
+```
+
+**Pattern 2: per-step error recovery**
+
+If you want to recover at a specific step and continue:
+
+```js
+fetchUser(id)
+  .then(user => fetchPosts(user.id))
+  .catch(() => []) // if fetchPosts fails, use empty array and continue
+  .then(posts => render(posts));
+```
+
+The `.catch` returns a value, turning the rejection back into a fulfillment. The chain continues with `[]`.
+
+**Pattern 3: `async`/`await` with `try`/`catch`**
+
+```js
+async function loadPage(id) {
+  try {
+    const user = await fetchUser(id);
+    const posts = await fetchPosts(user.id);
+    render(posts);
+  } catch (err) {
+    showError(err);
+  }
+}
+```
+
+Cleaner for sequential steps. One `try`/`catch` handles all rejections.
+
+**The missing `catch` trap:** An unhandled Promise rejection used to fail silently. Modern environments now emit `unhandledRejection` warnings or crash Node processes. Always handle rejections.
+
+```js
+// BAD: rejection silently swallowed if fetchUser fails
+async function bad() {
+  const user = await fetchUser(id); // throws, but nothing catches it
+}
+
+// GOOD
+async function good() {
+  try {
+    const user = await fetchUser(id);
+  } catch (err) {
+    handleError(err);
+  }
+}
+```
+
+---
+
+### `async`/`await` precise mechanics
+
+`async` functions always return a Promise. Whatever you `return` from an `async` function is wrapped in `Promise.resolve()`. A thrown error inside is wrapped in a rejected Promise.
+
+```js
+async function greet() { return "hello"; }
+
+greet().then(console.log); // "hello"
+greet() instanceof Promise; // true
+```
+
+`await` can only appear inside `async` functions. It unwraps a Promise and pauses the function until the Promise settles. If the Promise rejects and there is no `try`/`catch`, the rejection propagates as the return value of the `async` function.
+
+```js
+async function fail() {
+  await Promise.reject(new Error("oops"));
+  console.log("never reached");
+}
+
+fail().catch(err => console.log(err.message)); // "oops"
+```
+
+**`await` on a non-Promise:** Completely valid. `await 42` wraps `42` in `Promise.resolve(42)` and continues on the next microtask tick. It still yields.
+
+```js
+async function run() {
+  const x = await 42; // yields once, then resumes
+  console.log(x);     // 42
+}
+```
+
+---
+
+### Promise combinators: the comparison that always comes up in interviews
+
+There are four. The distinction between them is specifically about **how they handle failure**.
+
+**`Promise.all(arr)`**
+
+Resolves when **all** Promises fulfill. Rejects immediately (fast-fail) when **any** one rejects, discarding all other results.
+
+```js
+const [user, posts, settings] = await Promise.all([
+  fetchUser(id),
+  fetchPosts(id),
+  fetchSettings(id)
+]);
+```
+
+```js
+// If any one rejects:
+Promise.all([
+  Promise.resolve(1),
+  Promise.reject("fail"),
+  Promise.resolve(3)
+]).catch(err => console.log(err)); // "fail"
+// Results 1 and 3 are lost
+```
+
+Use when: you need all results and any single failure should abort the whole operation.
+
+**`Promise.allSettled(arr)`**
+
+Waits for **all** Promises to settle, regardless of outcome. Never rejects. Returns an array of result objects.
+
+```js
+const results = await Promise.allSettled([
+  Promise.resolve(1),
+  Promise.reject("fail"),
+  Promise.resolve(3)
+]);
+
+results.forEach(r => {
+  if (r.status === "fulfilled") console.log(r.value);
+  if (r.status === "rejected") console.log(r.reason);
+});
+// 1, "fail", 3
+```
+
+Each result object shape:
+```js
+{ status: "fulfilled", value: ... }
+{ status: "rejected",  reason: ... }
+```
+
+Use when: you want all results regardless of failures, like firing multiple analytics events where some may fail without killing the rest.
+
+**`Promise.race(arr)`**
+
+Settles with the outcome of the **first** Promise to settle, fulfilled or rejected. The rest are ignored (not cancelled, just ignored).
+
+```js
+const result = await Promise.race([
+  fetch("/api/primary"),
+  fetch("/api/fallback"),
+]);
+```
+
+Classic use case: timeout pattern.
+
+```js
+function withTimeout(promise, ms) {
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("timeout")), ms)
+  );
+  return Promise.race([promise, timeout]);
+}
+
+await withTimeout(fetchData(), 3000); // rejects if fetchData takes > 3s
+```
+
+Use when: you want the fastest result, or need to enforce a deadline.
+
+**`Promise.any(arr)`**
+
+Resolves with the **first fulfilled** Promise, ignoring rejections. Only rejects if **all** Promises reject, with an `AggregateError` containing all reasons.
+
+```js
+const first = await Promise.any([
+  Promise.reject("fail1"),
+  Promise.resolve("ok"),
+  Promise.resolve("also ok")
+]);
+console.log(first); // "ok"
+```
+
+```js
+// All reject:
+Promise.any([
+  Promise.reject("e1"),
+  Promise.reject("e2")
+]).catch(err => {
+  console.log(err instanceof AggregateError); // true
+  console.log(err.errors); // ["e1", "e2"]
+});
+```
+
+Use when: you have multiple sources for the same data (CDNs, mirrors) and want whichever succeeds first.
+
+---
+
+### Combinator comparison table
+
+| | Resolves when | Rejects when | Use case |
+|---|---|---|---|
+| `all` | All fulfill | Any rejects (fast-fail) | Need all results, any failure aborts |
+| `allSettled` | All settle (any outcome) | Never | Want all results regardless of failures |
+| `race` | First to settle (any outcome) | First to settle (if rejection) | Timeout, fastest source |
+| `any` | First to fulfill | All reject (`AggregateError`) | First success from multiple sources |
+
+---
+
+### Common `async`/`await` gotchas
+
+**Gotcha 1: Sequential when you meant parallel**
+
+```js
+// SLOW: fetchUser and fetchPosts run sequentially
+async function slow() {
+  const user = await fetchUser(id);   // waits
+  const posts = await fetchPosts(id); // then waits
+}
+
+// FAST: both fire simultaneously
+async function fast() {
+  const [user, posts] = await Promise.all([
+    fetchUser(id),
+    fetchPosts(id)
+  ]);
+}
+```
+
+The sequential version is a very common performance bug. It appears in code reviews constantly.
+
+**Gotcha 2: `await` inside `forEach`**
+
+```js
+// BROKEN: forEach does not await, all fetches fire in parallel
+// and forEach returns before any complete
+const ids = [1, 2, 3];
+ids.forEach(async (id) => {
+  const user = await fetchUser(id);
+  console.log(user); // order unpredictable, errors unhandled
+});
+console.log("done"); // logs before any fetch completes
+```
+
+Fix with `Promise.all` + `map`:
+
+```js
+await Promise.all(ids.map(async (id) => {
+  const user = await fetchUser(id);
+  console.log(user);
+}));
+console.log("done"); // logs after all fetches complete
+```
+
+Or sequentially with `for...of`:
+
+```js
+for (const id of ids) {
+  const user = await fetchUser(id); // truly sequential
+  console.log(user);
+}
+```
+
+**Gotcha 3: `try`/`catch` only catches awaited rejections**
+
+```js
+async function broken() {
+  try {
+    fetchUser(id); // NOT awaited, rejection escapes try/catch
+  } catch (err) {
+    console.log("caught"); // never logs
+  }
+}
+```
+
+If you forget `await`, the returned Promise's rejection is unhandled. Always `await` inside `try`/`catch` if you want it to catch.
+
+**Gotcha 4: error swallowing with empty catch**
+
+```js
+async function silentFail() {
+  try {
+    await riskyOperation();
+  } catch (e) {} // swallowed, nothing logged, no recovery
+}
+```
+
+Always do something in `catch`, even if it's just `console.error(e)`.
+
+---
+
+### Self-test: 5 questions
+
+**Q1.** What does this log and in what order?
+```js
+async function run() {
+  console.log("A");
+  const result = await Promise.resolve("B");
+  console.log(result);
+  return "C";
+}
+
+run().then(console.log);
+console.log("D");
+```
+
+**Q2.** What does this log?
+```js
+Promise.all([
+  Promise.resolve(1),
+  Promise.reject("err"),
+  Promise.resolve(3)
+])
+.then(vals => console.log(vals))
+.catch(e => console.log("caught:", e));
+```
+
+**Q3.** What does this log?
+```js
+Promise.allSettled([
+  Promise.resolve(1),
+  Promise.reject("err"),
+  Promise.resolve(3)
+]).then(results => console.log(results.map(r => r.status)));
+```
+
+**Q4.** What is wrong with this code?
+```js
+async function getAll(ids) {
+  const results = [];
+  ids.forEach(async (id) => {
+    const data = await fetch(`/api/${id}`);
+    results.push(await data.json());
+  });
+  return results;
+}
+```
+
+**Q5.** What does this log?
+```js
+async function foo() {
+  try {
+    await Promise.reject(new Error("boom"));
+  } catch (e) {
+    console.log("caught:", e.message);
+    return "recovered";
+  }
+}
+
+foo().then(v => console.log("resolved:", v));
+```
+
+---
+
+<details>
+<summary>Answers</summary>
+
+**A1.** `A`, `D`, `B`, `C`.
+
+`run()` executes sync until `await`. `A` logs. Execution yields. `D` logs sync. Microtask fires, `run` resumes, `B` logs. `run` returns `"C"` wrapped in a Promise. The `.then(console.log)` fires as a microtask, logging `C`.
+
+**A2.** `caught: err`.
+
+`Promise.all` fast-fails on the first rejection. The `.then` is skipped entirely. The `.catch` receives the rejection reason directly, which is the string `"err"`, not an Error object.
+
+**A3.** `["fulfilled", "rejected", "fulfilled"]`.
+
+`allSettled` never rejects. It waits for all three to settle and returns their status objects. Mapping over `r.status` gives the three strings.
+
+**A4.** `forEach` is not `await`-aware. The `async` callback returns a Promise that `forEach` ignores. `getAll` will return an empty `results` array immediately, before any `fetch` completes. Fix: use `Promise.all(ids.map(...))` or a `for...of` loop with `await`.
+
+**A5.** `caught: boom`, then `resolved: recovered`.
+
+`await Promise.reject(...)` triggers the `catch` block. `catch` logs the message and returns `"recovered"`. An `async` function that returns from inside a `catch` block produces a fulfilled Promise with that value. So `.then(v => console.log("resolved:", v))` receives `"recovered"`.
+
+</details>
