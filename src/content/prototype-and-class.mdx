@@ -15,19 +15,19 @@ Every object in JS has an internal slot called `[[Prototype]]`. You can think of
 ```js
 const animal = {
   breathe() {
-    return "breathing";
-  }
+    return 'breathing';
+  },
 };
 
 const dog = {
   bark() {
-    return "woof";
-  }
+    return 'woof';
+  },
 };
 
 Object.setPrototypeOf(dog, animal); // link dog -> animal
 
-console.log(dog.bark());    // "woof", found on dog
+console.log(dog.bark()); // "woof", found on dog
 console.log(dog.breathe()); // "breathing", not on dog, found on animal
 console.log(dog.toString()); // found on Object.prototype, top of chain
 ```
@@ -51,7 +51,7 @@ Dog.prototype.bark = function () {
   return `${this.name} says woof`;
 };
 
-const rex = new Dog("rex");
+const rex = new Dog('rex');
 
 console.log(rex.__proto__ === Dog.prototype); // true
 console.log(rex.bark()); // "rex says woof"
@@ -70,6 +70,7 @@ rex (instance)
 ```
 
 When you call `rex.bark()`, the engine:
+
 1. Looks for `bark` on `rex`. Not found.
 2. Follows `rex.__proto__` to `Dog.prototype`. Found. Calls it.
 
@@ -86,10 +87,11 @@ Person.prototype.greet = function () {
   return `Hi, I'm ${this.name}`;
 };
 
-const shan = new Person("shan");
+const shan = new Person('shan');
 ```
 
 Step by step, `new Person("shan")`:
+
 1. Creates `{}`.
 2. Sets `{}.__proto__ = Person.prototype`.
 3. Calls `Person` with `this = {}`.
@@ -97,10 +99,10 @@ Step by step, `new Person("shan")`:
 5. Returns the object (no explicit return in `Person`).
 
 ```js
-console.log(shan.name);            // "shan" - own property
-console.log(shan.greet());         // "Hi, I'm shan" - found on Person.prototype
-console.log(shan.hasOwnProperty("name")); // true
-console.log(shan.hasOwnProperty("greet")); // false, it's on the prototype
+console.log(shan.name); // "shan" - own property
+console.log(shan.greet()); // "Hi, I'm shan" - found on Person.prototype
+console.log(shan.hasOwnProperty('name')); // true
+console.log(shan.hasOwnProperty('greet')); // false, it's on the prototype
 ```
 
 ---
@@ -111,15 +113,15 @@ If you assign a property directly on an instance that also exists on the prototy
 
 ```js
 function Animal() {}
-Animal.prototype.sound = "generic";
+Animal.prototype.sound = 'generic';
 
 const cat = new Animal();
 console.log(cat.sound); // "generic", from prototype
 
-cat.sound = "meow";     // creates own property on cat
+cat.sound = 'meow'; // creates own property on cat
 console.log(cat.sound); // "meow", own property shadows prototype
 
-delete cat.sound;       // removes own property
+delete cat.sound; // removes own property
 console.log(cat.sound); // "generic", prototype visible again
 ```
 
@@ -149,10 +151,10 @@ Dog.prototype.bark = function () {
   return `${this.name} barks`;
 };
 
-const rex = new Dog("rex", "labrador");
+const rex = new Dog('rex', 'labrador');
 console.log(rex.breathe()); // "rex is breathing"
-console.log(rex.bark());    // "rex barks"
-console.log(rex instanceof Dog);    // true
+console.log(rex.bark()); // "rex barks"
+console.log(rex instanceof Dog); // true
 console.log(rex instanceof Animal); // true
 ```
 
@@ -186,16 +188,16 @@ class Dog extends Animal {
   }
 }
 
-const rex = new Dog("rex", "labrador");
+const rex = new Dog('rex', 'labrador');
 console.log(rex.breathe()); // "rex is breathing"
-console.log(rex.bark());    // "rex barks"
+console.log(rex.bark()); // "rex barks"
 ```
 
 Proving it's just syntax sugar:
 
 ```js
 console.log(typeof Animal); // "function", not "class"
-console.log(rex.__proto__ === Dog.prototype);         // true
+console.log(rex.__proto__ === Dog.prototype); // true
 console.log(Dog.prototype.__proto__ === Animal.prototype); // true
 ```
 
@@ -227,9 +229,9 @@ Animal(); // TypeError: Class constructor Animal cannot be invoked without 'new'
 `instanceof` walks the prototype chain of the left operand looking for the `prototype` property of the right operand.
 
 ```js
-rex instanceof Dog;    // is Dog.prototype anywhere in rex's chain? yes
+rex instanceof Dog; // is Dog.prototype anywhere in rex's chain? yes
 rex instanceof Animal; // is Animal.prototype anywhere in rex's chain? yes
-rex instanceof Array;  // no
+rex instanceof Array; // no
 ```
 
 MCQ trap with `instanceof`:
@@ -249,7 +251,7 @@ console.log(obj instanceof Foo); // true, even though new was never used
 
 ```js
 // {} shorthand
-const a = {}; 
+const a = {};
 // a.__proto__ === Object.prototype
 
 // new
@@ -271,6 +273,7 @@ const d = Object.create(null);
 ### Self-test: 5 questions
 
 **Q1.** What does this log?
+
 ```js
 function Foo() {}
 Foo.prototype.x = 10;
@@ -286,17 +289,24 @@ console.log(Foo.prototype.x);
 ```
 
 **Q2.** What does this log?
+
 ```js
 class A {
-  greet() { return "A"; }
+  greet() {
+    return 'A';
+  }
 }
 
 class B extends A {
-  greet() { return super.greet() + "B"; }
+  greet() {
+    return super.greet() + 'B';
+  }
 }
 
 class C extends B {
-  greet() { return super.greet() + "C"; }
+  greet() {
+    return super.greet() + 'C';
+  }
 }
 
 console.log(new C().greet());
@@ -305,18 +315,20 @@ console.log(new C().greet());
 **Q3.** True or false: `typeof class Foo {}` returns `"class"`.
 
 **Q4.** What does this log?
+
 ```js
 function Animal(name) {
   this.name = name;
 }
 
-const cat = new Animal("whiskers");
+const cat = new Animal('whiskers');
 
-console.log(cat.hasOwnProperty("name"));
-console.log(cat.hasOwnProperty("hasOwnProperty"));
+console.log(cat.hasOwnProperty('name'));
+console.log(cat.hasOwnProperty('hasOwnProperty'));
 ```
 
 **Q5.** What does this log?
+
 ```js
 class Counter {
   count = 0; // class field

@@ -1,7 +1,5 @@
 # Frontend Interview Assessment — Q&A Review
 
----
-
 ## Section 1: JavaScript Web
 
 ---
@@ -61,12 +59,14 @@ Consider `<div id="abc" class="def">xyz</div>`. Which is the correct way to sele
 `doStuff(callback)` is an async function that calls `callback(results, err)`. If error, `err` is non-null. Consider:
 
 ```javascript
-console.log("A");
+console.log('A');
 doStuff((results, err) => {
-  if (err) { console.log("B"); }
-  console.log("C");
+  if (err) {
+    console.log('B');
+  }
+  console.log('C');
 });
-console.log("D");
+console.log('D');
 ```
 
 Which output sequences can NEVER be produced? (Pick all that apply)
@@ -144,7 +144,7 @@ The `<noscript>` tag: (Select closest option)
 ### Q6 — ES6 const
 
 ```javascript
-const X = {a: 1, b: 2};
+const X = { a: 1, b: 2 };
 X.a = 3;
 console.log(X.a);
 ```
@@ -173,8 +173,8 @@ What is the result? (Select closest option)
 
 ```javascript
 let a = [1, 2, 3];
-a.x = "foo";
-let b = "";
+a.x = 'foo';
+let b = '';
 for (i of a) {
   b += i;
 }
@@ -207,9 +207,9 @@ What is the result? (Select closest option)
 ```javascript
 var a = 10;
 if (a < 20) {
-  let b = "Yes";
+  let b = 'Yes';
 } else {
-  let b = "No";
+  let b = 'No';
 }
 console.log(b);
 ```
@@ -238,13 +238,13 @@ What is the result? (Select closest option)
 ### Q9 — Promises with async/await
 
 ```javascript
-var async_f = async function() {
+var async_f = async function () {
   var p1 = promised_function('first');
   var p2 = promised_function('second');
   console.log(await p1);
   console.log(await p2);
-  console.log('done')
-}
+  console.log('done');
+};
 async_f();
 ```
 
@@ -279,12 +279,9 @@ Where `promised_function` resolves after 3 seconds. What happens? (Select closes
 
 ```javascript
 function attr(props) {
-  return <div>The value is {props.value}</div>
+  return <div>The value is {props.value}</div>;
 }
-ReactDOM.render(
-  <attr value="v1"/>,
-  document.getElementById('mydiv')
-);
+ReactDOM.render(<attr value="v1" />, document.getElementById('mydiv'));
 ```
 
 This code has an error. What is the problem? (Pick all that apply)
@@ -312,7 +309,7 @@ This code has an error. What is the problem? (Pick all that apply)
 
 ```javascript
 function MyComp() {
-  for (let i=0; i<3; i++) {
+  for (let i = 0; i < 3; i++) {
     const [cnt, setCnt] = useState(i);
   }
   setCnt(cnt + 1);
@@ -350,7 +347,9 @@ function eventAction() {
     return false;
   }
   return (
-    <a href={someUrl} onClick={doClick}>My button</a>
+    <a href={someUrl} onClick={doClick}>
+      My button
+    </a>
   );
 }
 ```
@@ -403,10 +402,14 @@ Component `Money` has two children: `Rupees` and `Paisa`, both with an `amount` 
 ```javascript
 counter_var = 1;
 function counter_html() {
-  return <div>
-    <h1>Counter</h1>
-    <h2>The count is: <span id="counter">{counter_var}</span></h2>
-  </div>
+  return (
+    <div>
+      <h1>Counter</h1>
+      <h2>
+        The count is: <span id="counter">{counter_var}</span>
+      </h2>
+    </div>
+  );
 }
 var element = counter_html();
 ReactDOM.render(element, document.getElementById('root'));
@@ -450,8 +453,13 @@ Given a JSON string like:
 
 ```json
 [
-  ["Swiggy", 123], ["Swiggy", 227], ["Zomato", 103],
-  ["Zomato", 171], ["Dunzo", 131], ["Zomato", 122], ["Swiggy", 181]
+  ["Swiggy", 123],
+  ["Swiggy", 227],
+  ["Zomato", 103],
+  ["Zomato", 171],
+  ["Dunzo", 131],
+  ["Zomato", 122],
+  ["Swiggy", 181]
 ]
 ```
 

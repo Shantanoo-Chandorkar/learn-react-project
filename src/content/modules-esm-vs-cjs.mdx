@@ -20,7 +20,7 @@ module.exports = { add, subtract };
 
 ```js
 // app.js
-const { add, subtract } = require("./math");
+const { add, subtract } = require('./math');
 console.log(add(2, 3)); // 5
 ```
 
@@ -28,13 +28,13 @@ console.log(add(2, 3)); // 5
 
 ```js
 // Completely valid CJS
-if (process.env.NODE_ENV === "development") {
-  const debug = require("./debug");
-  debug.log("dev mode");
+if (process.env.NODE_ENV === 'development') {
+  const debug = require('./debug');
+  debug.log('dev mode');
 }
 
 // Dynamic require from a variable
-const moduleName = "./config";
+const moduleName = './config';
 const config = require(moduleName);
 ```
 
@@ -46,8 +46,8 @@ This dynamism is what makes CJS incompatible with static analysis and tree shaki
 
 ```js
 // These are equivalent
-module.exports.greet = () => "hello";
-exports.greet = () => "hello";
+module.exports.greet = () => 'hello';
+exports.greet = () => 'hello';
 ```
 
 `exports` is just a reference to `module.exports`. They point to the same object initially. The trap: if you reassign `exports`, you break the link.
@@ -55,10 +55,10 @@ exports.greet = () => "hello";
 ```js
 // WRONG: exports is now pointing to a new object
 // module.exports is still the original empty object {}
-exports = { greet: () => "hello" };
+exports = { greet: () => 'hello' };
 
 // Correct: reassign module.exports directly
-module.exports = { greet: () => "hello" };
+module.exports = { greet: () => 'hello' };
 ```
 
 This is a frequent MCQ trap. When in doubt, always use `module.exports`.
@@ -77,7 +77,7 @@ export const subtract = (a, b) => a - b;
 
 ```js
 // app.js
-import { add, subtract } from "./math.js";
+import { add, subtract } from './math.js';
 console.log(add(2, 3)); // 5
 ```
 
@@ -86,7 +86,7 @@ Because ESM is static, this is a SyntaxError:
 ```js
 // Cannot do this in ESM
 if (condition) {
-  import { something } from "./mod.js"; // SyntaxError
+  import { something } from './mod.js'; // SyntaxError
 }
 ```
 
@@ -94,7 +94,7 @@ For dynamic importing in ESM, use the `import()` function (which returns a Promi
 
 ```js
 if (condition) {
-  const { something } = await import("./mod.js"); // valid
+  const { something } = await import('./mod.js'); // valid
 }
 ```
 
@@ -108,12 +108,14 @@ if (condition) {
 // utils.js
 export const add = (a, b) => a + b;
 export const PI = 3.14159;
-export function greet(name) { return `Hello ${name}`; }
+export function greet(name) {
+  return `Hello ${name}`;
+}
 ```
 
 ```js
-import { add, PI, greet } from "./utils.js";
-import { add as sum } from "./utils.js"; // alias
+import { add, PI, greet } from './utils.js';
+import { add as sum } from './utils.js'; // alias
 ```
 
 **Default export:** one per file, can be imported with any name.
@@ -121,25 +123,29 @@ import { add as sum } from "./utils.js"; // alias
 ```js
 // user.js
 export default class User {
-  constructor(name) { this.name = name; }
+  constructor(name) {
+    this.name = name;
+  }
 }
 ```
 
 ```js
-import User from "./user.js";       // standard
-import Person from "./user.js";     // also valid, any name works
+import User from './user.js'; // standard
+import Person from './user.js'; // also valid, any name works
 ```
 
 **Mixing both in one file:**
 
 ```js
 // api.js
-export const BASE_URL = "https://api.example.com";
-export default function fetchUser(id) { /* ... */ }
+export const BASE_URL = 'https://api.example.com';
+export default function fetchUser(id) {
+  /* ... */
+}
 ```
 
 ```js
-import fetchUser, { BASE_URL } from "./api.js";
+import fetchUser, { BASE_URL } from './api.js';
 ```
 
 The default import always comes first, before the named imports in the `{}`.
@@ -150,17 +156,17 @@ The default import always comes first, before the named imports in the `{}`.
 
 ```js
 // config.js
-const config = { env: "production" };
+const config = { env: 'production' };
 export default config;
 ```
 
 ```js
 // You cannot do this with default imports
-import { config } from "./config.js"; // undefined or error
+import { config } from './config.js'; // undefined or error
 
 // Correct
-import config from "./config.js";
-import anyNameYouWant from "./config.js"; // also valid
+import config from './config.js';
+import anyNameYouWant from './config.js'; // also valid
 ```
 
 ---
@@ -171,14 +177,14 @@ A pattern you'll see constantly in React codebases, an `index.js` that re-export
 
 ```js
 // components/index.js
-export { Button } from "./Button.js";
-export { Input } from "./Input.js";
-export { default as Modal } from "./Modal.js"; // re-exporting a default as named
+export { Button } from './Button.js';
+export { Input } from './Input.js';
+export { default as Modal } from './Modal.js'; // re-exporting a default as named
 ```
 
 ```js
 // Consuming code
-import { Button, Input, Modal } from "./components";
+import { Button, Input, Modal } from './components';
 ```
 
 ---
@@ -197,7 +203,7 @@ module.exports = { count, increment };
 ```
 
 ```js
-const { count, increment } = require("./counter");
+const { count, increment } = require('./counter');
 console.log(count); // 0
 increment();
 increment();
@@ -213,7 +219,7 @@ export const increment = () => count++;
 ```
 
 ```js
-import { count, increment } from "./counter.js";
+import { count, increment } from './counter.js';
 console.log(count); // 0
 increment();
 increment();
@@ -234,24 +240,25 @@ CJS evaluates modules synchronously. When A requires B and B requires A, Node re
 
 ```js
 // a.js
-const b = require("./b");
-console.log("a: b.greet =", b.greet);
-exports.name = "module A";
+const b = require('./b');
+console.log('a: b.greet =', b.greet);
+exports.name = 'module A';
 ```
 
 ```js
 // b.js
-const a = require("./a");
-console.log("b: a.name =", a.name);
-exports.greet = "hello from B";
+const a = require('./a');
+console.log('b: a.name =', a.name);
+exports.greet = 'hello from B';
 ```
 
 ```js
 // index.js
-require("./a");
+require('./a');
 ```
 
 Output:
+
 ```
 b: a.name = undefined    // a.js hasn't finished, exports.name not set yet
 a: b.greet = hello from B
@@ -265,16 +272,16 @@ ESM handles circular deps more gracefully because of live bindings. Both modules
 
 ```js
 // a.js
-import { bValue } from "./b.js";
-export const aValue = "A";
-console.log("a sees:", bValue);
+import { bValue } from './b.js';
+export const aValue = 'A';
+console.log('a sees:', bValue);
 ```
 
 ```js
 // b.js
-import { aValue } from "./a.js";
-export const bValue = "B";
-console.log("b sees:", aValue);
+import { aValue } from './a.js';
+export const bValue = 'B';
+console.log('b sees:', aValue);
 ```
 
 The engine resolves the graph statically first, then initializes. The order of initialization still matters, and you can still hit `ReferenceError` if you access a binding before it's initialized via TDZ. The practical rule: **avoid circular dependencies regardless of the module system.** They are a design smell and a maintenance hazard.
@@ -285,12 +292,12 @@ The engine resolves the graph statically first, then initializes. The order of i
 
 In Node.js, the distinction is controlled by file extension or `package.json`:
 
-| Condition | Module system |
-|---|---|
-| `.cjs` extension | Always CJS |
-| `.mjs` extension | Always ESM |
-| `.js` with `"type": "module"` in `package.json` | ESM |
-| `.js` with no `type` or `"type": "commonjs"` | CJS |
+| Condition                                       | Module system |
+| ----------------------------------------------- | ------------- |
+| `.cjs` extension                                | Always CJS    |
+| `.mjs` extension                                | Always ESM    |
+| `.js` with `"type": "module"` in `package.json` | ESM           |
+| `.js` with no `type` or `"type": "commonjs"`    | CJS           |
 
 You cannot use `require()` inside an `.mjs` file. You cannot use `import`/`export` syntax inside a `.cjs` file (without a bundler).
 
@@ -300,62 +307,68 @@ Interop: ESM can import CJS modules, but CJS cannot `require()` ESM modules (bec
 
 ### Quick comparison table
 
-| | CJS | ESM |
-|---|---|---|
-| Syntax | `require()` / `module.exports` | `import` / `export` |
-| Evaluation | Runtime, synchronous | Parse time, static |
-| Exports | Copy of value | Live binding |
-| Dynamic import | Native (`require` anywhere) | `import()` function |
-| Tree shaking | Not possible | Supported |
-| Top-level `await` | Not supported | Supported |
-| Circular deps | Partial export | Live bindings (safer) |
-| Default in | Node.js (legacy) | Browsers, modern Node |
+|                   | CJS                            | ESM                   |
+| ----------------- | ------------------------------ | --------------------- |
+| Syntax            | `require()` / `module.exports` | `import` / `export`   |
+| Evaluation        | Runtime, synchronous           | Parse time, static    |
+| Exports           | Copy of value                  | Live binding          |
+| Dynamic import    | Native (`require` anywhere)    | `import()` function   |
+| Tree shaking      | Not possible                   | Supported             |
+| Top-level `await` | Not supported                  | Supported             |
+| Circular deps     | Partial export                 | Live bindings (safer) |
+| Default in        | Node.js (legacy)               | Browsers, modern Node |
 
 ---
 
 ### Self-test: 5 questions
 
 **Q1.** What does this log?
+
 ```js
 // val.js (CJS)
 let val = 1;
-setTimeout(() => { val = 2; }, 0);
+setTimeout(() => {
+  val = 2;
+}, 0);
 module.exports = { val };
 
 // app.js
-const { val } = require("./val");
+const { val } = require('./val');
 setTimeout(() => console.log(val), 100);
 ```
 
 **Q2.** What is wrong with this ESM code?
+
 ```js
 const env = process.env.NODE_ENV;
-if (env === "dev") {
-  import { logger } from "./logger.js";
+if (env === 'dev') {
+  import { logger } from './logger.js';
 }
 ```
 
 **Q3.** What does this log?
+
 ```js
 // a.js (CJS)
 exports.x = 1;
 exports = { x: 99 };
 
 // app.js
-const a = require("./a");
+const a = require('./a');
 console.log(a.x);
 ```
 
 **Q4.** You have a default export in `theme.js`. Which import is correct?
+
 ```js
 // Option A
-import { theme } from "./theme.js";
+import { theme } from './theme.js';
 
 // Option B
-import theme from "./theme.js";
+import theme from './theme.js';
 
 // Option C
-import * as theme from "./theme.js";
+import * as theme from './theme.js';
 ```
 
 **Q5.** True or false: ESM modules can use `require()` to import a CJS module in Node.js.

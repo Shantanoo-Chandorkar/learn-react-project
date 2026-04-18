@@ -5,6 +5,7 @@
 Arrow functions are not just shorthand syntax for regular functions. They are a **fundamentally different kind of function** with specific behaviors removed on purpose. Understanding what they deliberately lack is more important than knowing their syntax.
 
 What arrow functions do NOT have:
+
 - Their own `this`
 - Their own `arguments` object
 - A `prototype` property
@@ -18,19 +19,23 @@ Every one of these omissions is intentional, not a limitation.
 
 ```js
 // Regular function
-function add(a, b) { return a + b; }
+function add(a, b) {
+  return a + b;
+}
 
 // Arrow: full body
-const add = (a, b) => { return a + b; };
+const add = (a, b) => {
+  return a + b;
+};
 
 // Arrow: implicit return (expression body, no braces)
 const add = (a, b) => a + b;
 
 // Single parameter: parens optional
-const double = x => x * 2;
+const double = (x) => x * 2;
 
 // No parameters: parens required
-const greet = () => "hello";
+const greet = () => 'hello';
 
 // Returning an object literal: must wrap in parens
 // (otherwise the {} is parsed as a function body)
@@ -40,7 +45,9 @@ const makeObj = (x) => ({ value: x });
 That last one is a frequent MCQ trap:
 
 ```js
-const makeObj = (x) => { value: x };
+const makeObj = (x) => {
+  value: x;
+};
 console.log(makeObj(5)); // undefined, not { value: 5 }
 ```
 
@@ -127,10 +134,10 @@ function Regular() {}
 const Arrow = () => {};
 
 console.log(Regular.prototype); // { constructor: f }
-console.log(Arrow.prototype);   // undefined
+console.log(Arrow.prototype); // undefined
 
 new Regular(); // works
-new Arrow();   // TypeError: Arrow is not a constructor
+new Arrow(); // TypeError: Arrow is not a constructor
 ```
 
 This is not just a quirk. Arrow functions are not designed to create objects. If you need a constructor, use a regular function or a `class`.
@@ -148,7 +155,7 @@ const counter = {
   count: 0,
   increment: () => {
     this.count++; // this = global, not counter
-  }
+  },
 };
 
 counter.increment();
@@ -162,7 +169,7 @@ const counter = {
   count: 0,
   increment() {
     this.count++; // this = counter
-  }
+  },
 };
 ```
 
@@ -177,18 +184,18 @@ Person.prototype.greet = () => {
   return `Hi, I'm ${this.name}`; // this = global
 };
 
-const p = new Person("shan");
+const p = new Person('shan');
 p.greet(); // "Hi, I'm undefined"
 ```
 
 **3. Event handlers where you need `this` to be the DOM element**
 
 ```js
-button.addEventListener("click", () => {
+button.addEventListener('click', () => {
   console.log(this); // window, not the button
 });
 
-button.addEventListener("click", function () {
+button.addEventListener('click', function () {
   console.log(this); // the button element
 });
 ```
@@ -210,11 +217,11 @@ const gen = *() => {}; // SyntaxError
 ### Arrow functions and `call`/`apply`/`bind` (the silent no-op trap)
 
 ```js
-const obj = { name: "shan" };
+const obj = { name: 'shan' };
 
 const greet = () => `Hello, ${this.name}`;
 
-console.log(greet.call(obj));  // "Hello, undefined"
+console.log(greet.call(obj)); // "Hello, undefined"
 console.log(greet.apply(obj)); // "Hello, undefined"
 console.log(greet.bind(obj)()); // "Hello, undefined"
 ```
@@ -246,27 +253,30 @@ const correct = (x) => {
 
 ### Comparison table
 
-| | Regular function | Arrow function |
-|---|---|---|
-| `this` | Dynamic (call site) | Lexical (definition site) |
-| `arguments` | Own `arguments` object | Inherits from enclosing scope |
-| `prototype` | Has it | Does not have it |
-| `new` | Can be constructor | Cannot, TypeError |
-| `call`/`apply`/`bind` | Works | Executes but ignores `this` override |
-| Generator | Can be (`function*`) | Cannot |
-| Method shorthand | No | No (different syntax) |
-| Hoisting | Fully hoisted (declarations) | Not hoisted (const/let assignment) |
+|                       | Regular function             | Arrow function                       |
+| --------------------- | ---------------------------- | ------------------------------------ |
+| `this`                | Dynamic (call site)          | Lexical (definition site)            |
+| `arguments`           | Own `arguments` object       | Inherits from enclosing scope        |
+| `prototype`           | Has it                       | Does not have it                     |
+| `new`                 | Can be constructor           | Cannot, TypeError                    |
+| `call`/`apply`/`bind` | Works                        | Executes but ignores `this` override |
+| Generator             | Can be (`function*`)         | Cannot                               |
+| Method shorthand      | No                           | No (different syntax)                |
+| Hoisting              | Fully hoisted (declarations) | Not hoisted (const/let assignment)   |
 
 ---
 
 ### Self-test: 5 questions
 
 **Q1.** What does this log?
+
 ```js
 const obj = {
-  name: "shan",
+  name: 'shan',
   getName: () => this.name,
-  getNameRegular() { return this.name; }
+  getNameRegular() {
+    return this.name;
+  },
 };
 
 console.log(obj.getName());
@@ -274,6 +284,7 @@ console.log(obj.getNameRegular());
 ```
 
 **Q2.** What does this log?
+
 ```js
 function outer() {
   const arrow = () => arguments[0];
@@ -284,12 +295,14 @@ console.log(outer(42));
 ```
 
 **Q3.** What does this return?
+
 ```js
 const makeUser = (name) => { name: name, active: true };
 console.log(makeUser("shan"));
 ```
 
 **Q4.** What does this log?
+
 ```js
 const double = (x) => x * 2;
 
@@ -298,6 +311,7 @@ console.log(result);
 ```
 
 **Q5.** Which of these will throw a TypeError and why?
+
 ```js
 const A = () => {};
 function B() {}
