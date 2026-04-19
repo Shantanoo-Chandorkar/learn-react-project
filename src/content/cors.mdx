@@ -1,0 +1,254 @@
+# CORS
+
+### The mental model first
+
+CORS (Cross-Origin Resource Sharing) is not a security feature that blocks requests. It is a browser mechanism that controls whether a web page running at one origin is allowed to **read the response** from a different origin. The request often goes through. The browser just decides whether to hand the response back to JavaScript.
+
+The "same-origin policy" is the baseline rule: a script at `https://app.com` cannot read responses from `https://api.com` by default. CORS is the controlled way to relax that restriction.
+
+An **origin** is the combination of protocol + host + port. All three must match for two URLs to be same-origin:
+
+```
+https://app.com:443  vs  https://app.com        → same (443 is default for https)
+https://app.com      vs  http://app.com         → different (protocol)
+https://app.com      vs  https://api.com        → different (host)
+https://app.com:3000 vs  https://app.com:4000   → different (port)
+```
+
+---
+
+### Simple vs complex (preflighted) requests
+
+The browser splits all cross-origin requests into two categories. The category determines whether a preflight is sent.
+
+### Simple requests
+
+A request is simple if it meets **all** of these conditions simultaneously:
+
+| Condition                                    | Allowed values                                                           |
+| -------------------------------------------- | ------------------------------------------------------------------------ |
+| Method                                       | `GET`, `POST`, `HEAD`                                                    |
+| Headers (manually set)                       | `Accept`, `Accept-Language`, `Content-Language`, `Content-Type` only     |
+| `Content-Type` (if POST)                     | `text/plain`, `multipart/form-data`, `application/x-www-form-urlencoded` |
+| No `ReadableStream` in body                  | —                                                                        |
+| No event listeners on `XMLHttpRequestUpload` | —                                                                        |
+
+Simple requests are sent directly. No preflight. The browser attaches an `Origin` header, the server responds, and the browser checks the response headers to decide whether to expose the response to JS.
+
+```js
+// Simple request: GET with no custom headers
+fetch('https://api.com/data');
+
+// Simple request: POST with form-encoded body
+fetch('https://api.com/submit', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  body: 'name=shan',
+});
+```
+
+### Complex (preflighted) requests
+
+Anything outside the simple criteria triggers a preflight. Common triggers:
+
+```js
+// Trigger 1: custom header
+fetch('https://api.com/data', {
+  headers: { Authorization: 'Bearer token' }, // not in simple list
+});
+
+// Trigger 2: JSON body (Content-Type: application/json is not in simple list)
+fetch('https://api.com/data', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ id: 1 }),
+});
+
+// Trigger 3: non-simple method
+fetch('https://api.com/user/1', { method: 'DELETE' });
+fetch('https://api.com/user/1', { method: 'PUT' });
+```
+
+---
+
+### The preflight: what it actually is
+
+A preflight is an automatic `OPTIONS` request the browser sends **before** the actual request. It asks the server: "I am about to send a cross-origin request with these characteristics, will you allow it?"
+
+```
+OPTIONS /data HTTP/1.1
+Host: api.com
+Origin: https://app.com
+Access-Control-Request-Method: DELETE
+Access-Control-Request-Headers: Authorization, Content-Type
+```
+
+Three headers the browser sends on the preflight:
+
+| Header                           | Meaning                                            |
+| -------------------------------- | -------------------------------------------------- |
+| `Origin`                         | Where the request is coming from                   |
+| `Access-Control-Request-Method`  | The method the actual request will use             |
+| `Access-Control-Request-Headers` | The custom headers the actual request will include |
+
+The server must respond with the appropriate CORS headers permitting the request:
+
+```
+HTTP/1.1 204 No Content
+Access-Control-Allow-Origin: https://app.com
+Access-Control-Allow-Methods: DELETE, GET, POST, PUT
+Access-Control-Allow-Headers: Authorization, Content-Type
+Access-Control-Max-Age: 86400
+```
+
+If the server does not respond with the right headers, the browser blocks the actual request entirely. It never sends it.
+
+---
+
+### Response headers: the full set
+
+These are server-to-browser headers that control CORS behavior:
+
+| Header                             | Purpose                                                       |
+| ---------------------------------- | ------------------------------------------------------------- |
+| `Access-Control-Allow-Origin`      | Which origins are permitted. `*` or a specific origin         |
+| `Access-Control-Allow-Methods`     | Permitted methods in actual requests                          |
+| `Access-Control-Allow-Headers`     | Permitted custom headers in actual requests                   |
+| `Access-Control-Expose-Headers`    | Which response headers JS is allowed to read                  |
+| `Access-Control-Allow-Credentials` | Whether cookies/auth headers are allowed                      |
+| `Access-Control-Max-Age`           | How long the browser can cache the preflight result (seconds) |
+
+### `Access-Control-Allow-Origin`
+
+```
+Access-Control-Allow-Origin: *               // any origin, but credentials not allowed with *
+Access-Control-Allow-Origin: https://app.com // single specific origin
+```
+
+You cannot list multiple origins like `https://app.com, https://other.com`. The workaround is server-side: read the `Origin` header from the request and dynamically echo it back if it is in an allowlist.
+
+### `Access-Control-Expose-Headers`
+
+By default, JS can only read six "safe" response headers: `Cache-Control`, `Content-Language`, `Content-Length`, `Content-Type`, `Expires`, `Last-Modified`. Any other headers the server sends are hidden from JS unless explicitly exposed:
+
+```
+Access-Control-Expose-Headers: X-Request-Id, X-RateLimit-Remaining
+```
+
+Without this, `response.headers.get("X-Request-Id")` returns `null` even if the header is present.
+
+### `Access-Control-Max-Age`
+
+The preflight result is cached. Setting `86400` means the browser will not send another `OPTIONS` request for that endpoint for 24 hours:
+
+```
+Access-Control-Max-Age: 86400
+```
+
+---
+
+### Credentialed requests
+
+By default, cross-origin requests do not include cookies, HTTP authentication headers, or TLS client certificates. To include them:
+
+```js
+fetch('https://api.com/me', {
+  credentials: 'include', // sends cookies cross-origin
+});
+```
+
+Two conditions must both be true for this to work:
+
+1. The server must respond with `Access-Control-Allow-Credentials: true`
+2. `Access-Control-Allow-Origin` must be a specific origin, not `*`
+
+```
+Access-Control-Allow-Origin: https://app.com   // must NOT be *
+Access-Control-Allow-Credentials: true
+```
+
+If you use `credentials: "include"` with a server that responds `Access-Control-Allow-Origin: *`, the browser blocks the response. The wildcard and credentials cannot coexist.
+
+---
+
+### What CORS does not protect against
+
+This is a verbal round trap. CORS is a browser restriction. It has no effect on:
+
+- Server-to-server requests (no browser involved)
+- `curl`, Postman, or any non-browser HTTP client
+- A malicious script that bypasses the browser
+
+CORS does not prevent the server from receiving the request. For simple requests, the request is sent and processed by the server. CORS only controls whether the browser hands the response back to JavaScript. This is why CSRF attacks (Module 4.8) are still possible: the browser sends the cookie, the server processes the request, CORS just hides the response from the attacker's JS.
+
+---
+
+### End-to-end flow
+
+```
+Browser at https://app.com
+  │
+  ├─ fetch("https://api.com/data", { method: "DELETE", headers: { Authorization: "..." } })
+  │
+  │  Step 1: Browser detects cross-origin + non-simple → sends preflight
+  │
+  ├─► OPTIONS https://api.com/data
+  │     Origin: https://app.com
+  │     Access-Control-Request-Method: DELETE
+  │     Access-Control-Request-Headers: Authorization
+  │
+  │  Step 2: Server responds to preflight
+  │
+  ◄─┤  204 No Content
+  │     Access-Control-Allow-Origin: https://app.com
+  │     Access-Control-Allow-Methods: DELETE
+  │     Access-Control-Allow-Headers: Authorization
+  │     Access-Control-Max-Age: 3600
+  │
+  │  Step 3: Preflight approved → browser sends actual request
+  │
+  ├─► DELETE https://api.com/data
+  │     Origin: https://app.com
+  │     Authorization: Bearer token
+  │
+  │  Step 4: Server responds to actual request
+  │
+  ◄─┤  200 OK
+  │     Access-Control-Allow-Origin: https://app.com
+  │     (response body)
+  │
+  │  Step 5: Browser checks Allow-Origin, matches → hands response to JS
+```
+
+If Step 2 or Step 4 is missing the correct headers, the browser blocks at that step.
+
+---
+
+### Self-test: 5 questions
+
+**Q1.** A `POST` request with `Content-Type: application/json` is sent cross-origin. Is a preflight triggered, and why?
+
+**Q2.** The server responds with `Access-Control-Allow-Origin: *` and `Access-Control-Allow-Credentials: true`. The browser sends `fetch(url, { credentials: "include" })`. What happens?
+
+**Q3.** A cross-origin `GET` request succeeds (200 OK) and the server sets a custom header `X-Request-Id: abc123`. Why does `response.headers.get("X-Request-Id")` return `null` in the browser?
+
+**Q4.** You set `Access-Control-Max-Age: 600` on your preflight response. What exactly does this control?
+
+**Q5.** A server receives a DELETE request from a different origin, processes it, deletes the record from the database, and responds without any CORS headers. What happened from the browser's perspective, and what happened on the server?
+
+---
+
+<details>
+<summary>Answers</summary>
+
+**A1.** Yes, preflight is triggered. `application/json` is not in the allowed `Content-Type` list for simple requests (`text/plain`, `multipart/form-data`, `application/x-www-form-urlencoded`). Even though the method is `POST` (which is simple), the `Content-Type` fails the simple criteria. All conditions must pass simultaneously for a request to be simple.
+
+**A2.** The browser blocks the response. `Access-Control-Allow-Origin: *` (wildcard) and `Access-Control-Allow-Credentials: true` cannot coexist. The spec explicitly forbids this combination. The browser will reject the response with a CORS error. The fix is to set `Access-Control-Allow-Origin` to the specific origin rather than `*`.
+
+**A3.** `X-Request-Id` is not in the default set of exposed headers. By default, CORS only allows JS to read six safe headers. All other headers are hidden from JS even if they are present in the response. The server must explicitly include `Access-Control-Expose-Headers: X-Request-Id` for the browser to make it accessible via `response.headers.get()`.
+
+**A4.** It tells the browser to cache the preflight result for 600 seconds (10 minutes). During that window, the browser will not send another `OPTIONS` preflight request for that specific URL and method/headers combination. It only affects preflight caching, not the actual request or response caching.
+
+**A5.** On the server: the record was deleted. The request went through completely. CORS does not prevent the server from receiving or processing requests. On the browser: it received the response, saw no `Access-Control-Allow-Origin` header, and blocked the response from being accessible to JavaScript. A CORS error was thrown. The JS code never sees the response body or status code. This demonstrates that CORS is a browser-side read restriction, not a server-side execution restriction.
+
+</details>
