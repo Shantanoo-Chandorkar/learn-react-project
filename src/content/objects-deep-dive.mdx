@@ -1,0 +1,935 @@
+# Object deep dive
+
+### The mental model first
+
+Everything in JavaScript that is not a primitive is an object. Functions, arrays, dates, regexes, all objects. And every property on every object is not just a value, it is a **property descriptor**, a bundle of metadata that controls how that property behaves. Most JS developers work with object values their whole career without knowing the rules underneath. That is exactly where MCQ traps live.
+
+---
+
+## 3.1 Property descriptors
+
+Every property has four attributes. You never see them in normal code, but they control everything.
+
+| Attribute      | Default (literal)  | What it controls                                              |
+| -------------- | ------------------ | ------------------------------------------------------------- |
+| `value`        | the assigned value | what the property holds                                       |
+| `writable`     | `true`             | can the value be reassigned                                   |
+| `enumerable`   | `true`             | does it show up in `for...in`, `Object.keys`, spread          |
+| `configurable` | `true`             | can the descriptor itself be changed, can property be deleted |
+
+```js
+const obj = { name: 'shan' };
+
+Object.getOwnPropertyDescriptor(obj, 'name');
+// {
+//   value: "shan",
+//   writable: true,
+//   enumerable: true,
+//   configurable: true
+// }
+```
+
+### `Object.defineProperty`
+
+Lets you set any combination of descriptor attributes explicitly:
+
+```js
+const obj = {};
+
+Object.defineProperty(obj, 'id', {
+  value: 42,
+  writable: false,
+  enumerable: false,
+  configurable: false,
+});
+
+obj.id = 99; // silently fails (throws in strict mode)
+console.log(obj.id); // 42
+
+console.log(Object.keys(obj)); // [], id is non-enumerable
+console.log('id' in obj); // true, 'in' checks existence not enumerability
+```
+
+The `in` operator versus `Object.keys` is a frequent trap. `in` checks the prototype chain for existence regardless of enumerability. `Object.keys` only returns own, enumerable keys.
+
+### Non-configurable trap
+
+Once `configurable: false` is set, you cannot re-define the property or delete it:
+
+```js
+const obj = {};
+Object.defineProperty(obj, 'x', { value: 1, configurable: false });
+
+Object.defineProperty(obj, 'x', { value: 2 }); // TypeError: Cannot redefine property x
+delete obj.x; // false, silently fails
+```
+
+One exception: if `writable` is `true` and `configurable` is `false`, you can still change the value directly but you cannot change `writable` back from `false` to `true` once set.
+
+---
+
+## 3.2 Key methods
+
+### `Object.freeze` vs `Object.seal`
+
+Both restrict what you can do to an object, but at different levels:
+
+```js
+// freeze: no additions, no deletions, no modifications
+const frozen = Object.freeze({ x: 1, nested: { y: 2 } });
+frozen.x = 99; // silently fails, x stays 1
+frozen.z = 10; // silently fails, z not added
+delete frozen.x; // silently fails
+
+// seal: no additions, no deletions, but existing values CAN change
+const sealed = Object.seal({ x: 1 });
+sealed.x = 99; // works, x is now 99
+sealed.z = 10; // silently fails
+delete sealed.x; // silently fails
+```
+
+Both are **shallow**. This is the most common MCQ trap involving `freeze`:
+
+```js
+const obj = Object.freeze({ nested: { count: 0 } });
+obj.nested.count = 99; // works. nested is frozen (can't reassign), but the object it points to is not
+console.log(obj.nested.count); // 99
+```
+
+`Object.freeze` freezes the properties of the object it is called on. Properties that are object references are frozen in terms of reassignment, but the referenced object itself is not frozen.
+
+### `Object.assign`
+
+Copies own enumerable properties from one or more source objects into a target. Returns the target.
+
+```js
+const target = { a: 1 };
+const source = { b: 2, c: 3 };
+Object.assign(target, source);
+console.log(target); // { a: 1, b: 2, c: 3 }
+```
+
+Shallow copy trap:
+
+```js
+const original = { a: 1, nested: { b: 2 } };
+const copy = Object.assign({}, original);
+
+copy.a = 99; // does not affect original
+copy.nested.b = 99; // DOES affect original, same reference
+
+console.log(original.nested.b); // 99
+```
+
+`Object.assign` only triggers setters on the target. It copies values, not descriptors. A non-writable property on the target will throw if you try to write to it via `assign`.
+
+### `Object.create`
+
+Creates a new object with a specified prototype. Covered in Module 1.5, but the key interview use is creating a pure dictionary with no prototype:
+
+```js
+const dict = Object.create(null);
+dict.hasOwnProperty; // undefined, no Object.prototype at all
+'toString' in dict; // false
+
+// Safe for arbitrary key storage, no prototype pollution risk
+dict['constructor'] = 'safe';
+```
+
+### `Object.keys` / `Object.values` / `Object.entries`
+
+All return arrays of only **own enumerable** properties. Prototype properties and non-enumerable properties are excluded.
+
+```js
+const obj = { a: 1, b: 2 };
+Object.defineProperty(obj, 'hidden', { value: 3, enumerable: false });
+
+Object.keys(obj); // ["a", "b"], hidden excluded
+Object.values(obj); // [1, 2]
+Object.entries(obj); // [["a", 1], ["b", 2]]
+```
+
+Versus `for...in` which walks the prototype chain:
+
+```js
+function Animal() {
+  this.type = 'dog';
+}
+Animal.prototype.breathe = true;
+
+const a = new Animal();
+
+Object.keys(a); // ["type"], own only
+for (let k in a) k; // "type", "breathe", includes prototype
+```
+
+---
+
+## 3.3 Shallow vs deep copy
+
+This is one of the most dense areas for interview gotchas. Four common methods, four different behaviors.
+
+### Spread `{ ...obj }`
+
+Shallow. Copies own enumerable properties only. Does not copy property descriptors, non-enumerable props, or prototype:
+
+```js
+const original = { a: 1, b: { c: 2 } };
+const copy = { ...original };
+
+copy.a = 99; // independent
+copy.b.c = 99; // mutates original.b.c, same reference
+
+const frozen = Object.freeze({ x: 1 });
+const spread = { ...frozen };
+spread.x = 99; // works, spread copied the value, not the frozen descriptor
+```
+
+### `Object.assign({}, obj)`
+
+Functionally identical to spread for flat objects. Same shallow reference behavior.
+
+### `JSON.parse(JSON.stringify(obj))`
+
+Creates a true deep copy, but with hard limitations:
+
+```js
+const obj = {
+  a: 1,
+  b: undefined, // lost
+  c: () => 'fn', // lost
+  d: new Date(), // becomes string, not Date
+  e: /regex/, // becomes {}
+  f: NaN, // becomes null
+  g: Infinity, // becomes null
+  h: { nested: true }, // correctly deep copied
+};
+
+const copy = JSON.parse(JSON.stringify(obj));
+// { a: 1, d: "2024-...", e: {}, f: null, g: null, h: { nested: true } }
+// b and c are gone entirely
+```
+
+Fails silently on circular references, throwing `TypeError: Converting circular structure to JSON`.
+
+### `structuredClone(obj)`
+
+The modern correct answer for deep cloning. Handles circular references, typed arrays, dates, maps, sets, and more:
+
+```js
+const obj = {
+  a: 1,
+  b: new Date(), // correctly cloned as Date
+  c: new Map([[1, 2]]), // correctly cloned
+  d: { nested: true }, // deep clone
+};
+
+const clone = structuredClone(obj);
+clone.d.nested = false;
+console.log(obj.d.nested); // true, fully independent
+
+// What it still cannot clone:
+const bad = { fn: () => {} };
+structuredClone(bad); // TypeError: functions are not cloneable
+```
+
+`structuredClone` does not copy functions, DOM nodes, or class instances with methods. For those, you need a library or manual clone logic.
+
+### Comparison table
+
+| Method            | Deep? | Handles functions | Handles Date       | Circular refs | Preserves descriptors |
+| ----------------- | ----- | ----------------- | ------------------ | ------------- | --------------------- |
+| Spread / `assign` | No    | Copies ref        | Copies ref         | Yes (shallow) | No                    |
+| `JSON` round-trip | Yes   | Drops them        | Converts to string | Throws        | No                    |
+| `structuredClone` | Yes   | Throws            | Correct clone      | Yes           | No                    |
+
+---
+
+## 3.4 Optional chaining & nullish coalescing
+
+### `?.` optional chaining
+
+Short-circuits and returns `undefined` if the left side is `null` or `undefined`, instead of throwing:
+
+```js
+const user = { profile: { name: 'shan' } };
+
+user.profile?.name; // "shan"
+user.address?.city; // undefined, no throw
+user.address?.city?.zip; // undefined, chain short-circuits at address
+
+user.greet?.(); // undefined, method call on undefined
+user.data?.[0]; // undefined, bracket access
+```
+
+The short-circuit is the MCQ trap. Once `?.` short-circuits, the rest of the expression is not evaluated:
+
+```js
+let count = 0;
+const obj = null;
+obj?.method(count++); // short-circuits, count++ never runs
+console.log(count); // 0
+```
+
+### `??` nullish coalescing vs `||`
+
+`||` returns the right side if the left is **falsy** (`0`, `""`, `false`, `null`, `undefined`, `NaN`).
+`??` returns the right side only if the left is `null` or `undefined`.
+
+```js
+const a = 0 || 'default'; // "default", 0 is falsy
+const b = 0 ?? 'default'; // 0, not null/undefined
+
+const c = '' || 'fallback'; // "fallback", "" is falsy
+const d = '' ?? 'fallback'; // "", not null/undefined
+
+const e = false || true; // true
+const f = false ?? true; // false, not null/undefined
+```
+
+This distinction matters enormously when `0`, `""`, or `false` are valid values, such as a score of `0`, an empty input field, or a toggle that is off.
+
+### Combining `?.` and `??`
+
+```js
+const config = null;
+const timeout = config?.timeout ?? 3000; // undefined ?? 3000 = 3000
+
+const config2 = { timeout: 0 };
+const timeout2 = config2?.timeout ?? 3000; // 0 ?? 3000 = 0, correct
+const timeout3 = config2?.timeout || 3000; // 0 || 3000 = 3000, WRONG if 0 is valid
+```
+
+This combo is a near-guaranteed MCQ question in any modern JS assessment.
+
+### Operator precedence trap
+
+`??` cannot be directly combined with `&&` or `||` without parentheses:
+
+```js
+null ?? true || false;  // SyntaxError in some parsers
+(null ?? true) || false; // true, correct with parens
+null ?? (true || false); // true
+```
+
+---
+
+## 3.5 Computed properties & shorthand
+
+### Property shorthand
+
+When a variable name matches the property name you want, you can omit the colon and value:
+
+```js
+const name = 'shan';
+const age = 28;
+
+const user = { name, age };
+// same as { name: name, age: age }
+```
+
+### Computed property names
+
+Square brackets allow any expression as a property key at definition time:
+
+```js
+const key = 'score';
+const prefix = 'user';
+
+const obj = {
+  [key]: 100, // { score: 100 }
+  [`${prefix}_id`]: 42, // { user_id: 42 }
+  [1 + 2]: 'three', // { 3: "three" }
+};
+```
+
+MCQ trap: the expression inside `[]` is evaluated at the time the object is created:
+
+```js
+let i = 0;
+const obj = {
+  [i++]: 'a', // key is 0
+  [i++]: 'b', // key is 1
+  [i++]: 'c', // key is 2
+};
+console.log(obj); // { 0: "a", 1: "b", 2: "c" }
+console.log(i); // 3
+```
+
+### Method shorthand
+
+```js
+// Old
+const obj = {
+  greet: function () {
+    return 'hi';
+  },
+};
+
+// Shorthand
+const obj = {
+  greet() {
+    return 'hi';
+  },
+};
+```
+
+The shorthand form is not just cosmetic. Unlike a regular property function, method shorthand participates properly in `super` calls for prototype chain access. An arrow function as a method does not.
+
+### Computed methods
+
+```js
+const action = 'fetchUser';
+
+const api = {
+  [action]() {
+    return 'fetching';
+  },
+};
+
+api.fetchUser(); // "fetching"
+api[action](); // "fetching"
+```
+
+---
+
+## Module 3: Object deep dive — Full Self-test (20 Questions)
+
+All answers are hidden. Attempt each before expanding.
+
+---
+
+### Section 3.1: Property descriptors (4 questions)
+
+**Q1.** What does this log?
+
+```js
+const obj = {};
+Object.defineProperty(obj, 'x', {
+  value: 10,
+  writable: false,
+});
+
+obj.x = 99;
+console.log(obj.x);
+```
+
+<details>
+<summary>Answer</summary>
+
+**`10`**
+
+`writable: false` prevents reassignment. In non-strict mode this silently fails. In strict mode it throws a `TypeError`. The value stays `10`. Note: `configurable` defaults to `false` when using `defineProperty`, so you cannot redefine it either.
+
+</details>
+
+---
+
+**Q2.** What does this log?
+
+```js
+const obj = { a: 1, b: 2 };
+Object.defineProperty(obj, 'c', {
+  value: 3,
+  enumerable: false,
+  configurable: true,
+});
+
+console.log('c' in obj);
+console.log(Object.keys(obj));
+console.log(obj.c);
+```
+
+<details>
+<summary>Answer</summary>
+
+**`true`, `["a", "b"]`, `3`**
+
+`in` checks for property existence across the entire object and its prototype chain, regardless of enumerability. `Object.keys` only returns own enumerable keys, so `c` is excluded. Directly accessing `obj.c` still works, enumerability only controls visibility in iteration and spread, not direct access.
+
+</details>
+
+---
+
+**Q3.** What does this log?
+
+```js
+const obj = {};
+Object.defineProperty(obj, 'id', {
+  value: 1,
+  configurable: false,
+  writable: true,
+});
+
+obj.id = 2;
+console.log(obj.id);
+
+Object.defineProperty(obj, 'id', { writable: false });
+obj.id = 3;
+console.log(obj.id);
+```
+
+<details>
+<summary>Answer</summary>
+
+**`2`, `2`**
+
+Even though `configurable` is `false`, you can still change `writable` from `true` to `false` (one-way only). Once `writable` is set to `false`, the direct assignment `obj.id = 3` silently fails. The value stays `2`. The one-way rule: `configurable: false` allows tightening (`writable: true → false`) but never loosening.
+
+</details>
+
+---
+
+**Q4.** What does this log?
+
+```js
+function Person(name) {
+  this.name = name;
+}
+
+const p = new Person('shan');
+const descriptor = Object.getOwnPropertyDescriptor(p, 'name');
+
+console.log(descriptor.enumerable);
+console.log(descriptor.writable);
+console.log(descriptor.configurable);
+```
+
+<details>
+<summary>Answer</summary>
+
+**`true`, `true`, `true`**
+
+Properties created via normal assignment inside a constructor (or anywhere via `=`) get all four descriptor defaults: `value` as assigned, `writable: true`, `enumerable: true`, `configurable: true`. Only `Object.defineProperty` lets you override these defaults. Normal assignment always produces a fully open descriptor.
+
+</details>
+
+---
+
+### Section 3.2: Key methods (4 questions)
+
+**Q5.** What does this log?
+
+```js
+const obj = Object.seal({ a: 1, b: 2 });
+
+obj.a = 99;
+obj.c = 3;
+delete obj.b;
+
+console.log(obj.a);
+console.log(obj.c);
+console.log(obj.b);
+```
+
+<details>
+<summary>Answer</summary>
+
+**`99`, `undefined`, `2`**
+
+`seal` prevents additions and deletions but allows modification of existing values. `obj.a = 99` works because the property exists and is still writable. `obj.c = 3` silently fails, `c` is never added. `delete obj.b` silently fails, `b` stays. This is the core distinction between `seal` (can edit, can't add/delete) and `freeze` (can't do anything).
+
+</details>
+
+---
+
+**Q6.** What does this log?
+
+```js
+function Animal() {}
+Animal.prototype.legs = 4;
+
+const dog = new Animal();
+dog.name = 'rex';
+
+console.log(Object.keys(dog));
+console.log(Object.values(dog));
+
+for (let key in dog) {
+  process.stdout.write(key + ' ');
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+**`["name"]`, `["rex"]`, `"name legs "`**
+
+`Object.keys` and `Object.values` only return own enumerable properties. `legs` is on the prototype, not the instance, so it is excluded. `for...in` walks the full prototype chain and includes inherited enumerable properties, so `legs` appears. To filter in `for...in`: use `dog.hasOwnProperty(key)`.
+
+</details>
+
+---
+
+**Q7.** What does this log?
+
+```js
+const target = { a: 1 };
+Object.defineProperty(target, 'b', {
+  value: 2,
+  writable: false,
+  enumerable: true,
+});
+
+const source = { b: 99, c: 3 };
+Object.assign(target, source);
+
+console.log(target.b);
+console.log(target.c);
+```
+
+<details>
+<summary>Answer</summary>
+
+**Throws `TypeError`**, then `target.c` would be `3` if the error were caught.
+
+`Object.assign` copies properties by invoking the setter on the target. `b` on the target has `writable: false`. When `assign` tries to write `99` to it, it triggers a `TypeError` because writing to a non-writable property in any context other than `defineProperty` throws in strict mode and `assign` internally operates in strict mode. This is a key difference from spread, which would create a new object and not trigger this issue.
+
+</details>
+
+---
+
+**Q8.** What does this log?
+
+```js
+const dict = Object.create(null);
+dict.name = 'shan';
+
+console.log(dict.name);
+console.log(dict.hasOwnProperty);
+console.log('toString' in dict);
+console.log(Object.keys(dict));
+```
+
+<details>
+<summary>Answer</summary>
+
+**`"shan"`, `undefined`, `false`, `["name"]`**
+
+`Object.create(null)` produces an object with no prototype at all, not even `Object.prototype`. There is no `hasOwnProperty`, no `toString`, no `constructor`, nothing. `"toString" in dict` is `false` because there is no prototype chain to walk. `Object.keys` still works because it is a static method on `Object` itself, not called through the instance. This is why `Object.create(null)` is safe for arbitrary key dictionaries.
+
+</details>
+
+---
+
+### Section 3.3: Shallow vs deep copy (4 questions)
+
+**Q9.** What does this log?
+
+```js
+const original = {
+  a: 1,
+  fn: () => 'hello',
+  d: new Date('2024-01-01'),
+  nested: { b: 2 },
+};
+
+const copy = JSON.parse(JSON.stringify(original));
+
+console.log(copy.fn);
+console.log(typeof copy.d);
+console.log(copy.nested.b);
+console.log(copy.nested === original.nested);
+```
+
+<details>
+<summary>Answer</summary>
+
+**`undefined`, `"string"`, `2`, `false`**
+
+`JSON.stringify` silently drops functions. `copy.fn` is `undefined`. `Date` objects are serialized to their ISO string representation, so `copy.d` is a string, not a `Date`. `copy.nested.b` is `2`, correctly deep copied. `copy.nested === original.nested` is `false` because `JSON` round-trip creates entirely new objects, so it is a true deep clone for plain values.
+
+</details>
+
+---
+
+**Q10.** What does this log?
+
+```js
+const obj = { a: 1 };
+const copy = { ...obj };
+
+Object.defineProperty(obj, 'a', { enumerable: false });
+
+console.log(Object.keys(copy));
+console.log(Object.keys(obj));
+```
+
+<details>
+<summary>Answer</summary>
+
+**`["a"]`, `[]`**
+
+Spread copies own enumerable properties at the moment of spreading. At that point `a` was enumerable, so `copy` gets `a` as a normal enumerable property. Later making `a` non-enumerable on `obj` has no effect on `copy`, it already has its own independent `a`. `Object.keys(obj)` returns `[]` because `a` is now non-enumerable on `obj`.
+
+</details>
+
+---
+
+**Q11.** What does this log?
+
+```js
+const obj = { a: 1, nested: { b: 2 } };
+
+const copy = structuredClone(obj);
+copy.nested.b = 99;
+
+const spread = { ...obj };
+spread.nested.b = 50;
+
+console.log(obj.nested.b);
+```
+
+<details>
+<summary>Answer</summary>
+
+**`50`**
+
+Two operations happen. `structuredClone` creates a true deep copy, so `copy.nested.b = 99` does not affect `obj`. Then spread creates a shallow copy, so `spread.nested` is the same reference as `obj.nested`. Setting `spread.nested.b = 50` directly mutates `obj.nested.b`. The final value is `50`.
+
+</details>
+
+---
+
+**Q12.** What does this log?
+
+```js
+const a = {};
+const b = a;
+const c = { ...a };
+
+b.x = 1;
+
+console.log(a.x);
+console.log(c.x);
+```
+
+<details>
+<summary>Answer</summary>
+
+**`1`, `undefined`**
+
+`b = a` is not a copy at all. Both `a` and `b` point to the same object in memory. Mutating `b.x` is mutating `a.x`. `c = { ...a }` was spread at the point when `a` had no properties, creating an empty independent object. The subsequent mutation through `b` does not affect `c`. This distinguishes assignment (reference sharing) from spread (snapshot copy).
+
+</details>
+
+---
+
+### Section 3.4: Optional chaining & nullish coalescing (4 questions)
+
+**Q13.** What does this log?
+
+```js
+const user = {
+  getName: () => 'shan',
+};
+
+console.log(user.getName?.());
+console.log(user.getAge?.());
+console.log(user.address?.city ?? 'unknown');
+```
+
+<details>
+<summary>Answer</summary>
+
+**`"shan"`, `undefined`, `"unknown"`**
+
+`user.getName?.()` checks if `getName` exists before calling it, it does, so it returns `"shan"`. `user.getAge?.()` sees `getAge` is `undefined`, short-circuits, returns `undefined`, no TypeError. `user.address` is `undefined`, `?.city` short-circuits to `undefined`, then `?? "unknown"` returns `"unknown"` because `undefined` triggers the nullish fallback.
+
+</details>
+
+---
+
+**Q14.** What does this log?
+
+```js
+const settings = {
+  theme: null,
+  fontSize: 0,
+  label: '',
+  enabled: false,
+};
+
+console.log(settings.theme ?? 'dark');
+console.log(settings.fontSize ?? 16);
+console.log(settings.label ?? 'default');
+console.log(settings.enabled ?? true);
+console.log(settings.missing ?? 'fallback');
+```
+
+<details>
+<summary>Answer</summary>
+
+**`"dark"`, `0`, `""`, `false`, `"fallback"`**
+
+`??` only triggers on `null` or `undefined`. `null` triggers → `"dark"`. `0` is not null/undefined → `0`. `""` is not null/undefined → `""`. `false` is not null/undefined → `false`. `settings.missing` is `undefined` → `"fallback"`. If these were `||`, the answers would be `"dark"`, `16`, `"default"`, `true`, `"fallback"`, catching all falsy values.
+
+</details>
+
+---
+
+**Q15.** What does this log?
+
+```js
+let count = 0;
+const obj = null;
+
+const result = obj?.method(count++);
+
+console.log(result);
+console.log(count);
+```
+
+<details>
+<summary>Answer</summary>
+
+**`undefined`, `0`**
+
+`obj` is `null`, so `?.` short-circuits immediately. The entire right side of the `?.`, including the argument `count++`, is never evaluated. `count++` never runs, so `count` remains `0`. This is the short-circuit evaluation behavior of `?.`, it is not just a null guard, it actively prevents evaluation of anything to its right.
+
+</details>
+
+---
+
+**Q16.** What does this log?
+
+```js
+const data = {
+  users: [{ name: 'shan', address: null }],
+};
+
+console.log(data.users[0]?.address?.city ?? 'no city');
+console.log(data.users[1]?.name ?? 'no user');
+console.log(data.users[0]?.name ?? 'no name');
+```
+
+<details>
+<summary>Answer</summary>
+
+**`"no city"`, `"no user"`, `"shan"`**
+
+First: `data.users[0]` exists, `address` is `null`, `?.city` on `null` short-circuits to `undefined`, `?? "no city"` triggers. Second: `data.users[1]` is `undefined` (only index 0 exists), `?.name` short-circuits to `undefined`, `?? "no user"` triggers. Third: `data.users[0]` exists, `name` is `"shan"`, `?? "no name"` does not trigger because `"shan"` is not null/undefined.
+
+</details>
+
+---
+
+### Section 3.5: Computed properties & shorthand (4 questions)
+
+**Q17.** What does this log?
+
+```js
+const prefix = 'get';
+const field = 'Name';
+
+const obj = {
+  [`${prefix}${field}`]() {
+    return 'shan';
+  },
+};
+
+console.log(obj.getName());
+console.log(typeof obj.getName);
+console.log(Object.keys(obj));
+```
+
+<details>
+<summary>Answer</summary>
+
+**`"shan"`, `"function"`, `["getName"]`**
+
+The template literal inside `[]` is evaluated at object creation time, producing the key `"getName"`. The method shorthand creates a function under that key. `typeof obj.getName` is `"function"`. `Object.keys` returns it because methods defined via shorthand are enumerable by default. This differs from `Object.defineProperty` where `enumerable` defaults to `false`.
+
+</details>
+
+---
+
+**Q18.** What does this log?
+
+```js
+const key = 'score';
+const score = 100;
+
+const player = {
+  name: 'shan',
+  score,
+  [`best_${key}`]: 200,
+};
+
+console.log(player.score);
+console.log(player.best_score);
+console.log(player[key]);
+console.log(player[`best_${key}`]);
+```
+
+<details>
+<summary>Answer</summary>
+
+**`100`, `200`, `100`, `200`**
+
+`score` uses property shorthand, equivalent to `score: score`. ``[`best_${key}`]`` evaluates the template at creation time, producing key `"best_score"`. `player[key]` is `player["score"]` which is `100`. ``player[`best_${key}`]`` is `player["best_score"]` which is `200`. Both bracket notations work because the keys were set the same way.
+
+</details>
+
+---
+
+**Q19.** What does this log?
+
+```js
+let i = 0;
+
+const obj = {
+  [i]: i++,
+  [i]: i++,
+  [i]: i++,
+};
+
+console.log(obj);
+console.log(i);
+```
+
+<details>
+<summary>Answer</summary>
+
+**`{ 0: 0, 1: 1, 2: 2 }`, `3`**
+
+Computed property keys and values are evaluated left to right. For each entry, the key expression is evaluated first, then the value expression. First entry: key `i` = `0`, value `i++` = `0` (i becomes `1`). Second: key `i` = `1`, value `i++` = `1` (i becomes `2`). Third: key `i` = `2`, value `i++` = `2` (i becomes `3`). No duplicate keys, so nothing is overwritten.
+
+</details>
+
+---
+
+**Q20 (Mixed: 3.1 + 3.2 + 3.3 + 3.5)** What does this log?
+
+```js
+let n = 0;
+
+const base = {
+  [n++]: 'a',
+  [n++]: 'b',
+};
+
+Object.defineProperty(base, '2', {
+  value: 'c',
+  enumerable: false,
+});
+
+const clone = JSON.parse(JSON.stringify(base));
+const spread = { ...base };
+
+console.log(n);
+console.log(Object.keys(base));
+console.log(Object.keys(clone));
+console.log(Object.keys(spread));
+console.log('2' in clone);
+console.log('2' in spread);
+```
+
+<details>
+<summary>Answer</summary>
+
+**`2`, `["0","1"]`, `["0","1"]`, `["0","1"]`, `false`, `false`**
+
+`n` ends at `2` after two `n++` evaluations. `base` has three properties: `"0"` and `"1"` (enumerable), `"2"` (non-enumerable via `defineProperty`). `Object.keys(base)` returns only enumerable own keys: `["0","1"]`. `JSON.stringify` serializes only own enumerable properties, so key `"2"` is dropped entirely. `clone` has no key `"2"`, so `"2" in clone` is `false`. Spread also copies only own enumerable properties, so `spread` also has no key `"2"`. All three `Object.keys` calls return `["0","1"]` for the same reason.
+
+</details>

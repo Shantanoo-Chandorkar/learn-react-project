@@ -115,60 +115,66 @@
   },
   {
     "id": 20,
+    "title": "Objects Deep Dive",
+    "slug": "objects-deep-dive",
+    "category": "interview-prep"
+  },
+  {
+    "id": 21,
     "title": "Arrow Functions",
     "slug": "arrow-functions",
     "category": "interview-prep"
   },
   {
-    "id": 21,
+    "id": 22,
     "title": "Modules: ESM vs CJS",
     "slug": "modules-esm-vs-cjs",
     "category": "interview-prep"
   },
   {
-    "id": 22,
+    "id": 23,
     "title": "Event Loop",
     "slug": "event-loop",
     "category": "interview-prep"
   },
   {
-    "id": 23,
+    "id": 24,
     "title": "Promises & Async/Await",
     "slug": "promises-and-async-await",
     "category": "interview-prep"
   },
   {
-    "id": 24,
+    "id": 25,
     "title": "DOM & Browser APIs",
     "slug": "dom-and-browser-apis",
     "category": "interview-prep"
   },
   {
-    "id": 25,
+    "id": 26,
     "title": "Array Methods",
     "slug": "array-methods",
     "category": "interview-prep"
   },
   {
-    "id": 26,
+    "id": 27,
     "title": "Array MCQ Traps",
     "slug": "array-mcq-traps",
     "category": "interview-prep"
   },
   {
-    "id": 27,
+    "id": 28,
     "title": "Tricky React MCQs Pt 1",
     "slug": "tricky-react-mcqs-part-1",
     "category": "interview-prep"
   },
   {
-    "id": 28,
+    "id": 29,
     "title": "Tricky React MCQs Pt 2",
     "slug": "tricky-react-mcqs-part-2",
     "category": "interview-prep"
   },
   {
-    "id": 29,
+    "id": 30,
     "title": "Tricky React MCQs Pt 3",
     "slug": "tricky-react-mcqs-part-3",
     "category": "interview-prep"
