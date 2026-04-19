@@ -163,24 +163,30 @@
   },
   {
     "id": 28,
+    "title": "Performance and Rendering",
+    "slug": "performance-and-rendering",
+    "category": "interview-prep"
+  },
+  {
+    "id": 29,
     "title": "Array MCQ Traps",
     "slug": "array-mcq-traps",
     "category": "interview-prep"
   },
   {
-    "id": 29,
+    "id": 30,
     "title": "Tricky React MCQs Pt 1",
     "slug": "tricky-react-mcqs-part-1",
     "category": "interview-prep"
   },
   {
-    "id": 30,
+    "id": 31,
     "title": "Tricky React MCQs Pt 2",
     "slug": "tricky-react-mcqs-part-2",
     "category": "interview-prep"
   },
   {
-    "id": 31,
+    "id": 32,
     "title": "Tricky React MCQs Pt 3",
     "slug": "tricky-react-mcqs-part-3",
     "category": "interview-prep"
