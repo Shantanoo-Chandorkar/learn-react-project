@@ -71,6 +71,52 @@ const MDXComponents = {
       {...props}
     />
   ),
+  table: (props) => (
+    <div style={{ overflowX: 'auto', marginBottom: '1.25rem' }}>
+      <table
+        style={{
+          width: '100%',
+          borderCollapse: 'collapse',
+          fontSize: '1rem',
+          fontFamily: 'var(--font-serif)',
+        }}
+        {...props}
+      />
+    </div>
+  ),
+  thead: (props) => <thead style={{ backgroundColor: '#eff6ff' }} {...props} />,
+  th: (props) => (
+    <th
+      style={{
+        padding: '0.625rem 0.875rem',
+        textAlign: 'left',
+        fontWeight: '600',
+        color: '#1e40af',
+        borderBottom: '2px solid #bfdbfe',
+        whiteSpace: 'nowrap',
+      }}
+      {...props}
+    />
+  ),
+  td: (props) => (
+    <td
+      style={{
+        padding: '0.625rem 0.875rem',
+        borderBottom: '1px solid #e5e7eb',
+        verticalAlign: 'top',
+        lineHeight: '1.6',
+      }}
+      {...props}
+    />
+  ),
+  tr: (props) => (
+    <tr
+      style={{ transition: 'background-color 0.15s' }}
+      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8faff')}
+      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '')}
+      {...props}
+    />
+  ),
 };
 
 export default MDXComponents;

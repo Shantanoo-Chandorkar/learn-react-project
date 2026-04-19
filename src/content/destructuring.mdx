@@ -1,0 +1,508 @@
+# Destructuring and spread/rest operators
+
+### The mental model first
+
+Destructuring is not a new data structure or operation. It is **syntax sugar for assignment**. Everything destructuring does could be written as individual property access and variable assignment. The syntax just makes it concise. Understanding it as assignment is what makes the edge cases predictable rather than surprising.
+
+Spread and rest use the same `...` syntax but do opposite things depending on context. **Rest collects** multiple values into one. **Spread expands** one into multiple. The position in the expression tells you which one you are looking at.
+
+---
+
+### Array destructuring
+
+Destructuring maps by **position**, not by name:
+
+```js
+const [a, b, c] = [1, 2, 3];
+console.log(a, b, c); // 1 2 3
+
+// Skipping elements with holes
+const [first, , third] = [1, 2, 3];
+console.log(first, third); // 1 3
+
+// Swap without a temp variable
+let x = 1,
+  y = 2;
+[x, y] = [y, x];
+console.log(x, y); // 2 1
+```
+
+---
+
+### Object destructuring
+
+Object destructuring maps by **property name**, not position:
+
+```js
+const { name, age } = { name: 'shan', age: 28, city: 'pune' };
+console.log(name, age); // "shan" 28
+// city is simply ignored
+```
+
+### Renaming during destructuring
+
+```js
+const { name: userName, age: userAge } = { name: 'shan', age: 28 };
+console.log(userName); // "shan"
+console.log(userAge); // 28
+console.log(name); // ReferenceError, 'name' was never declared
+```
+
+The syntax is `{ originalKey: newVariableName }`. The property key is on the left of the colon, the new variable name is on the right. This is the inverse of object literal syntax (`{ key: value }`) and is a very common MCQ confusion point.
+
+---
+
+### Default values
+
+Defaults apply when the value is `undefined`, not for any falsy value:
+
+```js
+const { a = 10, b = 20 } = { a: 3 };
+console.log(a, b); // 3 20 (b was undefined, default kicks in)
+
+const { x = 5 } = { x: null };
+console.log(x); // null, NOT 5 (null is not undefined)
+
+const { y = 5 } = { y: 0 };
+console.log(y); // 0, NOT 5 (0 is not undefined)
+```
+
+Default + rename combined:
+
+```js
+const { name: displayName = 'anonymous' } = {};
+console.log(displayName); // "anonymous"
+// 'name' is undefined in the source, default kicks in
+// result stored in 'displayName', not 'name'
+```
+
+This three-way combination (`original key : new name = default`) is one of the trickiest destructuring patterns in MCQs.
+
+---
+
+### Nested destructuring
+
+You can destructure as deeply as the structure goes:
+
+```js
+const user = {
+  name: 'shan',
+  address: {
+    city: 'pune',
+    pin: { code: 411001 },
+  },
+};
+
+const {
+  address: {
+    city,
+    pin: { code },
+  },
+} = user;
+console.log(city); // "pune"
+console.log(code); // 411001
+console.log(address); // ReferenceError: address is not defined
+```
+
+`address` is used as a path, not declared as a variable. Only the final destructured names (`city`, `code`) become variables. This trips up a large number of candidates.
+
+Nested array destructuring:
+
+```js
+const matrix = [
+  [1, 2],
+  [3, 4],
+];
+const [[a, b], [c, d]] = matrix;
+console.log(a, b, c, d); // 1 2 3 4
+```
+
+Mixing object and array destructuring:
+
+```js
+const data = {
+  users: [
+    { name: 'shan', scores: [95, 87] },
+    { name: 'alex', scores: [72, 91] },
+  ],
+};
+
+const {
+  users: [
+    {
+      name,
+      scores: [first],
+    },
+  ],
+} = data;
+console.log(name); // "shan"
+console.log(first); // 95
+console.log(users); // ReferenceError, users is a path not a variable
+```
+
+---
+
+### Destructuring with default values in nesting
+
+The trap: if an intermediate value is `undefined`, nested destructuring throws:
+
+```js
+const {
+  a: { b },
+} = { a: undefined };
+// TypeError: Cannot destructure property 'b' of undefined
+```
+
+Fix with a default at the intermediate level:
+
+```js
+const { a: { b } = {} } = { a: undefined };
+console.log(b); // undefined, no TypeError
+// 'a' is undefined, default {} kicks in, then b is destructured from {}
+```
+
+```js
+const { a: { b } = {} } = {};
+console.log(b); // undefined
+// 'a' doesn't exist (undefined), default {} used, b from {} is undefined
+```
+
+---
+
+### Destructuring in function parameters
+
+Function parameters are the most common real-world use of destructuring:
+
+```js
+function greet({ name, age = 25 }) {
+  console.log(`${name} is ${age}`);
+}
+
+greet({ name: 'shan', age: 28 }); // "shan is 28"
+greet({ name: 'alex' }); // "alex is 25" (default)
+greet({}); // "undefined is 25"
+greet(); // TypeError: Cannot destructure property 'name' of undefined
+```
+
+The last call throws because the function tries to destructure `undefined`. Fix with a default for the entire parameter:
+
+```js
+function greet({ name, age = 25 } = {}) {
+  console.log(`${name} is ${age}`);
+}
+
+greet(); // "undefined is 25", no TypeError
+```
+
+This pattern is everywhere in React component props, Express middleware, and utility functions.
+
+### Array destructuring in function params
+
+```js
+function head([first, ...rest]) {
+  console.log(first); // first element
+  console.log(rest); // remaining as array
+}
+
+head([1, 2, 3]); // 1, [2, 3]
+head([]); // undefined, []
+```
+
+---
+
+### Rest in destructuring
+
+Rest collects the remaining elements/properties into a new array or object. It must always be last:
+
+```js
+// Array rest
+const [a, b, ...remaining] = [1, 2, 3, 4, 5];
+console.log(a); // 1
+console.log(b); // 2
+console.log(remaining); // [3, 4, 5]
+
+// Object rest
+const { x, y, ...others } = { x: 1, y: 2, z: 3, w: 4 };
+console.log(x); // 1
+console.log(y); // 2
+console.log(others); // { z: 3, w: 4 }
+```
+
+Object rest collects own enumerable properties not already destructured. It does not collect prototype properties:
+
+```js
+function Animal() {}
+Animal.prototype.breathe = true;
+
+const dog = new Animal();
+dog.name = 'rex';
+dog.breed = 'lab';
+
+const { name, ...rest } = dog;
+console.log(rest); // { breed: "lab" }, own only
+console.log(rest.breathe); // undefined, prototype not collected
+```
+
+Rest cannot have a trailing comma and cannot appear in the middle:
+
+```js
+const [a, ...b, c] = [1, 2, 3]; // SyntaxError: Rest element must be last
+const { x, ...y, z } = obj;     // SyntaxError: Rest element must be last
+```
+
+---
+
+### Spread in arrays
+
+Spread expands an iterable into individual elements:
+
+```js
+const a = [1, 2, 3];
+const b = [4, 5, 6];
+
+const combined = [...a, ...b];
+console.log(combined); // [1, 2, 3, 4, 5, 6]
+
+// Inserting in the middle
+const withMiddle = [...a, 99, ...b];
+console.log(withMiddle); // [1, 2, 3, 99, 4, 5, 6]
+
+// Copying an array (shallow)
+const copy = [...a];
+copy.push(4);
+console.log(a); // [1, 2, 3], untouched
+console.log(copy); // [1, 2, 3, 4]
+```
+
+Spread works on any iterable: strings, Sets, Maps, NodeLists:
+
+```js
+const str = 'shan';
+console.log([...str]); // ["s", "h", "a", "n"]
+
+const set = new Set([1, 2, 2, 3]);
+console.log([...set]); // [1, 2, 3]
+```
+
+---
+
+### Spread in objects
+
+Object spread copies own enumerable properties. Later properties overwrite earlier ones:
+
+```js
+const defaults = { color: 'red', size: 'md', weight: 100 };
+const custom = { size: 'lg', weight: 200 };
+
+const merged = { ...defaults, ...custom };
+console.log(merged); // { color: "red", size: "lg", weight: 200 }
+```
+
+Order matters. This is a common pattern for merging config objects with overrides. Swap the order and the semantics reverse:
+
+```js
+// custom values are overridden by defaults (wrong for config merge)
+const wrong = { ...custom, ...defaults };
+console.log(wrong); // { size: "md", weight: 100, color: "red" }
+```
+
+---
+
+### Spread vs `Object.assign`: the subtle difference
+
+Both copy own enumerable properties shallowly. One difference that trips people in MCQs:
+
+```js
+const target = {};
+const result = Object.assign(target, { a: 1 });
+
+console.log(target === result); // true, assign mutates and returns target
+
+const spread = { ...{ a: 1 } };
+console.log(spread === target); // false, spread always creates a new object
+```
+
+`Object.assign` mutates the target. Spread always creates a new object. Passing an existing object as target to `assign` modifies it in place.
+
+---
+
+### Rest parameters in functions
+
+Rest collects all remaining arguments into a real array (unlike `arguments` which is array-like):
+
+```js
+function sum(first, ...rest) {
+  console.log(first); // 1
+  console.log(rest); // [2, 3, 4], a real Array
+  return first + rest.reduce((a, b) => a + b, 0);
+}
+
+sum(1, 2, 3, 4); // 10
+```
+
+Rest vs `arguments`:
+
+```js
+function withArguments() {
+  console.log(Array.isArray(arguments)); // false, array-like object
+  console.log(arguments[0]); // works
+  arguments.map((x) => x); // TypeError: not a function
+}
+
+function withRest(...args) {
+  console.log(Array.isArray(args)); // true, real Array
+  args.map((x) => x); // works
+}
+```
+
+Arrow functions have no `arguments` object. Rest is the only option:
+
+```js
+const sum = (...nums) => nums.reduce((a, b) => a + b, 0);
+sum(1, 2, 3, 4); // 10
+```
+
+---
+
+### Destructuring in loops
+
+```js
+const users = [
+  { name: 'shan', age: 28 },
+  { name: 'alex', age: 32 },
+];
+
+for (const { name, age } of users) {
+  console.log(`${name}: ${age}`);
+}
+// "shan: 28"
+// "alex: 32"
+```
+
+With `Object.entries`:
+
+```js
+const scores = { shan: 95, alex: 87, rita: 91 };
+
+for (const [name, score] of Object.entries(scores)) {
+  console.log(`${name}: ${score}`);
+}
+// "shan: 95"
+// "alex: 87"
+// "rita: 91"
+```
+
+---
+
+### Computed property keys in destructuring
+
+```js
+const key = 'name';
+const { [key]: value } = { name: 'shan' };
+console.log(value); // "shan"
+console.log(name); // ReferenceError
+```
+
+The computed key `[key]` evaluates to `"name"`, destructures that property, and assigns it to `value`. The original key name is not declared.
+
+---
+
+### The full edge case map
+
+```js
+// 1. Destructuring undefined throws
+const { a } = undefined; // TypeError
+
+// 2. Destructuring null throws
+const { b } = null; // TypeError
+
+// 3. Destructuring a number: accesses Number.prototype
+const { toFixed } = 3.14;
+console.log(toFixed); // [Function: toFixed]
+
+// 4. Destructuring a string: accesses characters by index
+const { 0: first, length } = 'shan';
+console.log(first); // "s"
+console.log(length); // 4
+
+// 5. Extra variables get undefined, no error
+const { x, y, z } = { x: 1 };
+console.log(y, z); // undefined undefined
+```
+
+---
+
+### Self-test: 5 questions
+
+**Q1.** What does this log?
+
+```js
+const { a: x = 10, b: y = 20 } = { a: null, b: undefined };
+console.log(x, y);
+```
+
+**Q2.** What does this log?
+
+```js
+const { outer: { inner } = {} } = { outer: undefined };
+console.log(inner);
+```
+
+**Q3.** What does this log?
+
+```js
+function test({ a, b, ...rest } = {}) {
+  console.log(a, b, rest);
+}
+
+test({ a: 1, b: 2, c: 3, d: 4 });
+test();
+```
+
+**Q4.** What does this log?
+
+```js
+const arr = [1, 2, 3, 4, 5];
+const [, second, , ...tail] = arr;
+console.log(second, tail);
+```
+
+**Q5.** What does this log?
+
+```js
+const defaults = { theme: 'dark', lang: 'en', debug: false };
+const overrides = { lang: 'hi', debug: true };
+
+const config = { ...defaults, ...overrides, version: 1 };
+console.log(config.theme);
+console.log(config.lang);
+console.log(config.debug);
+console.log(config.version);
+```
+
+---
+
+<details>
+<summary>Answers</summary>
+
+**A1.** `null`, `20`.
+
+Default values only apply when the value is `undefined`. `a` is `null`, which is not `undefined`, so `x` gets `null` and the default `10` is not used. `b` is `undefined`, so `y` gets the default `20`. This is the `null` vs `undefined` default trap.
+
+**A2.** `undefined`, no TypeError.
+
+`outer` is `undefined` in the source. The destructuring `{ outer: { inner } = {} }` applies the default `{}` when `outer` is `undefined`. So it destructures `inner` from `{}`, which gives `undefined`. Without the `= {}` default, this would throw `TypeError: Cannot destructure property 'inner' of undefined`.
+
+**A3.** First call: `1 2 { c: 3, d: 4 }`. Second call: `undefined undefined {}`.
+
+First call: `a` and `b` are destructured, remaining properties `c` and `d` are collected into `rest`. Second call: no argument is passed, so the `= {}` default kicks in. All destructured values are `undefined`, and `rest` is an empty object since no properties remain.
+
+**A4.** `2`, `[4, 5]`.
+
+Position `0` is skipped with a hole. `second` captures position `1` which is `2`. Position `2` is skipped with another hole. `...tail` collects everything from position `3` onward: `[4, 5]`. The holes in array destructuring let you skip elements by position without declaring a variable for them.
+
+**A5.** `"dark"`, `"hi"`, `true`, `1`.
+
+Spread merges left to right, with later properties overwriting earlier ones. `theme` only exists in `defaults`, so it is `"dark"`. `lang` exists in both, `overrides` comes after `defaults` so `"hi"` wins. `debug` exists in both, `true` from `overrides` wins over `false` from `defaults`. `version: 1` is added last and has no conflict.
+
+</details>

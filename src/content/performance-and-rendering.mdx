@@ -1,0 +1,360 @@
+# Performance & rendering
+
+### The mental model first
+
+The browser receives HTML as bytes over the network. Between that raw text and pixels appearing on screen, a specific sequence of steps happens. Every performance optimization in frontend development is either shortening one of those steps, skipping it entirely, or moving it off the main thread. Understanding the pipeline is what makes the optimizations make sense rather than feel like memorized rules.
+
+---
+
+### The critical rendering path
+
+The critical rendering path (CRP) is the sequence of steps the browser must complete before it can display anything on screen. Minimizing the length of this path is the core of initial load performance.
+
+**Step 1: Parse HTML → build the DOM**
+
+The browser parses HTML bytes into tokens, tokens into nodes, nodes into the Document Object Model tree. This is incremental, the browser can begin parsing before the full HTML is downloaded.
+
+```
+Bytes → Characters → Tokens → Nodes → DOM
+```
+
+**Step 2: Parse CSS → build the CSSOM**
+
+Every `<link>` stylesheet and `<style>` block is parsed into the CSS Object Model. CSS is **render-blocking**: the browser will not proceed to rendering until all CSS is parsed. It cannot safely render anything without knowing all styles, since a late-loaded stylesheet could change the appearance of already-rendered content.
+
+```
+Bytes → Characters → Tokens → Nodes → CSSOM
+```
+
+**Step 3: Combine DOM + CSSOM → Render tree**
+
+The render tree contains only visible elements with their computed styles. It excludes:
+
+- Elements with `display: none` (and their children)
+- `<head>`, `<script>`, `<meta>` elements
+- Pseudo-elements like `::before` are included (they are visible)
+- Elements with `visibility: hidden` are included (they occupy space, just not painted)
+
+```js
+// Both absent from render tree
+<div style="display: none">hidden</div>
+<head>...</head>
+
+// Present in render tree (occupies space)
+<div style="visibility: hidden">invisible but there</div>
+```
+
+**Step 4: Layout (also called reflow)**
+
+The browser calculates the exact position and size of every element in the render tree. Output is a box model for every visible element in device pixels.
+
+**Step 5: Paint**
+
+The browser fills in the pixels for each element: text, colors, images, borders, shadows. This produces paint records (draw instructions), not necessarily the final pixels yet.
+
+**Step 6: Composite**
+
+The browser combines painted layers in the correct order to produce the final image on screen. Elements on their own compositor layers (elements with `transform`, `opacity`, `will-change`) are composited by the GPU without touching the CPU paint step.
+
+---
+
+### JavaScript and the critical path
+
+JavaScript is **parser-blocking** by default. When the parser encounters a `<script>` tag, it stops parsing HTML, waits for the script to download and execute, then resumes. This is why script placement and attributes matter:
+
+```html
+<!-- Blocks HTML parsing until downloaded + executed -->
+<script src="app.js"></script>
+
+<!-- Downloads in parallel, executes after HTML is parsed -->
+<script src="app.js" defer></script>
+
+<!-- Downloads in parallel, executes immediately when ready (order not guaranteed) -->
+<script src="app.js" async></script>
+
+<!-- Inline: always blocking -->
+<script>
+  doSomething();
+</script>
+```
+
+`defer` maintains execution order and runs after DOMContentLoaded. `async` does not guarantee order and can run before or after the DOM is ready. For most app scripts, `defer` is correct. For independent third-party scripts (analytics), `async` is acceptable.
+
+---
+
+### Reflow vs repaint
+
+These are two distinct phases that can be triggered after the initial page load. They have very different performance costs.
+
+### Reflow (layout recalculation)
+
+Reflow is triggered when the browser needs to recalculate the geometry of elements, their position and size. It is expensive because a change to one element can cascade: if a parent changes size, all its children need recalculation.
+
+**Triggers:**
+
+```js
+// Adding or removing DOM elements
+document.body.appendChild(newDiv);
+
+// Changing geometry-affecting styles
+el.style.width = '200px';
+el.style.padding = '10px';
+el.style.fontSize = '16px';
+
+// Changing content
+el.textContent = 'new longer content';
+
+// Reading layout properties forces synchronous reflow
+const h = el.offsetHeight; // forces layout to be current
+const w = el.scrollWidth;
+const r = el.getBoundingClientRect();
+```
+
+The last point is the most important trap. **Reading layout properties after writing styles forces a synchronous reflow** because the browser must flush pending style changes to give you an accurate answer.
+
+### Forced synchronous layout (layout thrashing)
+
+The most damaging pattern in frontend performance:
+
+```js
+// BAD: read-write interleaved, forces reflow on every iteration
+const boxes = document.querySelectorAll('.box');
+boxes.forEach((box) => {
+  const width = box.offsetWidth; // forces reflow to read
+  box.style.width = width * 2 + 'px'; // writes, invalidates layout
+  // next iteration reads again → forces another reflow
+});
+// N boxes = N reflows
+
+// GOOD: batch all reads, then all writes
+const widths = Array.from(boxes).map((box) => box.offsetWidth); // one reflow
+boxes.forEach((box, i) => {
+  box.style.width = widths[i] * 2 + 'px'; // writes only
+});
+// 1 reflow total
+```
+
+Layout properties that trigger reflow when read:
+`offsetWidth`, `offsetHeight`, `offsetTop`, `offsetLeft`, `scrollWidth`, `scrollHeight`, `scrollTop`, `clientWidth`, `clientHeight`, `getBoundingClientRect()`, `getComputedStyle()`.
+
+### Repaint (no layout change)
+
+Repaint is triggered when visual properties change but geometry does not. Much cheaper than reflow because the browser skips the layout step. Still has a cost.
+
+**Triggers:**
+
+```js
+el.style.color = 'red';
+el.style.backgroundColor = '#fff';
+el.style.visibility = 'hidden'; // repaint, not reflow (space preserved)
+el.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
+```
+
+### Compositor-only changes (no reflow, no repaint)
+
+Some properties are handled entirely by the GPU compositor. They skip both layout and paint entirely. These are the highest-performance animations:
+
+```js
+// These run on the compositor thread, not the main thread
+el.style.transform = 'translateX(100px)'; // no reflow, no repaint
+el.style.opacity = '0.5'; // no reflow, no repaint
+```
+
+This is why `transform: translateX()` is preferred over `left:` for animations, and `opacity` over `visibility` for fades. The GPU handles them without touching the CPU pipeline.
+
+```js
+// BAD: triggers reflow every frame
+function animate() {
+  el.style.left = currentPos + 'px'; // layout change every frame
+  requestAnimationFrame(animate);
+}
+
+// GOOD: compositor only
+function animate() {
+  el.style.transform = `translateX(${currentPos}px)`; // GPU only
+  requestAnimationFrame(animate);
+}
+```
+
+### Cost hierarchy
+
+```
+Reflow → triggers Repaint → triggers Composite    (most expensive)
+          Repaint → triggers Composite             (medium)
+                    Composite only                 (cheapest, GPU)
+```
+
+A reflow always causes a repaint. A repaint always causes a composite. But you can trigger repaint without reflow, and composite without either.
+
+---
+
+### `will-change`
+
+Hints to the browser that an element is about to be animated, allowing it to promote the element to its own compositor layer in advance:
+
+```css
+.animated {
+  will-change: transform, opacity;
+}
+```
+
+This avoids the cost of layer promotion happening mid-animation. Use it sparingly. Every compositor layer consumes GPU memory. Putting everything on `will-change` is worse than nothing.
+
+---
+
+### Debounce
+
+Debounce ensures a function is only called **after** a specified delay has elapsed since the last invocation. Every new call resets the timer. The function fires once, after the activity stops.
+
+```js
+function debounce(fn, delay) {
+  let timer;
+  return function (...args) {
+    clearTimeout(timer); // reset timer on every call
+    timer = setTimeout(() => fn(...args), delay); // only fires after silence
+  };
+}
+
+const handleSearch = debounce((query) => {
+  fetch(`/api/search?q=${query}`);
+}, 300);
+
+input.addEventListener('input', (e) => handleSearch(e.target.value));
+// User types "shan": fires once 300ms after they stop typing
+// Not on every keystroke
+```
+
+Mental model: a debounced function says "I will only run if you leave me alone for `delay` ms."
+
+Use cases: search input, window resize handler, form validation on input.
+
+---
+
+### Throttle
+
+Throttle ensures a function is called **at most once** per specified interval. The first call fires immediately, subsequent calls are suppressed until the interval passes. Unlike debounce, it guarantees regular execution during sustained activity.
+
+```js
+function throttle(fn, interval) {
+  let lastCall = 0;
+  return function (...args) {
+    const now = Date.now();
+    if (now - lastCall >= interval) {
+      lastCall = now;
+      fn(...args);
+    }
+  };
+}
+
+const handleScroll = throttle(() => {
+  updateScrollIndicator();
+}, 100);
+
+window.addEventListener('scroll', handleScroll);
+// Fires at most once every 100ms during scrolling
+// Not on every scroll event (which can fire 60+ times per second)
+```
+
+Mental model: a throttled function says "I will run at most once every `interval` ms regardless of how many times you call me."
+
+Use cases: scroll events, mouse move tracking, resize handlers where you need regular updates.
+
+---
+
+### Debounce vs throttle: the comparison
+
+```
+User scrolls for 2 seconds, events fire every 16ms (~125 events total)
+
+Debounce (200ms):
+→ fires ONCE, 200ms after scrolling stops
+→ during scrolling: nothing fires
+
+Throttle (100ms):
+→ fires ~20 times, once every 100ms throughout scrolling
+→ also fires after the last event if it falls within the interval
+```
+
+|                      | Debounce                   | Throttle                               |
+| -------------------- | -------------------------- | -------------------------------------- |
+| When it fires        | After activity stops       | During activity, at regular intervals  |
+| Multiple rapid calls | Collapses into one         | Rate-limits to max N per second        |
+| Best for             | Search, validation, resize | Scroll, mouse move, game loop          |
+| Risk                 | Delay in response          | First call may feel laggy if throttled |
+
+---
+
+### `requestAnimationFrame` for visual updates
+
+For DOM updates tied to animation, use `requestAnimationFrame` instead of `setTimeout`. It runs just before the browser's next paint, ensuring your JS runs at the correct point in the rendering pipeline:
+
+```js
+// BAD: setTimeout fires at arbitrary times, may cause missed frames
+setInterval(() => {
+  el.style.transform = `translateX(${pos++}px)`;
+}, 16);
+
+// GOOD: rAF fires at the right moment in the rendering cycle
+function tick() {
+  el.style.transform = `translateX(${pos++}px)`;
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+```
+
+`rAF` is also automatically paused when the tab is backgrounded, saving CPU.
+
+---
+
+### Self-test: 5 questions
+
+**Q1.** Which of these style changes triggers a reflow, which triggers only a repaint, and which triggers only a composite?
+
+```js
+el.style.left = '10px';
+el.style.color = 'red';
+el.style.transform = 'translateX(10px)';
+```
+
+**Q2.** What is the performance problem with this code, and how do you fix it?
+
+```js
+const items = document.querySelectorAll('.item');
+items.forEach((item) => {
+  const h = item.offsetHeight;
+  item.style.height = h * 2 + 'px';
+});
+```
+
+**Q3.** A search input calls an API on every keystroke. The user types 8 characters quickly. With a 300ms debounce applied, how many API calls are made?
+
+**Q4.** What is the difference between `visibility: hidden` and `display: none` in terms of which rendering steps they affect?
+
+**Q5.** Why is `transform: translateX()` preferred over `left:` for animating horizontal position?
+
+---
+
+<details>
+<summary>Answers</summary>
+
+**A1.**
+`el.style.left = "10px"` → reflow. `left` changes geometry, triggering layout recalculation, which cascades to repaint and composite.
+`el.style.color = "red"` → repaint only. Color is a visual-only property, geometry is unchanged.
+`el.style.transform = "translateX(10px)"` → composite only. `transform` is handled by the GPU compositor and skips both layout and paint entirely.
+
+**A2.** Layout thrashing. Reading `offsetHeight` inside a loop that also writes styles forces a synchronous reflow on every iteration because the browser must flush the pending style changes to return an accurate measurement. Fix: batch all reads first, then all writes:
+
+```js
+const heights = Array.from(items).map((item) => item.offsetHeight);
+items.forEach((item, i) => {
+  item.style.height = heights[i] * 2 + 'px';
+});
+```
+
+**A3.** One API call (assuming the user's keystrokes are within 300ms of each other). Debounce resets its timer on every invocation. If the user types all 8 characters within the 300ms window, the timer never completes between keystrokes. The API call fires once, 300ms after the last keystroke.
+
+**A4.** `display: none` removes the element from the render tree entirely. It does not occupy space and is invisible. Any change to it (showing it again) triggers reflow because the geometry of surrounding elements is affected. `visibility: hidden` keeps the element in the render tree, preserving its space in layout. Making it visible again only triggers a repaint, not a reflow, because the geometry did not change.
+
+**A5.** `left:` is a geometry property. Changing it invalidates layout, triggering a full reflow on every animation frame, which is expensive on the main thread. `transform: translateX()` does not affect layout at all. It is composited by the GPU without triggering reflow or repaint. This means the animation runs off the main thread, is not blocked by JS execution, and runs at 60fps even under main thread pressure.
+
+</details>

@@ -1,0 +1,430 @@
+# Execution context & call stack
+
+### The mental model first
+
+Every piece of JavaScript code runs inside an **execution context**. It is the environment the JS engine creates to track everything needed to execute a piece of code: what variables exist, what `this` refers to, and what the outer scope is. Understanding execution contexts unifies hoisting (1.1), scope (1.2), closures (1.3), and `this` (1.4) into a single coherent picture. All of those were symptoms. This is the mechanism underneath.
+
+There are three types of execution context:
+
+| Type                       | Created when                          |
+| -------------------------- | ------------------------------------- |
+| Global execution context   | JS file first loads                   |
+| Function execution context | A function is called                  |
+| Eval execution context     | `eval()` runs (ignore for interviews) |
+
+---
+
+### Two phases of every execution context
+
+Every execution context is created and run in exactly two phases. This is the engine-level explanation for why hoisting works the way it does.
+
+---
+
+### Phase 1: Creation phase (memory allocation)
+
+Before a single line of code executes, the engine scans the entire scope and does three things:
+
+1. Creates the `Variable Environment` (stores variables and function declarations)
+2. Creates the `Scope Chain` (links to outer environments)
+3. Determines the value of `this`
+
+During this scan:
+
+- **`var` declarations** are found and registered, initialized to `undefined`
+- **Function declarations** are found and registered, initialized to the **complete function object**
+- **`let` and `const` declarations** are found and registered, but left **uninitialized** (TDZ)
+
+This pre-execution scan is what hoisting actually is. It is not that declarations are physically moved. It is that the engine processes them before running any code.
+
+```js
+// What you write
+console.log(a); // undefined
+console.log(b); // ReferenceError (TDZ)
+console.log(fn); // [Function: fn]
+
+var a = 1;
+let b = 2;
+function fn() {
+  return 'hello';
+}
+```
+
+What the creation phase produces for this scope:
+
+```
+Variable Environment:
+  a    → undefined          (var: registered + initialized to undefined)
+  b    → <uninitialized>    (let: registered, NOT initialized)
+  fn   → [Function: fn]     (function declaration: fully initialized)
+```
+
+Then execution begins. `a` gets assigned `1` when that line runs. `b` enters the TDZ until its declaration line is reached.
+
+---
+
+### Phase 2: Execution phase
+
+Code runs line by line. Variable assignments happen, functions are called (creating new execution contexts), expressions are evaluated.
+
+```js
+var x = 10; // execution phase: x is assigned 10 (was undefined from creation)
+let y = 20; // execution phase: y is initialized and assigned 20
+```
+
+---
+
+### The call stack
+
+The call stack is the data structure that tracks which execution context is currently running. It is a LIFO stack. When a function is called, its context is pushed. When it returns, its context is popped. The global execution context sits at the bottom always.
+
+```js
+function multiply(a, b) {
+  return a * b;
+}
+
+function square(n) {
+  return multiply(n, n);
+}
+
+function printSquare(n) {
+  const result = square(n);
+  console.log(result);
+}
+
+printSquare(4);
+```
+
+Call stack progression:
+
+```
+[global]                        → file starts executing
+
+[global]                        → printSquare(4) called
+[printSquare]
+
+[global]                        → square(4) called inside printSquare
+[printSquare]
+[square]
+
+[global]                        → multiply(4, 4) called inside square
+[printSquare]
+[square]
+[multiply]
+
+[global]                        → multiply returns 16
+[printSquare]
+[square]
+
+[global]                        → square returns 16
+[printSquare]
+
+[global]                        → console.log(16) runs, printSquare returns
+```
+
+Each frame on the stack holds the execution context for that function call: its own variable environment, scope chain reference, and `this` value.
+
+---
+
+### Stack overflow
+
+The call stack has a finite size. Infinite recursion pushes frames without ever popping them:
+
+```js
+function infinite() {
+  return infinite(); // no base case
+}
+
+infinite(); // RangeError: Maximum call stack size exceeded
+```
+
+Each call pushes a new frame. The stack exhausts available memory. The error name varies by engine but the mechanism is always the same.
+
+---
+
+### Hoisting mechanics in depth
+
+Hoisting is the observable result of the creation phase. Three behaviors to have precisely mapped:
+
+### `var` hoisting
+
+```js
+console.log(x); // undefined, not ReferenceError
+var x = 5;
+console.log(x); // 5
+
+// Engine sees it as:
+// Creation: x → undefined
+// Execution: log x (undefined), assign x = 5, log x (5)
+```
+
+### Function declaration hoisting
+
+The entire function body is hoisted, not just the name:
+
+```js
+greet(); // "hello", works before the declaration line
+
+function greet() {
+  console.log('hello');
+}
+```
+
+Creation phase registers `greet` as a complete function object. By the time execution starts, `greet` is fully callable.
+
+### Function expression hoisting: the critical difference
+
+A function expression assigned to a `var` only hoists the variable declaration, not the function:
+
+```js
+sayHi(); // TypeError: sayHi is not a function
+
+var sayHi = function () {
+  console.log('hi');
+};
+```
+
+Creation phase: `sayHi → undefined`. Execution phase hits `sayHi()`: `undefined` is not a function, TypeError. This is one of the most common MCQ traps in this entire topic.
+
+```js
+// With let/const: even worse
+sayBye(); // ReferenceError: Cannot access 'sayBye' before initialization
+
+const sayBye = function () {
+  console.log('bye');
+};
+```
+
+`const` is in TDZ, so you get a ReferenceError before you even reach the invocation problem.
+
+---
+
+### Declaration vs initialization vs assignment
+
+These three are distinct steps and conflating them causes confusion:
+
+```
+Declaration:   var x;        → registers x in the variable environment
+Initialization: x = undefined → gives x its first value (happens in creation phase for var)
+Assignment:    x = 5;        → gives x a new value (happens in execution phase)
+```
+
+For `let`/`const`:
+
+```
+Declaration:   let y;        → registers y in the variable environment (creation phase)
+Initialization: y = 20;      → happens at the declaration line in execution phase
+                               before this line: TDZ
+```
+
+---
+
+### Hoisting priority: function declaration vs `var`
+
+When both a function declaration and a `var` share the same name, function declaration wins during the creation phase:
+
+```js
+console.log(typeof foo); // "function", not "undefined"
+
+var foo = 'bar';
+
+function foo() {
+  return 'I am a function';
+}
+
+console.log(typeof foo); // "string", assignment in execution phase overwrites it
+```
+
+Creation phase processes all `var` declarations then all function declarations. Function declarations overwrite `var` if names collide. Then execution phase runs and the `var foo = "bar"` assignment overwrites the function.
+
+---
+
+### Each function call creates a fresh execution context
+
+This is the mechanism behind closures and why each recursive call has its own variables:
+
+```js
+function makeCounter(start) {
+  let count = start; // each call gets its own 'count' in its own context
+
+  return {
+    increment() {
+      return ++count;
+    },
+    get() {
+      return count;
+    },
+  };
+}
+
+const c1 = makeCounter(0);
+const c2 = makeCounter(10);
+
+c1.increment(); // 1
+c1.increment(); // 2
+c2.increment(); // 11
+
+console.log(c1.get()); // 2
+console.log(c2.get()); // 11
+```
+
+Each `makeCounter` call creates a new execution context with its own `count`. The returned object's methods close over their respective context. They never interfere.
+
+---
+
+### The global execution context
+
+The global execution context is special. It creates two things that function contexts do not:
+
+1. The **global object** (`window` in browsers, `global` in Node)
+2. `this` bound to that global object at the top level
+
+```js
+var name = 'shan'; // attached to window in browser: window.name === "shan"
+let age = 28; // NOT attached to window, goes into script scope
+
+console.log(this === window); // true, at global level in browser (non-strict)
+```
+
+`var` declarations in global scope become properties of the global object. `let` and `const` do not. This is a browser-specific MCQ trap:
+
+```js
+var a = 1;
+let b = 2;
+
+console.log(window.a); // 1
+console.log(window.b); // undefined
+```
+
+---
+
+### Execution context and `this`
+
+The `this` value is determined during the creation phase of each execution context, based on how the function is called (not where it is defined, except for arrow functions which inherit from the enclosing context at definition time).
+
+```js
+function show() {
+  console.log(this);
+}
+
+show(); // global / undefined (strict)
+obj.show(); // obj
+new show(); // new instance
+show.call(other); // other
+```
+
+Each call creates a new execution context with a different `this` binding, determined by the call site.
+
+---
+
+### Temporal Dead Zone mechanics at the engine level
+
+TDZ is not a runtime concept invented to protect developers. It is a direct consequence of the two-phase system. In the creation phase, `let`/`const` are registered but not initialized. In the execution phase, any access before the initialization line reads an uninitialized binding, which the engine throws on by design:
+
+```js
+{
+  // Creation phase: x registered, uninitialized
+  // TDZ begins
+
+  console.log(x); // ReferenceError: Cannot access 'x' before initialization
+
+  // TDZ ends
+  let x = 10; // execution phase: x initialized and assigned
+
+  console.log(x); // 10
+}
+```
+
+The error message deliberately says "before initialization" rather than "not defined", proving the engine knows `x` exists (it was registered in the creation phase) but refuses to let you access it yet.
+
+---
+
+### Self-test: 5 questions
+
+**Q1.** What does this log?
+
+```js
+console.log(typeof foo);
+console.log(typeof bar);
+
+var foo = 1;
+function bar() {}
+```
+
+**Q2.** What does this log and why?
+
+```js
+var x = 'global';
+
+function outer() {
+  console.log(x);
+  var x = 'local';
+}
+
+outer();
+```
+
+**Q3.** What does this log?
+
+```js
+sayHello();
+sayBye();
+
+function sayHello() {
+  console.log('hello');
+}
+var sayBye = function () {
+  console.log('bye');
+};
+```
+
+**Q4.** What does this log?
+
+```js
+var fn = 'string';
+function fn() {
+  return 42;
+}
+
+console.log(typeof fn);
+```
+
+**Q5.** How many execution contexts exist on the call stack when `multiply` is executing?
+
+```js
+function multiply(a, b) {
+  return a * b;
+}
+function square(n) {
+  return multiply(n, n);
+}
+function main() {
+  return square(3);
+}
+
+main();
+```
+
+---
+
+<details>
+<summary>Answers</summary>
+
+**A1.** `"undefined"`, `"function"`.
+
+Creation phase for the global context: `foo` is registered as `undefined` (var). `bar` is registered as a complete function object. At the time `typeof foo` runs, `foo` is `undefined` so `typeof` returns `"undefined"`. `typeof bar` returns `"function"` because the entire function was hoisted in the creation phase.
+
+**A2.** `undefined`.
+
+`var x` inside `outer` is hoisted to the top of `outer`'s creation phase. It shadows the global `x` immediately from the start of `outer`'s scope. At the `console.log` line, `outer`'s local `x` exists but has not been assigned yet, so it is `undefined`. The global `x` is completely unreachable inside `outer` due to shadowing. This is the hoisting + shadowing combination trap from Module 1.1 and 1.2 unified through the execution context lens.
+
+**A3.** `"hello"` logs, then `TypeError: sayBye is not a function`.
+
+Creation phase: `sayHello` is fully hoisted as a function declaration. `sayBye` is hoisted as `var sayBye = undefined`. Execution phase: `sayHello()` calls the fully hoisted function, logs `"hello"`. `sayBye()` tries to call `undefined` as a function, throws TypeError. The function expression's body is never hoisted, only the variable name.
+
+**A4.** `"string"`.
+
+Creation phase order: `var fn` is registered first, then `function fn` overwrites it with the function object. So after creation, `fn` is the function. But during execution, `var fn = "string"` runs and overwrites the function with the string. `console.log(typeof fn)` runs after the assignment, so it sees the string. Creation phase: function wins. Execution phase: assignment wins.
+
+**A5.** Four execution contexts: global, `main`, `square`, `multiply`. The global context is always at the bottom. Each function call pushes a new context. When `multiply` is executing, the stack is `[global, main, square, multiply]`.
+
+</details>
