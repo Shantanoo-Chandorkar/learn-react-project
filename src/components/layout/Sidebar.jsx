@@ -1,7 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
+import * as Accordion from '@radix-ui/react-accordion';
 import topics from '../../content/topics.json';
-import { CheckCircleIcon } from '@heroicons/react/24/solid';
+import { CheckCircleIcon, ChevronDownIcon } from '@heroicons/react/24/solid';
 import useStore from '../../store/useStore';
 
 /**
@@ -61,43 +62,75 @@ const Sidebar = ({ isOpen, onClose }) => {
 
       <nav className="sidebar-nav">
         <ul>
-          <li>
+          <li className="sidebar-nav-home">
             <NavLink to="/" end onClick={onClose}>
               Home
             </NavLink>
           </li>
-
-          <li className="sidebar-section-header">Hooks</li>
-          {hooks.map(renderTopicLink)}
-
-          <li className="sidebar-section-header">Related Topics</li>
-          {relatedTopics.map(renderTopicLink)}
-
-          <li className="sidebar-section-header">Interview Prep</li>
-          {interviewPrep.map(renderTopicLink)}
-
-          <li className="sidebar-divider">Other Resources</li>
-          <li>
-            <NavLink to="/topic/react-router" onClick={onClose}>
-              React Router Demo
-            </NavLink>
-          </li>
-          <li>
-            <NavLink to="/react-form" onClick={onClose}>
-              React Form
-            </NavLink>
-          </li>
-          <li>
-            <NavLink to="/multi-form" onClick={onClose}>
-              Multi-Page Form
-            </NavLink>
-          </li>
-          <li>
-            <NavLink to="/multi-step-flow" onClick={onClose}>
-              Multi-Step Flow
-            </NavLink>
-          </li>
         </ul>
+
+        <Accordion.Root type="multiple">
+          <Accordion.Item value="hooks">
+            <Accordion.Trigger className="sidebar-accordion-trigger">
+              Hooks
+              <ChevronDownIcon className="sidebar-accordion-chevron" />
+            </Accordion.Trigger>
+            <Accordion.Content className="sidebar-accordion-content">
+              <ul>{hooks.map(renderTopicLink)}</ul>
+            </Accordion.Content>
+          </Accordion.Item>
+
+          <Accordion.Item value="related-topics">
+            <Accordion.Trigger className="sidebar-accordion-trigger">
+              Related Topics
+              <ChevronDownIcon className="sidebar-accordion-chevron" />
+            </Accordion.Trigger>
+            <Accordion.Content className="sidebar-accordion-content">
+              <ul>{relatedTopics.map(renderTopicLink)}</ul>
+            </Accordion.Content>
+          </Accordion.Item>
+
+          <Accordion.Item value="interview-prep">
+            <Accordion.Trigger className="sidebar-accordion-trigger">
+              Interview Prep
+              <ChevronDownIcon className="sidebar-accordion-chevron" />
+            </Accordion.Trigger>
+            <Accordion.Content className="sidebar-accordion-content">
+              <ul>{interviewPrep.map(renderTopicLink)}</ul>
+            </Accordion.Content>
+          </Accordion.Item>
+
+          <Accordion.Item value="other-resources">
+            <Accordion.Trigger className="sidebar-accordion-trigger">
+              Other Resources
+              <ChevronDownIcon className="sidebar-accordion-chevron" />
+            </Accordion.Trigger>
+            <Accordion.Content className="sidebar-accordion-content">
+              <ul>
+                <li>
+                  <NavLink to="/topic/react-router" onClick={onClose}>
+                    React Router Demo
+                  </NavLink>
+                </li>
+                <li>
+                  <NavLink to="/react-form" onClick={onClose}>
+                    React Form
+                  </NavLink>
+                </li>
+                <li>
+                  <NavLink to="/multi-form" onClick={onClose}>
+                    Multi-Page Form
+                  </NavLink>
+                </li>
+                <li>
+                  <NavLink to="/multi-step-flow" onClick={onClose}>
+                    Multi-Step Flow
+                  </NavLink>
+                </li>
+              </ul>
+            </Accordion.Content>
+          </Accordion.Item>
+        </Accordion.Root>
       </nav>
     </aside>
   );

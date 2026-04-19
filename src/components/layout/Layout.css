@@ -92,15 +92,17 @@
   font-size: 0.95rem;
 }
 
+/* Sidebar Home link */
+.sidebar-nav .sidebar-nav-home a {
+  padding-left: 1.5rem;
+}
+
 /* Visual Nesting for topics */
-.sidebar-nav li:not(.sidebar-section-header) a {
+.sidebar-nav li a {
   padding-left: 2.5rem;
 }
 
 /* Special case for Home link - should not be nested as much */
-.sidebar-nav li:first-child a {
-  padding-left: 1.5rem;
-}
 
 .sidebar-nav a:hover,
 .sidebar-nav a.active {
@@ -109,24 +111,77 @@
   border-right: 3px solid #007bff;
 }
 
-.sidebar-section-header {
+/* Accordion trigger */
+.sidebar-accordion-trigger {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
   margin-top: 1.5rem;
-  margin-bottom: 0.5rem;
   padding: 0.5rem 1.5rem;
   font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   color: #6c757d;
   letter-spacing: 0.05rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
 }
 
-.sidebar-divider {
-  margin: 1.5rem 0 0.5rem;
-  padding: 0 1rem;
-  font-size: 0.85rem;
-  text-transform: uppercase;
-  color: #6c757d;
-  letter-spacing: 0.05rem;
+.sidebar-accordion-trigger:hover {
+  color: #495057;
+}
+
+/* Chevron icon — rotates 180° when the section is open */
+.sidebar-accordion-chevron {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+  transition: transform 0.25s ease;
+}
+
+[data-state='open'] .sidebar-accordion-chevron {
+  transform: rotate(180deg);
+}
+
+/* Accordion content — animates height on open/close using Radix CSS variable */
+.sidebar-accordion-content {
+  overflow: hidden;
+}
+
+.sidebar-accordion-content[data-state='open'] {
+  animation: accordionSlideDown 0.25s ease;
+}
+
+.sidebar-accordion-content[data-state='closed'] {
+  animation: accordionSlideUp 0.25s ease;
+}
+
+@keyframes accordionSlideDown {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height);
+  }
+}
+
+@keyframes accordionSlideUp {
+  from {
+    height: var(--radix-accordion-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+
+/* Topic links inside accordion are nested visually */
+.sidebar-accordion-content ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
 }
 
 /* Mobile Responsive Styles */
