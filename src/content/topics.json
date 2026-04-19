@@ -12,43 +12,43 @@
     "category": "hooks"
   },
   {
-    "id": 5,
+    "id": 3,
     "title": "useMemo",
     "slug": "use-memo",
     "category": "hooks"
   },
   {
-    "id": 6,
+    "id": 4,
     "title": "useReducer",
     "slug": "use-reducer",
     "category": "hooks"
   },
   {
-    "id": 7,
+    "id": 5,
     "title": "useCallback",
     "slug": "use-callback",
     "category": "hooks"
   },
   {
-    "id": 8,
+    "id": 6,
     "title": "useRef",
     "slug": "use-ref",
     "category": "hooks"
   },
   {
-    "id": 9,
+    "id": 7,
     "title": "useContext",
     "slug": "use-context",
     "category": "hooks"
   },
   {
-    "id": 3,
+    "id": 8,
     "title": "State",
     "slug": "state",
     "category": "related-topics"
   },
   {
-    "id": 4,
+    "id": 9,
     "title": "Side Effects",
     "slug": "side-effects",
     "category": "related-topics"
@@ -139,66 +139,72 @@
   },
   {
     "id": 24,
+    "title": "Destructuring",
+    "slug": "destructuring",
+    "category": "interview-prep"
+  },
+  {
+    "id": 25,
     "title": "Array Methods",
     "slug": "array-methods",
     "category": "interview-prep"
   },
   {
-    "id": 25,
+    "id": 26,
     "title": "Modules: ESM vs CJS",
     "slug": "modules-esm-vs-cjs",
     "category": "interview-prep"
   },
   {
-    "id": 26,
+    "id": 27,
     "title": "Promises & Async/Await",
     "slug": "promises-and-async-await",
     "category": "interview-prep"
   },
   {
-    "id": 27,
+    "id": 28,
     "title": "DOM & Browser APIs",
     "slug": "dom-and-browser-apis",
     "category": "interview-prep"
   },
   {
-    "id": 28,
+    "id": 29,
     "title": "Performance and Rendering",
     "slug": "performance-and-rendering",
     "category": "interview-prep"
   },
   {
-    "id": 29,
+    "id": 30,
     "title": "CORS",
     "slug": "cors",
     "category": "interview-prep"
   },
   {
-    "id": 30,
+    "id": 31,
     "title": "Security Practices",
     "slug": "security-practices",
     "category": "interview-prep"
   },
   {
-    "id": 31,
+    "id": 32,
     "title": "Array MCQ Traps",
     "slug": "array-mcq-traps",
     "category": "interview-prep"
   },
   {
-    "id": 32,
+    "id": 33,
     "title": "Tricky React MCQs Pt 1",
     "slug": "tricky-react-mcqs-part-1",
     "category": "interview-prep"
   },
   {
-    "id": 33,
+    "id": 34,
     "title": "Tricky React MCQs Pt 2",
     "slug": "tricky-react-mcqs-part-2",
     "category": "interview-prep"
   },
   {
-    "id": 34,
+    "id": 35,
     "title": "Tricky React MCQs Pt 3",
     "slug": "tricky-react-mcqs-part-3",
     "category": "interview-prep"
