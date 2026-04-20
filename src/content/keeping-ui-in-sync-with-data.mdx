@@ -1,0 +1,357 @@
+﻿# The Core Problem, Keeping UI in Sync with Data
+
+### 1. The Problem
+
+Web UIs have two things that must always agree with each other: the data in memory and the pixels on screen. The user's name in your JavaScript object and the user's name displayed in the header. The `isLoggedIn` boolean and whether the logout button is visible. The `todos` array and the list items in the DOM.
+
+These two things live in completely different worlds. One is JavaScript, a language runtime in memory. The other is the DOM, a C++ rendering tree managed by the browser. They have no automatic connection. Nothing in the browser says "when this variable changes, update that element." You have to build that connection yourself.
+
+That gap, between data and UI, is the problem. Everything else is a consequence of how different approaches try to bridge it.
+
+---
+
+### 2. The Naive Attempt
+
+Let's build something real enough to make the problem unavoidable. A user profile page. It has a name, an avatar, an online status indicator, a follower count, and a "Follow" button that toggles. Five pieces of data. Five places in the UI that must reflect them.
+
+```js
+// The data
+const user = {
+  name: 'Shan Desai',
+  avatar: 'https://example.com/shan.jpg',
+  isOnline: true,
+  followers: 1240,
+  isFollowing: false,
+};
+
+// The initial render, called once on page load
+function renderProfile(user) {
+  document.getElementById('profile-name').textContent = user.name;
+  document.getElementById('profile-avatar').src = user.avatar;
+  document.getElementById('online-indicator').className =
+    user.isOnline ? 'indicator green' : 'indicator grey';
+  document.getElementById('follower-count').textContent =
+    user.followers + ' followers';
+  document.getElementById('follow-btn').textContent =
+    user.isFollowing ? 'Unfollow' : 'Follow';
+  document.getElementById('follow-btn').className =
+    user.isFollowing ? 'btn btn-secondary' : 'btn btn-primary';
+}
+
+renderProfile(user);
+
+// The follow button
+document.getElementById('follow-btn').addEventListener('click', function () {
+  user.isFollowing = !user.isFollowing;
+  user.followers = user.isFollowing ? user.followers + 1 : user.followers - 1;
+
+  // must manually sync every affected DOM node
+  document.getElementById('follower-count').textContent =
+    user.followers + ' followers';
+  document.getElementById('follow-btn').textContent =
+    user.isFollowing ? 'Unfollow' : 'Follow';
+  document.getElementById('follow-btn').className =
+    user.isFollowing ? 'btn btn-secondary' : 'btn btn-primary';
+});
+```
+
+This works. Now add a WebSocket that pushes live updates when the user's online status changes.
+
+```js
+socket.on('user:status', function (data) {
+  user.isOnline = data.isOnline;
+
+  // must remember to sync this DOM node too
+  document.getElementById('online-indicator').className =
+    user.isOnline ? 'indicator green' : 'indicator grey';
+});
+```
+
+Now add a feature where clicking the name opens an edit modal. Saving the modal updates the name.
+
+```js
+function saveNameEdit(newName) {
+  user.name = newName;
+
+  // must remember this one
+  document.getElementById('profile-name').textContent = user.name;
+
+  // but wait, the name also appears in the page title
+  document.title = user.name + ' | Profile';
+
+  // and in the activity feed header, added last sprint
+  document.getElementById('activity-header').textContent =
+    user.name + "'s Activity";
+
+  // and in the notification that just appeared
+  // ... which was built by a different developer
+  // ... who didn't know to update it here
+}
+```
+
+The last one gets missed. The notification says the old name. The page title says the new name. The profile says the new name. The app is in an inconsistent state, and nothing in the architecture prevents this from happening.
+
+---
+
+### 3. Why That Breaks
+
+The precise failure mode has a name: **the synchronization problem**.
+
+Every piece of data has a set of DOM nodes that should reflect it. Call that set the data's "dependents." When data changes, every dependent must be updated. The synchronization problem is that the framework gives you no way to declare what the dependents of a piece of data are. You must know them, remember them, and update them manually at every call site where that data changes.
+
+This fails in four specific ways as a codebase grows.
+
+**Incomplete updates.** A developer changes data in one place and updates the DOM nodes they know about. They don't know about the DOM node added by another developer last month. The UI is inconsistent.
+
+**Stale closures over DOM references.** Event handlers close over DOM node references. If the DOM is restructured, those references may be stale or null. The handler throws or silently does nothing.
+
+**Update ordering bugs.** Handler A updates data and syncs the DOM. Handler B also updates data and syncs the DOM. If they both fire in quick succession, the final DOM state depends on execution order, and both handlers may have read stale data before the other finished.
+
+**No single source of truth.** As established previously, the DOM itself becomes a source of truth. To know the current state of the app, you must read the DOM. But the DOM is the output. It was never designed to be the input. Using it as both makes the system circular.
+
+The root cause under all four is the same: **the connection between data and UI is implicit, ad-hoc, and maintained manually by developers who will make mistakes.**
+
+---
+
+### 4. React's Mental Model
+
+Declare what the UI should look like for any given data. Never describe how to transition from one UI to another. When data changes, React re-derives the UI from scratch and reconciles the difference.
+
+The connection between data and UI is not implicit and manual. It is explicit and structural. Your component literally is the mapping. There is nothing to forget, because the mapping is code. If the data is in scope, the UI reflects it. If it isn't reflected, it isn't in scope.
+
+---
+
+### 5. React's Solution
+
+The same profile page in React:
+
+```jsx
+function ProfilePage() {
+  const [user, setUser] = React.useState({
+    name: 'Shan Desai',
+    avatar: 'https://example.com/shan.jpg',
+    isOnline: true,
+    followers: 1240,
+    isFollowing: false,
+  });
+
+  function toggleFollow() {
+    setUser(prev => ({
+      ...prev,
+      isFollowing: !prev.isFollowing,
+      followers: prev.isFollowing ? prev.followers - 1 : prev.followers + 1,
+    }));
+  }
+
+  function saveName(newName) {
+    setUser(prev => ({ ...prev, name: newName }));
+    // that's it. every place that uses user.name updates automatically.
+  }
+
+  return (
+    <div>
+      <img src={user.avatar} alt={user.name} />
+      <h1>{user.name}</h1>
+      <span className={user.isOnline ? 'indicator green' : 'indicator grey'} />
+      <p>{user.followers} followers</p>
+      <button
+        className={user.isFollowing ? 'btn btn-secondary' : 'btn btn-primary'}
+        onClick={toggleFollow}
+      >
+        {user.isFollowing ? 'Unfollow' : 'Follow'}
+      </button>
+
+      <ActivityFeed userName={user.name} />
+      <Notifications userName={user.name} />
+    </div>
+  );
+}
+```
+
+`saveName` calls `setUser` once. That's the entire function. It doesn't know about `<h1>`, `<ActivityFeed>`, `<Notifications>`, or `document.title`. It doesn't need to. Every component that uses `user.name` receives it as a prop derived from state. When state changes, React re-renders the component, which re-derives all the JSX, which passes the new name down to every consumer automatically.
+
+The synchronization problem is solved not by being more careful about updating DOM nodes, but by eliminating manual DOM updates entirely. You update state. React updates everything that depends on it.
+
+---
+
+### 6. Internals
+
+React's solution to the synchronization problem is mechanically implemented through the reconciliation cycle. Here is the full sequence of what happens when `setUser` is called:
+
+**Step 1: State update is enqueued.**
+`setUser` does not immediately change the state. It enqueues an update on the component's Fiber node. The Fiber has a queue of pending state updates, each stored as an object: `{ action: newValue, next: null }`. Multiple `setUser` calls within the same event are added to this queue.
+
+**Step 2: React schedules a re-render.**
+React marks the component's Fiber node as having pending work (a "dirty" flag via the `lanes` field on the Fiber). It then schedules a reconciliation pass via the Scheduler, which uses `MessageChannel` or `setTimeout` to yield to the browser before starting, so the current event handler finishes first.
+
+**Step 3: The render phase begins.**
+React walks the Fiber tree from the root. When it reaches the dirty component, it calls the component function with the new state value. The function runs entirely in JavaScript. It produces a new Virtual DOM tree, a plain JS object describing what the UI should look like now.
+
+**Step 4: Reconciliation.**
+React diffs the new Virtual DOM tree against the previous one. For each node in the new tree, it checks: does a corresponding node exist in the old tree? Is it the same type? If yes, it computes what props changed and marks the Fiber node with an `Update` flag. If a node is new, it marks it with a `Placement` flag. If a node was removed, it marks it with a `Deletion` flag.
+
+**Step 5: The commit phase.**
+React walks the Fiber tree a second time, this time only visiting Fibers with flags. For each `Update`, it calls the appropriate DOM API (`setAttribute`, `textContent`, `className`, etc.). For `Placement` it calls `insertBefore` or `appendChild`. For `Deletion` it calls `removeChild`. This phase is synchronous and non-interruptible.
+
+The key insight for the synchronization problem: in step 3, React calls your entire component function. Every expression in your JSX is re-evaluated with the new state. Every prop passed to every child component is re-computed. There is no list of "what needs to update." Everything re-derives from state on every render. React then figures out via diffing which DOM nodes actually need to change. You declare the complete desired state of the UI. React figures out the minimal mutations.
+
+This is why the synchronization problem is structurally impossible in React. There is no manual "update the DOM nodes for this data" step. The entire UI is a function of state. All of it re-derives. React applies only the changes.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: What is wrong with this update function?**
+
+```jsx
+function ProfilePage() {
+  const [user, setUser] = React.useState({
+    name: 'Shan',
+    followers: 1240,
+    isFollowing: false,
+  });
+
+  function toggleFollow() {
+    user.isFollowing = !user.isFollowing;
+    user.followers = user.isFollowing ? user.followers + 1 : user.followers - 1;
+    setUser(user);
+  }
+
+  return (
+    <div>
+      <p>{user.followers} followers</p>
+      <button onClick={toggleFollow}>
+        {user.isFollowing ? 'Unfollow' : 'Follow'}
+      </button>
+    </div>
+  );
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+The state object is being mutated directly before passing it to `setUser`. `user.isFollowing = !user.isFollowing` modifies the existing object in place. Then `setUser(user)` passes the same object reference back to React. React performs a shallow reference equality check: is the new state the same reference as the old state? It is, because you mutated the existing object instead of creating a new one. React sees no change and skips the re-render entirely. The UI never updates. The fix is to create a new object: `setUser({ ...user, isFollowing: !user.isFollowing, followers: ... })`. React's change detection is reference-based, not deep equality. Mutation silently breaks it.
+
+</details>
+
+---
+
+**Trap 2: How many times does `expensive` run, and why?**
+
+```jsx
+function Dashboard() {
+  const [count, setCount] = React.useState(0);
+  const [name, setName] = React.useState('Shan');
+
+  const expensive = computeExpensiveValue(count);
+
+  return (
+    <div>
+      <p>{expensive}</p>
+      <p>{name}</p>
+      <button onClick={() => setName('Ravi')}>Change name</button>
+      <button onClick={() => setCount(c => c + 1)}>Increment</button>
+    </div>
+  );
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+`computeExpensiveValue` runs on every render of `Dashboard`, including when only `name` changes. Clicking "Change name" triggers a re-render because `setName` updates state. React calls the `Dashboard` function again. Every line in the function body executes again, including `computeExpensiveValue(count)`. The fact that `count` didn't change is irrelevant. React doesn't have per-expression caching by default. It calls your function, you run all your code, it diffs the output. If `computeExpensiveValue` is genuinely expensive and `count` didn't change, this is wasteful. The solution is `useMemo`, which we'll cover in Phase 7: cache the result of the computation and only recompute when `count` changes.
+
+</details>
+
+---
+
+**Trap 3: This component is supposed to keep the document title in sync with the user's name. What is wrong?**
+
+```jsx
+function ProfilePage() {
+  const [name, setName] = React.useState('Shan');
+
+  document.title = name; // sync the tab title
+
+  return (
+    <div>
+      <input value={name} onChange={e => setName(e.target.value)} />
+    </div>
+  );
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+Technically this works, but it violates React's render purity requirement. `document.title = name` is a side effect, it modifies something outside the component's returned JSX. Doing it directly in the render body means it executes every time the component renders, including during React's double-invocation in Strict Mode and during any render that might get thrown away in Concurrent Mode. Side effects in render run at unpredictable times and frequencies. The correct place is `useEffect`: `useEffect(() => { document.title = name; }, [name])`. This tells React "after you commit a render where `name` changed, run this side effect." The effect runs after the DOM is committed, at a predictable time, exactly once per `name` change. The deeper principle: render describes UI. Effects synchronize external systems with state. Never do external synchronization inside render.
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** Name the synchronization problem precisely. What is the structural reason it is unavoidable in a manual DOM model, regardless of developer discipline?
+
+<details>
+<summary>Answer</summary>
+
+The synchronization problem is that every piece of data has an implicit set of DOM nodes that must reflect it, and the framework provides no mechanism to declare or enforce that relationship. It is structurally unavoidable because the connection between a variable and its dependent DOM nodes lives only in developer knowledge, not in the code. A new developer, a different code path, a feature added three months later, none of them have access to that implicit knowledge. The only way to ensure completeness is to enumerate every dependent by hand at every call site, which cannot be verified by a compiler, a linter, or a code reviewer.
+
+</details>
+
+---
+
+**Q2.** React re-derives the entire UI on every state change rather than tracking which DOM nodes depend on which data. What is the cost of this approach, and how does React keep it acceptable?
+
+<details>
+<summary>Answer</summary>
+
+The cost is that the entire component function runs on every state change, even if most of the output is unchanged. For large components this is wasted computation. React keeps this acceptable through the Virtual DOM and reconciliation: even though the function runs fully, React only applies DOM changes for nodes that actually differ in the output. The DOM operations, which are the expensive part, are minimized. The JavaScript execution, which is cheap, does the full re-derivation. The trade-off is: pay a small, predictable JS cost on every render to eliminate the large, unpredictable cost of incorrect or missed DOM updates.
+
+</details>
+
+---
+
+**Q3.** What is the commit phase, and why is it non-interruptible while the render phase is interruptible?
+
+<details>
+<summary>Answer</summary>
+
+The commit phase is where React applies the computed changes to the real DOM. It is non-interruptible because the DOM must never be left in a half-updated state. If React applied some changes and then paused to handle a higher-priority task, the user would see a partially updated UI, which could be visually broken or logically inconsistent. The render phase, by contrast, only operates on Virtual DOM objects in JavaScript memory. Nothing visible to the user changes during the render phase. If it is interrupted and restarted, the user sees nothing. The worst case is wasted computation, not a broken UI. Interruptibility in the render phase is safe precisely because the render phase has no visible side effects.
+
+</details>
+
+---
+
+**Q4.** In the `toggleFollow` mutation trap above, React uses reference equality to detect state changes. What does this mean for nested objects, and what rule does it imply for updating state?
+
+<details>
+<summary>Answer</summary>
+
+Reference equality means React checks `Object.is(oldState, newState)`. For objects and arrays, this is a pointer comparison. Two objects with identical contents but different references are considered different. The same object mutated in place is considered the same. This implies the immutability rule: always create a new object or array when updating state, never mutate the existing one. For nested objects, only the top-level reference is checked by default, not deep equality. This means if you have `{ user: { name: 'Shan' } }` and you update `state.user.name` directly, React sees the same top-level object reference and skips the re-render. The rule is: treat all state as immutable. Any update that needs to trigger a re-render must produce a new reference.
+
+</details>
+
+---
+
+**Q5.** You have a dashboard where 12 different components all display the current user's name. In the manual DOM model, what must happen when the name changes? In React, what must happen?
+
+<details>
+<summary>Answer</summary>
+
+In the manual DOM model, the function that updates the name must know about all 12 DOM nodes, query or reference each one, and update each one individually. If any one is missed, added later, or accessed via a stale reference, the UI is inconsistent. There is no mechanism to verify completeness. In React, the function that updates the name calls `setUser` with the new name once. React re-renders the component that holds the state. Every one of the 12 components that receives the name as a prop gets the new value on the next render, automatically, because they are all derived from the same state. The developer writing the update function does not need to know how many components consume the name or where they are in the tree.
+
+</details>
+
+---
+
+## Foundation Completed!
+
+That's the foundation. Before writing a single React API, you now have the full "why":
+
+The DOM is expensive and lives in a different world from JavaScript. The only sane way to build UIs is to describe what they should look like given data, not how to mutate them. Keeping UI in sync with data manually is structurally impossible to do correctly at scale. React's answer: you own the state, React owns the DOM, and a pure function connects them.
+
+Everything from now onward is a specific mechanism React built to make that model work efficiently and correctly at every scale.

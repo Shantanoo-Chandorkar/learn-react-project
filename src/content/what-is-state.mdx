@@ -1,0 +1,382 @@
+﻿# What is State, Really?
+
+### 1. The Problem
+
+You have data in your component. Some of it matters to the UI. Some of it doesn't. A counter value that appears on screen matters. A timeout ID from `setTimeout` doesn't appear anywhere. A user's name that you display matters. A reference to a DOM node you measured once doesn't need to trigger a repaint.
+
+But React doesn't automatically know which data should drive UI updates. You have to tell it. The mechanism you use to tell it is `useState`. But if you use `useState` for everything, you create unnecessary re-renders. If you use plain variables for the wrong things, your UI goes stale.
+
+The question is: what is the precise definition of "state"? Not in the documentation sense, but in the causal sense. What property does a piece of data have to have for it to qualify as state? The answer to this question determines every architectural decision you make about where data lives and how it flows.
+
+---
+
+### 2. The Naive Attempt
+
+You are building a search input. As the user types, results filter in real time. You need to track the search query, the filtered results, a loading flag, the timestamp of the last search, and a ref to the input element so you can focus it programmatically.
+
+A developer who doesn't have a precise definition of state reaches for `useState` for everything:
+
+```jsx
+function Search({ items }) {
+  const [query, setQuery] = React.useState('');
+  const [results, setResults] = React.useState(items);
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [lastSearchTime, setLastSearchTime] = React.useState(null);
+  const [inputRef, setInputRef] = React.useState(null);
+
+  function handleChange(e) {
+    const value = e.target.value;
+    setQuery(value);
+    setIsLoading(true);
+    setLastSearchTime(Date.now());
+
+    const filtered = items.filter(item =>
+      item.name.toLowerCase().includes(value.toLowerCase())
+    );
+    setResults(filtered);
+    setIsLoading(false);
+  }
+
+  function focusInput() {
+    if (inputRef) inputRef.focus();
+  }
+
+  return (
+    <div>
+      <input
+        ref={node => setInputRef(node)}
+        value={query}
+        onChange={handleChange}
+        placeholder="Search..."
+      />
+      {isLoading && <p>Loading...</p>}
+      <ul>
+        {results.map(item => <li key={item.id}>{item.name}</li>)}
+      </ul>
+      <button onClick={focusInput}>Focus input</button>
+    </div>
+  );
+}
+```
+
+This works but has problems. `results` is derived directly from `query` and `items`. It is never independently set to anything other than a filtered version of `items`. It has no independent existence. `lastSearchTime` appears nowhere in the JSX. The user never sees it. Changing it triggers a re-render that produces identical visible output. `inputRef` is a DOM node reference. Calling `setInputRef` to store it triggers a re-render, which is unnecessary and potentially causes an infinite loop if not handled carefully.
+
+Three of these five "state" values are not actually state in the meaningful sense. They are being stored incorrectly.
+
+---
+
+### 3. Why That Breaks
+
+Two precise failure modes.
+
+**Failure mode 1: Derived data stored as state causes sync bugs.**
+`results` is always `items.filter(query)`. But now it is stored independently. If `items` changes (the parent passes new items), `results` does not automatically update, because `results` is its own state variable. You have to add a `useEffect` or some mechanism to sync `results` when `items` changes. You have introduced a synchronization problem between two pieces of data that had a pure mathematical relationship. You have turned a derivation into a dependency. This is one of the most common and subtle bugs in React codebases.
+
+**Failure mode 2: Non-UI data stored as state causes unnecessary re-renders.**
+`lastSearchTime` triggers a re-render every time a search happens, producing a new React element tree, running reconciliation, and finding nothing to change in the DOM. `inputRef` stored in state causes a re-render when the DOM node is first assigned. These are wasted cycles, and at scale they degrade perceived performance.
+
+---
+
+### 4. React's Mental Model
+
+State is data that must cause the UI to re-render when it changes, and that cannot be derived from other data that already exists in the component.
+
+Two conditions, both required. If a value does not need to trigger a re-render when it changes, it is not state. If a value can be computed from existing state or props, it is not state. Storing it as state makes it a redundant and potentially inconsistent copy of something that already exists.
+
+Everything else is either a ref (persists across renders, does not trigger re-renders) or a derived value (computed during render from state and props, not stored at all).
+
+One sentence: state is the minimal set of data from which the complete UI can be derived, where each piece changes independently and cannot be computed from any other piece.
+
+---
+
+### 5. React's Solution
+
+Apply two questions to every piece of data:
+
+**Question 1: Does it change over time in a way that should update the UI?**
+If no, it is either a constant (define it outside the component or as a plain variable inside) or a ref (use `useRef`).
+
+**Question 2: Can it be computed from existing state or props?**
+If yes, it is a derived value. Compute it during render. Do not store it.
+
+```jsx
+function Search({ items }) {
+  // STATE: query changes independently, drives visible output
+  const [query, setQuery] = React.useState('');
+
+  // NOT STATE: results is fully derived from query and items
+  // compute during render, never store
+  const results = items.filter(item =>
+    item.name.toLowerCase().includes(query.toLowerCase())
+  );
+
+  // NOT STATE: lastSearchTime never appears in UI
+  // persists across renders without triggering them → useRef
+  const lastSearchTime = React.useRef(null);
+
+  // NOT STATE: inputRef is a DOM node reference
+  // must persist but must not trigger re-renders → useRef
+  const inputRef = React.useRef(null);
+
+  // NOT STATE: isLoading is derived from whether a fetch is in flight
+  // for synchronous filtering it doesn't exist at all
+  // for async fetching it would be genuine state
+
+  function handleChange(e) {
+    const value = e.target.value;
+    setQuery(value);                          // state update: one re-render
+    lastSearchTime.current = Date.now();      // mutation: no re-render
+  }
+
+  function focusInput() {
+    inputRef.current.focus();                 // DOM imperative: no re-render
+  }
+
+  return (
+    <div>
+      <input
+        ref={inputRef}
+        value={query}
+        onChange={handleChange}
+        placeholder="Search..."
+      />
+      <ul>
+        {results.map(item => <li key={item.id}>{item.name}</li>)}
+      </ul>
+      <button onClick={focusInput}>Focus input</button>
+    </div>
+  );
+}
+```
+
+One state variable instead of five. One re-render per keystroke instead of three to five. Zero synchronization bugs between `results` and `query`. Zero spurious re-renders from timestamp updates. Zero infinite loop risk from ref storage.
+
+`results` is computed fresh on every render from `query` and `items`. If `items` changes (parent passes new props), `results` automatically reflects the new items filtered by the current query, because it is recomputed during render. No `useEffect`. No sync logic. No bug.
+
+This is what "minimal state" means in practice. Not minimal number of `useState` calls for elegance's sake, but the precise set of data from which everything else can be derived, with nothing redundant.
+
+---
+
+### 6. Internals
+
+When you call `useState`, React does not create a JavaScript variable in the conventional sense. It creates a state slot on the component's Fiber node.
+
+Fiber nodes have a `memoizedState` field. For function components, this field points to the head of a linked list of hook state objects. Each hook call in the component corresponds to one node in this list.
+
+A state hook node looks like this:
+
+```js
+{
+  memoizedState: 'shan',   // the current state value
+  baseState: 'shan',       // state before any queued updates
+  queue: {                 // update queue for this state slot
+    pending: null,         // pending updates not yet processed
+    dispatch: setQuery,    // the setter function you call
+    lastRenderedReducer: basicStateReducer,
+    lastRenderedState: 'shan',
+  },
+  next: {                  // next hook in the linked list
+    memoizedState: null,   // second useState, third useState, etc.
+    ...
+  }
+}
+```
+
+The linked list is why hooks must be called in the same order every render. React has no names to identify which hook is which. It only has positions in the list. Hook call 1 on render N maps to hook call 1 on render N+1, identified purely by position. If an `if` statement conditionally skips a hook call, the positions shift and every hook after it reads the wrong state slot.
+
+```js
+// React processes hooks by list position
+// Render 1:
+useState('') → slot 0, value ''
+useRef(null) → slot 1, value { current: null }
+
+// Render 2 (wrong: hook conditionally skipped):
+if (someCondition) useState('') → slot 0 (skipped)
+useRef(null) → slot 0  ← reads '' (the query value) as a ref
+// DISASTER: wrong values, wrong behavior, React may throw
+```
+
+This is the mechanical reason behind the Rules of Hooks: no hooks inside conditionals, loops, or nested functions. It is not a style guideline. It is a consequence of the linked list data structure React uses to store hook state.
+
+When `setQuery('shan')` is called, React does not immediately update the value. It enqueues an update object onto the hook's `queue.pending`:
+
+```js
+{
+  action: 'shan',   // the new value, or a function if you passed one
+  next: null,       // next update in the queue (for batched updates)
+}
+```
+
+Then it schedules a re-render of the component. During the re-render, React processes the queue, computes the new state value, stores it in `memoizedState`, and calls the component function with the updated value available via `useState`'s return.
+
+The state value you receive from `useState` on any given render is a snapshot. It is the `memoizedState` value at the time React called your function. It will not change mid-render. It cannot change mid-render. Every call to `setQuery` during that render adds to the queue. Those updates are processed on the next render.
+
+This snapshot nature is not a detail. It is the fundamental property that makes closures over state values safe:
+
+```jsx
+function Timer() {
+  const [count, setCount] = React.useState(0);
+
+  React.useEffect(() => {
+    const id = setInterval(() => {
+      console.log(count); // this will always log 0
+      setCount(count + 1); // this will always set to 1, not increment
+    }, 1000);
+    return () => clearInterval(id);
+  }, []); // empty deps: effect runs once, closes over count = 0
+
+  return <p>{count}</p>;
+}
+```
+
+The `count` inside the `setInterval` callback is the snapshot from the render when the effect ran. It is `0` forever because the effect never re-ran (empty dependency array) and the closure never captured a newer value. To correctly increment, you use the functional update form: `setCount(prev => prev + 1)`, which receives the current state at the time of update, not the captured snapshot. We will dissect this completely in Phase 5.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: Is this state correct? What will happen?**
+
+```jsx
+function UserProfile({ userId }) {
+  const [userId2, setUserId2] = React.useState(userId);
+  const [user, setUser] = React.useState(null);
+
+  React.useEffect(() => {
+    fetchUser(userId2).then(data => setUser(data));
+  }, [userId2]);
+
+  return <div>{user?.name}</div>;
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+`userId2` is a redundant copy of the `userId` prop stored as state. This is a classic derived state bug. When the parent passes a new `userId` prop (navigating to a different user's profile), `userId2` does not update, because `useState` only uses its initializer argument on the first render. The effect still uses `userId2`, so it fetches the old user. The profile shows stale data. The fix is to use `userId` directly as the effect dependency: `useEffect(() => { fetchUser(userId).then(...) }, [userId])`. Storing a prop as state is almost always wrong because it creates a divergence the moment the prop changes. The only valid exception is when you explicitly want to "freeze" the initial value and let it evolve independently, which must be documented clearly and is rare.
+
+</details>
+
+---
+
+**Trap 2: How many re-renders does this trigger per keystroke?**
+
+```jsx
+function Form() {
+  const [firstName, setFirstName] = React.useState('');
+  const [lastName, setLastName] = React.useState('');
+  const [fullName, setFullName] = React.useState('');
+
+  function handleFirstName(e) {
+    setFirstName(e.target.value);
+    setFullName(e.target.value + ' ' + lastName);
+  }
+
+  function handleLastName(e) {
+    setLastName(e.target.value);
+    setFullName(firstName + ' ' + e.target.value);
+  }
+
+  return (
+    <div>
+      <input value={firstName} onChange={handleFirstName} />
+      <input value={lastName} onChange={handleLastName} />
+      <p>{fullName}</p>
+    </div>
+  );
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+In React 18 with automatic batching, both `setFirstName` and `setFullName` inside `handleFirstName` are batched into a single re-render. So one re-render per keystroke. But the structural problem is worse than the re-render count. `fullName` is a derived value. It is always `firstName + ' ' + lastName`. Storing it as separate state means it can go out of sync: what if `setFullName` is called somewhere and `firstName` or `lastName` changes separately? The invariant `fullName === firstName + ' ' + lastName` is maintained only by developer discipline, not by the data model. The correct approach is to remove `fullName` state entirely and compute it during render: `const fullName = firstName + ' ' + lastName`. This guarantees the invariant structurally. It is never wrong. It requires no coordination. This is derived state: a value that is a pure function of other state, which must not be stored redundantly.
+
+</details>
+
+---
+
+**Trap 3: What is the bug? The counter seems to work but breaks under specific conditions.**
+
+```jsx
+function Counter() {
+  const [count, setCount] = React.useState(0);
+
+  function handleClick() {
+    setCount(count + 1);
+    setCount(count + 1);
+    setCount(count + 1);
+  }
+
+  return (
+    <div>
+      <p>{count}</p>
+      <button onClick={handleClick}>+3</button>
+    </div>
+  );
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+Clicking the button sets count to `1`, not `3`. All three `setCount` calls use the same `count` snapshot. `count` is `0` at the time `handleClick` runs. Each call enqueues `{ action: 0 + 1 }`. Three identical updates are queued. React processes them: the final state is `1`, not `3`. Because `count` is a snapshot of the render's state, calling `setCount(count + 1)` three times is the same as calling it once. To increment three times from the same handler, use the functional update form which receives the latest state at processing time, not the captured snapshot: `setCount(prev => prev + 1)` three times correctly increments by 3. This trap reveals the snapshot nature of state: the value you read is frozen for the duration of the render and all synchronous code in that event handler.
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** A component has a piece of data that changes over time but is never rendered in the JSX. Is it state? What should it be?
+
+<details>
+<summary>Answer</summary>
+
+It is not state. State is specifically data whose changes should cause a UI update. Data that changes but never affects the UI does not need to trigger re-renders. It should be stored in a `useRef`. A ref persists across renders (unlike a plain variable inside the function body, which is recreated every render) but does not trigger re-renders when its `.current` value is mutated. Examples include timer IDs, previous values you're tracking for comparison, scroll positions you measure but don't display, and WebSocket connection objects.
+
+</details>
+
+---
+
+**Q2.** What is the precise mechanical reason why hooks cannot be called inside conditional blocks?
+
+<details>
+<summary>Answer</summary>
+
+React identifies each hook's state slot by its position in a linked list stored on the Fiber node's `memoizedState` field. There are no names, only positions. Hook call 1 always maps to slot 1. Hook call 2 always maps to slot 2. If a conditional causes a hook to be skipped on one render, every subsequent hook call shifts one position back. Hook 2 now reads slot 1's value, hook 3 reads slot 2's value, and so on. The component reads entirely wrong state values for every hook after the skipped one. React detects this in development and throws an error. The rule is not arbitrary: it is a direct consequence of the linked list storage mechanism.
+
+</details>
+
+---
+
+**Q3.** The state value from `useState` is described as a "snapshot." What does this mean, and what problem does the functional update form `setCount(prev => prev + 1)` solve that `setCount(count + 1)` cannot?
+
+<details>
+<summary>Answer</summary>
+
+A snapshot means the state value you receive from `useState` is fixed for the entire duration of that render and all synchronous code in that event. It does not change when you call the setter. `setCount(count + 1)` uses the snapshot value, so calling it multiple times in one handler always computes from the same base. Calling it three times with `count = 0` queues three updates of `{ action: 1 }`, resulting in a final state of `1`. The functional update form `setCount(prev => prev + 1)` passes a function as the action. React processes updates sequentially: the first call produces `1`, the second call receives `1` as `prev` and produces `2`, the third receives `2` and produces `3`. The functional form is based on the latest state at processing time, not the captured snapshot. Use it whenever one update logically depends on the previous value, especially in async code or when multiple updates are batched together.
+
+</details>
+
+---
+
+**Q4.** A developer stores a filtered list in state and syncs it with a `useEffect`. Another developer computes the filtered list directly during render. The behavior looks identical. Why is the second approach structurally superior?
+
+<details>
+<summary>Answer</summary>
+
+The first approach stores a derived value as state, creating two sources of truth: the original list (or query) and the filtered result. These must be kept in sync manually via `useEffect`. A `useEffect` runs after render, which means there is a render where the filtered list is stale, before the effect fires and updates it. This can produce a flash of incorrect data. It also requires extra logic to handle edge cases: what if the original list changes and the effect hasn't run yet? What if the effect's dependencies are wrong? The second approach computes the filtered list during render as a pure function of current state and props. It is always current, never stale, requires no synchronization, and eliminates an entire class of timing bugs. Any value that is a pure function of existing state or props is a derived value and should be computed during render, not stored as state with a synchronization mechanism bolted on.
+
+</details>
+
+---
+
+**Q5.** You have a component with 10 `useState` calls. A senior engineer tells you to "reduce your state." What specific questions do you ask about each piece of state to determine whether it should be removed?
+
+<details>
+<summary>Answer</summary>
+
+Two questions in order. First: can this value be computed from other state or props currently in the component? If yes, delete the `useState`, compute it as a local variable during render, and use that variable in the JSX. If no, proceed to the second question. Second: does changing this value need to trigger a re-render? If yes, it is genuine state, keep the `useState`. If no, move it to `useRef` so it persists across renders without causing them. After these two questions, the remaining `useState` calls represent the true minimal state: values that are independently mutable, not derivable from anything else, and whose changes must update the UI. Everything else is either a derived computation or a ref.
+
+</details>

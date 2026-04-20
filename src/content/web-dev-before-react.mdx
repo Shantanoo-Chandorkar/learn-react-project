@@ -1,0 +1,361 @@
+﻿# What was web dev like before React?
+
+### 1. The Problem
+
+To understand why React's model is a genuine breakthrough and not just a preference, you need to feel the weight of what came before it. Not as history trivia, but as a lived problem. The developers who built React weren't solving a hypothetical. They were solving something that was actively making large-scale web development painful, slow, and fragile.
+
+The era before React had a clear progression: raw DOM manipulation, then jQuery, then a wave of early MVC frameworks. Each step solved something. Each step left a deeper problem untouched. That untouched problem is exactly what React is.
+
+---
+
+### 2. The Naive Attempt
+
+The year is 2010. You're building a todo app. No frameworks. Raw DOM and jQuery, which is the polished, cross-browser version of raw DOM.
+
+```html
+<div id="app">
+  <input id="todo-input" type="text" placeholder="Add a todo" />
+  <button id="add-btn">Add</button>
+  <ul id="todo-list"></ul>
+  <p id="count">0 todos</p>
+</div>
+
+<script src="jquery.min.js"></script>
+<script>
+  var todos = [];
+
+  $('#add-btn').on('click', function () {
+    var text = $('#todo-input').val().trim();
+    if (!text) return;
+
+    todos.push({ text: text, done: false });
+    $('#todo-input').val('');
+
+    // manually build and insert DOM
+    var li = $('<li></li>');
+    var checkbox = $('<input type="checkbox" />');
+    var label = $('<span></span>').text(text);
+    var deleteBtn = $('<button>x</button>');
+
+    checkbox.on('change', function () {
+      var index = li.index();
+      todos[index].done = $(this).is(':checked');
+      if (todos[index].done) {
+        label.css('text-decoration', 'line-through');
+      } else {
+        label.css('text-decoration', '');
+      }
+      updateCount();
+    });
+
+    deleteBtn.on('click', function () {
+      var index = li.index();
+      todos.splice(index, 1);
+      li.remove();
+      updateCount();
+    });
+
+    li.append(checkbox).append(label).append(deleteBtn);
+    $('#todo-list').append(li);
+    updateCount();
+  });
+
+  function updateCount() {
+    var remaining = todos.filter(function (t) { return !t.done; }).length;
+    $('#count').text(remaining + ' todos');
+  }
+</script>
+```
+
+This works. A developer in 2010 would be proud of this. It handles add, check, delete, and count. The jQuery API is clean. The code reads almost like English.
+
+Now a product manager walks in. Three new requirements:
+
+1. Add a filter: show All, Active, or Completed todos.
+2. Add an "Edit" button that turns the label into an input field in-place.
+3. Persist todos to `localStorage`. On page load, hydrate the list from storage.
+
+```js
+// Filter state
+var currentFilter = 'all';
+
+$('#filter-all').on('click', function () {
+  currentFilter = 'all';
+  renderList(); // but wait, what is renderList?
+});
+
+$('#filter-active').on('click', function () {
+  currentFilter = 'active';
+  renderList();
+});
+
+$('#filter-completed').on('click', function () {
+  currentFilter = 'completed';
+  renderList();
+});
+
+function renderList() {
+  $('#todo-list').empty(); // nuke everything
+
+  var filtered = todos.filter(function (t) {
+    if (currentFilter === 'active') return !t.done;
+    if (currentFilter === 'completed') return t.done;
+    return true;
+  });
+
+  filtered.forEach(function (todo, i) {
+    // rebuild the exact same DOM structure from the add handler
+    // but now the index `i` is wrong because it's the filtered index,
+    // not the todos[] index, so checkbox.on('change') breaks
+    var li = $('<li></li>');
+    // ... same 20 lines again, but subtly broken
+  });
+}
+```
+
+You just hit the wall. `renderList` needs to rebuild the DOM from scratch when a filter changes, but you already have DOM-building code in the add handler. You either duplicate it or extract it into a shared function. Fine. But the extracted function references `li.index()` to find which todo to toggle, and `li.index()` returns the position in the DOM, which no longer matches the position in `todos[]` when a filter is active.
+
+You patch it with data attributes:
+
+```js
+li.attr('data-index', realIndex);
+```
+
+Now every handler reads from `data-index` instead of `li.index()`. But now editing a todo changes its text in `todos[]` but you also need to find the DOM node for that todo to update the label. You add another data attribute. Or you call `renderList()` after every mutation and rebuild the entire list from scratch each time.
+
+The code is now a web of imperative patches, each one fixing a bug introduced by the previous patch. The `todos[]` array and the DOM are supposed to be in sync, but that sync is maintained by dozens of manual operations scattered across a dozen event handlers, each of which has to know about the others.
+
+---
+
+### 3. Why That Breaks
+
+Three precise failure modes, each one worse than the last.
+
+**Failure mode 1: Duplicated rendering logic.**
+The code that turns a todo object into a DOM node exists in at least two places: the add handler and `renderList`. Every time the visual structure of a todo changes, you update it in multiple places. You will forget one. This is not a discipline problem. It is a structural problem. The framework gives you no mechanism to define "what a todo looks like" in one place.
+
+**Failure mode 2: DOM position is used as identity.**
+`li.index()` couples your data logic to DOM structure. If the list is filtered, sorted, or reordered, the index is wrong. You compensate with data attributes, which means you now have two parallel representations of the same data: the `todos[]` array and the DOM's `data-index` attributes. These can drift. A bug that forgets to update a `data-index` after a splice produces silent corruption.
+
+**Failure mode 3: State is split across multiple locations.**
+The authoritative state of the application lives in: `todos[]`, `currentFilter`, `localStorage`, and implicitly in the DOM itself (which elements exist, which checkboxes are checked, which labels have strikethrough). When a bug occurs, you have to check all four locations to understand what the app thinks is true. There is no single place to look.
+
+---
+
+### 4. React's Mental Model
+
+Every piece of UI is a pure function of a single source of truth. The DOM is never the state, it is always the output. State lives in one place. The UI is derived from it on every change, automatically.
+
+Before React, you maintained the DOM. After React, you maintain state. React maintains the DOM for you.
+
+---
+
+### 5. React's Solution
+
+The same todo app in React:
+
+```jsx
+function TodoApp() {
+  const [todos, setTodos] = React.useState([]);
+  const [input, setInput] = React.useState('');
+  const [filter, setFilter] = React.useState('all');
+
+  function addTodo() {
+    if (!input.trim()) return;
+    setTodos([...todos, { text: input.trim(), done: false }]);
+    setInput('');
+  }
+
+  function toggleTodo(index) {
+    setTodos(todos.map((t, i) =>
+      i === index ? { ...t, done: !t.done } : t
+    ));
+  }
+
+  function deleteTodo(index) {
+    setTodos(todos.filter((_, i) => i !== index));
+  }
+
+  const visible = todos.filter(t => {
+    if (filter === 'active') return !t.done;
+    if (filter === 'completed') return t.done;
+    return true;
+  });
+
+  return (
+    <div>
+      <input value={input} onChange={e => setInput(e.target.value)} />
+      <button onClick={addTodo}>Add</button>
+
+      <div>
+        {['all', 'active', 'completed'].map(f => (
+          <button key={f} onClick={() => setFilter(f)}>{f}</button>
+        ))}
+      </div>
+
+      <ul>
+        {visible.map((todo, i) => (
+          <li key={i}>
+            <input
+              type="checkbox"
+              checked={todo.done}
+              onChange={() => toggleTodo(todos.indexOf(todo))}
+            />
+            <span style={{ textDecoration: todo.done ? 'line-through' : '' }}>
+              {todo.text}
+            </span>
+            <button onClick={() => deleteTodo(todos.indexOf(todo))}>x</button>
+          </li>
+        ))}
+      </ul>
+
+      <p>{todos.filter(t => !t.done).length} todos</p>
+    </div>
+  );
+}
+```
+
+There is one `todos` array. That's the only source of truth. The DOM is derived from it entirely. Adding a filter didn't require touching any DOM-building code. It required adding one state variable and one `.filter()` call. The rendering logic for a todo exists in one place, the JSX inside the `ul`. `updateCount` disappeared because it's just an expression derived from `todos`, not a function that has to be manually called after every mutation.
+
+The jQuery version required you to ask "what do I need to change in the DOM?" The React version requires you to ask "what is the new state?" React figures out the DOM changes.
+
+---
+
+### 6. Internals
+
+The jQuery model and React's model differ at the architectural level in one fundamental way: who owns the DOM.
+
+In jQuery, you own the DOM. You created those `li` elements. You hold references to them in closures. You decide when to remove them. The DOM is mutable shared state that every event handler reads and writes freely.
+
+In React, React owns the DOM. You never hold a reference to a DOM node (except through `useRef`, which is an explicit escape hatch). You never call `appendChild` or `remove`. React's reconciler is the only thing that touches the real DOM. Your code describes what should exist. React decides what operations to run.
+
+This ownership model is what enables reconciliation. Because React is the only writer to the DOM, it always knows exactly what the DOM currently looks like (it's the previous Virtual DOM tree). It can diff that against the new tree and compute the minimal set of DOM operations. If you bypassed React and mutated a DOM node directly with `document.getElementById`, React's virtual representation would no longer match the real DOM, and the next reconciliation could produce incorrect output.
+
+Backbone.js, one of the dominant pre-React frameworks, tried to solve the jQuery problem with models and views. Models held state. Views listened to model changes and updated the DOM. But views still wrote directly to the DOM. The result was cascading view updates: View A changes the DOM, which triggers an event, which updates Model B, which triggers View B to change the DOM, which triggers View A again. Circular update loops were a genuine production problem. Ember and Angular 1 introduced two-way data binding, which auto-synced DOM inputs and JS models, and made the circular update problem worse. React broke the cycle entirely by making data flow one direction only: state down, events up, DOM as output.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: "React is just jQuery but newer." What's wrong with this comparison?**
+
+<details>
+<summary>Answer</summary>
+
+They solve different problems at different levels. jQuery is a DOM manipulation library. It makes it easier to write imperative DOM mutations with a cleaner API and cross-browser compatibility. It doesn't change the programming model. You still write transitions. You still own the DOM. You still maintain synchronization manually. React is a declarative UI library. It changes the programming model entirely. You don't write DOM mutations at all. You write a function from state to UI description, and React handles the DOM. Comparing them is like comparing a better screwdriver to a CNC machine. One is a better tool for the same manual job. The other eliminates the manual job.
+
+</details>
+
+---
+
+**Trap 2: What is wrong with this approach to "optimizing" a React list?**
+
+```jsx
+function TodoList({ todos }) {
+  const listEl = document.getElementById('todo-list');
+
+  todos.forEach(todo => {
+    const li = document.createElement('li');
+    li.textContent = todo.text;
+    listEl.appendChild(li);
+  });
+
+  return <ul id="todo-list"></ul>;
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+This directly mutates a DOM node that React owns. React renders the `<ul>` as an empty element. Then your code appends `li` elements to the real DOM directly, outside React's knowledge. On the next render, React diffs its Virtual DOM (empty `ul`) against the previous Virtual DOM (also empty `ul`), sees no change, and does nothing to the real DOM. But the real DOM now has stale `li` elements from the previous render still appended to it, plus newly appended ones from this render. The list grows forever on every re-render. You've created a ghost DOM that React cannot see or clean up. The fix is to let React render the `li` elements via JSX and never touch the DOM directly.
+
+</details>
+
+---
+
+**Trap 3: A developer says "I'll use React for the complex parts and jQuery for the simple DOM stuff." What problems will this cause?**
+
+```jsx
+function Dropdown({ items }) {
+  React.useEffect(() => {
+    // "simpler" with jQuery
+    $('#my-dropdown').hide();
+    $('#toggle-btn').on('click', function() {
+      $('#my-dropdown').toggle();
+    });
+  }, []);
+
+  return (
+    <div>
+      <button id="toggle-btn">Toggle</button>
+      <ul id="my-dropdown">
+        {items.map(item => <li key={item.id}>{item.name}</li>)}
+      </ul>
+    </div>
+  );
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+Three concrete problems. First, React and jQuery now both think they control the dropdown's visibility. If a state change causes React to re-render this component, React will re-render the `ul` based on its Virtual DOM, which has no concept of the jQuery `hide`/`show` state. React might restore the `ul` to visible because its Virtual DOM says it's visible, overriding the jQuery hide. Second, the jQuery `click` handler is added in `useEffect` but the component could re-render and attach multiple handlers on the same button. Third, if `items` changes, React re-renders the `li` elements correctly, but the `ul` visibility state is entirely managed by jQuery and is now decoupled from React's render cycle. Mixing the two models means neither has a complete picture of the DOM, so neither can be trusted. You must pick one owner.
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** Name the three sources of state in the jQuery todo example. Why is having multiple sources of state a structural problem, not just a style problem?
+
+<details>
+<summary>Answer</summary>
+
+The three sources are: the `todos[]` array, the `currentFilter` variable, and the DOM itself (which elements exist, which checkboxes are checked, which styles are applied). It's a structural problem, not a style problem, because any function that needs to know the current state of the app must read from multiple locations, and any mutation must update multiple locations atomically. There is no mechanism in the jQuery model that enforces this. A developer who updates `todos[]` but forgets to update the DOM (or vice versa) creates an inconsistency that the framework has no way to detect or prevent. The inconsistency is possible by design.
+
+</details>
+
+---
+
+**Q2.** Why did Angular 1's two-way data binding make the circular update problem worse rather than solving it?
+
+<details>
+<summary>Answer</summary>
+
+Two-way data binding automatically syncs a JS model to a DOM input and vice versa. When the model changes, the DOM updates. When the DOM changes (user types), the model updates. The problem is that a model update can trigger a DOM change, which triggers a model update, which triggers another DOM change. Angular 1 used a "dirty checking" digest cycle that would re-run until the model stabilized, with a maximum iteration limit (10 by default) after which it threw an error. Any sufficiently complex interaction graph could trigger cascading updates that were hard to trace. React broke this entirely by making data flow unidirectional: state flows down via props, events flow up via callbacks, and the DOM is always the output, never the input to a state update.
+
+</details>
+
+---
+
+**Q3.** What does it mean for React to "own" the DOM, and what breaks if you bypass that ownership?
+
+<details>
+<summary>Answer</summary>
+
+React owning the DOM means React is the sole writer to any DOM node it manages. React keeps its Virtual DOM tree as an accurate model of what the real DOM looks like. If you bypass React and write directly to a DOM node (via `getElementById`, jQuery, etc.), the real DOM diverges from React's Virtual DOM. On the next reconciliation, React diffs its Virtual DOM against the previous Virtual DOM, not against the real DOM. It sees no change in its own records and leaves the real DOM alone, meaning your direct mutation persists. But on subsequent renders, React may overwrite your change, or not, depending on what specifically changed. The behavior is unpredictable because React's model no longer accurately represents reality.
+
+</details>
+
+---
+
+**Q4.** The jQuery todo code needed `renderList()` to be called manually after every mutation. What React feature eliminates this requirement entirely, and what is the mechanism?
+
+<details>
+<summary>Answer</summary>
+
+`useState`. When you call `setTodos` with a new array, React schedules a re-render of the component. Re-rendering means React calls your component function again with the new state value. Because the JSX in your return statement is just code that derives UI from the current `todos` and `filter` values, the re-render automatically produces the correct new UI. There is no `renderList` to call because rendering is not a function you call. It is the component function itself, which React calls whenever state changes.
+
+</details>
+
+---
+
+**Q5.** Backbone tried to solve jQuery's problem with models and views. What specific problem did it fail to solve that React solved?
+
+<details>
+<summary>Answer</summary>
+
+Backbone decoupled state (models) from DOM manipulation (views), which was a step forward. But views still wrote directly to the DOM. React solved the deeper problem: it removed the DOM as a shared mutable surface entirely. In Backbone, a view listening to a model change would call `this.render()` and write to the DOM directly, and other views could do the same. React replaced this with a single reconciler that is the only writer to the DOM. By making the DOM an output rather than a shared mutable resource, React eliminated the entire class of problems caused by multiple parts of the app fighting over the same DOM nodes.
+
+</details>

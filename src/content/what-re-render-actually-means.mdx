@@ -1,0 +1,458 @@
+﻿# What Re-render Actually Means
+
+### 1. The Problem
+
+The word "re-render" is used loosely in React discussions and documentation. Developers use it to mean at least three different things: the component function being called again, the Virtual DOM being updated, and pixels changing on screen. These are three distinct operations, and conflating them is the source of most performance misconceptions in React.
+
+When a developer says "this component re-renders too much," they might mean the function is called too often, or they might mean the DOM is being written too often, or they might mean the user sees visual flicker. These are different problems with different solutions. Treating them as the same problem leads to applying `React.memo` to fix DOM writes (it doesn't) or optimizing reconciliation to fix function call overhead (often not the bottleneck).
+
+You need a precise definition of what happens between "state changes" and "pixels change on screen." That sequence has six distinct steps, and performance issues can occur at any one of them.
+
+---
+
+### 2. The Naive Attempt
+
+You have a component that logs on every render. You notice it logs frequently and immediately conclude the DOM is thrashing.
+
+```jsx
+function ProductCard({ product }) {
+  console.log('ProductCard rendered', product.id);
+
+  const price = formatPrice(product.price);
+  const isOnSale = product.originalPrice > product.price;
+
+  return (
+    <div className="card">
+      <img src={product.image} alt={product.name} />
+      <h3>{product.name}</h3>
+      <p className={isOnSale ? 'price sale' : 'price'}>{price}</p>
+      {isOnSale && (
+        <span className="badge">Sale</span>
+      )}
+    </div>
+  );
+}
+```
+
+The log fires 50 times per second during a list animation in the parent. You reach for `React.memo` and `useMemo` everywhere to stop the "re-renders." After adding five memoizations, the log still fires 20 times per second and the animation still stutters.
+
+The problem was never the function calls. `ProductCard` is a trivial function that runs in under a millisecond. Calling it 50 times per second costs 50ms total. That is not the bottleneck.
+
+The stuttering is from somewhere else entirely, maybe an expensive layout recalculation triggered by a different component, or a large list without virtualization causing 500 DOM nodes to be reconciled simultaneously. But you spent your optimization effort on the wrong layer because you treated "function called" and "DOM written" as the same event.
+
+---
+
+### 3. Why That Breaks
+
+The precise failure mode: **conflating the render phase (JavaScript) with the commit phase (DOM) leads to optimizing the wrong layer.**
+
+The render phase is pure JavaScript. Your function runs. It produces an object tree. React diffs two object trees. This is fast. JavaScript engines are extremely good at object allocation and comparison. Calling a simple component function 100 times per second is typically imperceptible.
+
+The commit phase touches the real DOM. DOM writes trigger style recalculation, layout, and paint in the browser. These are expensive. A single layout-triggering DOM write can take more time than 1000 component function calls.
+
+If your performance problem is in the commit phase (too many DOM writes, too much layout), optimizing the render phase (fewer function calls via `React.memo`) does not help. The DOM writes still happen for the components that actually changed. You reduced the render phase cost by a small amount while the commit phase cost remains unchanged.
+
+---
+
+### 4. React's Mental Model
+
+A re-render is a JavaScript-only operation. It is React calling your component function, comparing the new output to the previous output, and computing the minimum set of DOM changes needed. The DOM is not touched during a re-render. The DOM is touched only during the commit phase that follows. Re-renders are cheap. DOM writes are expensive. They are separate.
+
+One sentence: a re-render is React asking "what should the UI look like now?" in JavaScript memory, not "update the screen."
+
+---
+
+### 5. React's Solution
+
+Trace the complete sequence from state change to pixels on screen. Six distinct steps.
+
+---
+
+**Step 1: The trigger.**
+
+Something causes React to schedule work. A setter is called. A context value changes. A parent re-renders. React enqueues an update on the relevant Fiber and schedules processing via the Scheduler.
+
+```jsx
+setCount(c => c + 1);
+// queues: { action: c => c + 1 } on Counter's Fiber
+// marks Counter's Fiber lanes with SyncLane
+// schedules ensureRootIsScheduled
+```
+
+No DOM changes. No function calls yet. Just a queued work item.
+
+---
+
+**Step 2: The render phase begins, your function is called.**
+
+React processes the work queue. It calls your component function with the new state. Your function executes entirely in JavaScript.
+
+```jsx
+function Counter() {
+  const [count, setCount] = React.useState(0); // reads memoizedState: 1
+  // count = 1
+
+  const doubled = count * 2; // JavaScript arithmetic
+  const label = count === 1 ? '1 click' : `${count} clicks`; // string ops
+
+  return (
+    <div className="counter">
+      <p>{label}</p>
+      <span>{doubled}</span>
+      <button onClick={() => setCount(c => c + 1)}>Click</button>
+    </div>
+  );
+}
+```
+
+When this function runs during re-render, it is pure JavaScript. No DOM reads. No DOM writes. `doubled` and `label` are computed in memory. The JSX at the end produces a plain object tree, not DOM nodes. The function returns. Nothing visible has changed.
+
+---
+
+**Step 3: The new element tree is produced.**
+
+The JSX returned by your function is a plain JavaScript object tree:
+
+```js
+{
+  type: 'div',
+  props: {
+    className: 'counter',
+    children: [
+      { type: 'p', props: { children: '1 click' } },
+      { type: 'span', props: { children: 2 } },
+      { type: 'button', props: { onClick: fn, children: 'Click' } }
+    ]
+  }
+}
+```
+
+This object tree lives in the JavaScript heap. It is not the DOM. It takes microseconds to create and allocate.
+
+---
+
+**Step 4: Reconciliation, the diff.**
+
+React compares the new element tree to the previous element tree, which is stored in the Fiber tree's `memoizedProps` and the previous render's output.
+
+For each node in the new tree, React checks:
+
+- Same type as the node in the same position in the old tree?
+- Same key?
+- What props changed?
+
+```
+Previous tree:                New tree:
+div.counter                   div.counter
+  p: "0 clicks"         →       p: "1 click"       ← TEXT CHANGED
+  span: 0               →       span: 2             ← TEXT CHANGED
+  button: "Click"       →       button: "Click"     ← UNCHANGED
+```
+
+React identifies: the `p` element's text content changed, the `span` element's text content changed, the `button` is unchanged. React marks the Fiber nodes for `p` and `span` with `Update` flags. The `button` Fiber has no flag.
+
+This entire step is JavaScript object comparison. No DOM reads. No DOM writes.
+
+---
+
+**Step 5: The commit phase, the only step that touches the DOM.**
+
+React walks the Fiber tree collecting all nodes with flags. For each flagged node, it performs the minimum DOM operation required.
+
+```js
+// For the p node with Update flag:
+pDomNode.textContent = '1 click';
+
+// For the span node with Update flag:
+spanDomNode.textContent = '2';
+
+// The button DOM node is not touched.
+```
+
+This is the only point in the entire sequence where the real DOM is modified. Two `textContent` assignments for two changed text nodes. The `div` container, the `button`, and all their attributes are untouched.
+
+This step is synchronous and non-interruptible. React completes all DOM writes in one pass to prevent partial updates being visible to the user.
+
+---
+
+**Step 6: Browser paint.**
+
+After React commits to the DOM, the browser's rendering engine takes over. It runs style recalculation, layout, and paint to update the pixels on screen. React has no involvement in this step.
+
+```
+Style recalculation: which CSS rules apply to the changed nodes?
+Layout: does the text change affect any element's dimensions?
+Paint: which pixels need to be redrawn?
+Composite: how do layers combine into the final frame?
+```
+
+The browser batches these operations and typically runs them before the next animation frame (16.6ms for 60fps). The user sees the updated pixels at the next frame boundary.
+
+---
+
+**The complete sequence:**
+
+```
+State change (JavaScript)
+    ↓ [Trigger]
+Scheduler queues work (JavaScript)
+    ↓ [Render phase begins]
+Component function called (JavaScript)
+    ↓ [New element tree produced]
+Reconciliation: diff new tree vs old tree (JavaScript)
+    ↓ [Commit phase]
+Minimum DOM writes applied (DOM API)
+    ↓ [Browser takes over]
+Style recalculation → Layout → Paint → Composite (Browser)
+    ↓
+Pixels updated on screen
+```
+
+The render phase (steps 2-4) is entirely JavaScript. It can be interrupted, restarted, and repeated without visible consequences because it touches nothing the user can see. The commit phase (step 5) touches the DOM and is non-interruptible. The browser pipeline (step 6) is outside React entirely.
+
+---
+
+**What this means for performance.**
+
+A re-render (the function call) and a DOM write are separate. A component can re-render many times without any DOM writes if the reconciler finds nothing changed.
+
+```jsx
+const MemoChild = React.memo(function Child({ items }) {
+  return (
+    <ul>
+      {items.map(item => <li key={item.id}>{item.name}</li>)}
+    </ul>
+  );
+});
+
+function Parent() {
+  const [count, setCount] = React.useState(0);
+  const items = [{ id: 1, name: 'Item A' }]; // same content, new reference
+
+  return (
+    <div>
+      <button onClick={() => setCount(c => c + 1)}>{count}</button>
+      <MemoChild items={items} />
+    </div>
+  );
+}
+```
+
+Without `React.memo`: `MemoChild` re-renders on every click. The reconciler compares the new `<ul>` to the previous `<ul>`. Contents identical. No DOM writes. The re-render cost is one function call plus one diff of a small tree.
+
+With `React.memo`: `MemoChild` does not re-render. The prop check fails because `items` is a new reference on every render. Wait, `React.memo` uses `shallowEqual` by default which would detect the new reference on `items` and re-render. But the point stands: in either case, the DOM is not written because the output is identical.
+
+The measurable cost difference between "re-renders with no DOM writes" and "no re-render at all" is the function call and the diff. For a small component, this is negligible. For a component with 500 children, the diff of 500 Fiber nodes has real cost even without DOM writes.
+
+---
+
+### 6. Internals
+
+The render phase and commit phase are separated by React's two-phase architecture for a fundamental reason: the render phase must be interruptible.
+
+In React's concurrent mode, the Scheduler can pause the render phase mid-tree, yield control to the browser to handle a higher-priority task (user input, animation frame), and resume later. This is only safe because the render phase has no observable side effects. No DOM writes happen during render. No external systems are modified. If React pauses mid-render and restarts from the beginning, the user sees nothing because nothing visible happened.
+
+The work-in-progress Fiber tree captures the render phase output. As React processes each component during the render phase, it builds the work-in-progress tree. The current tree (what is on screen) remains unchanged throughout. When the render phase completes (all components processed, no more interruptions), React has a complete new description of the UI in the work-in-progress tree, with change flags on the Fibers that differ.
+
+Only then does the commit phase begin. The commit phase is synchronous and non-interruptible. React walks the work-in-progress tree, applies all flagged changes to the DOM, fires all effects, and then swaps the work-in-progress tree to become the new current tree.
+
+The commit phase has three sub-phases:
+
+```
+Before mutation phase:
+  Calls getSnapshotBeforeUpdate (class components)
+  Reads DOM measurements that will be invalidated by upcoming mutations
+  Saves them for effects
+
+Mutation phase:
+  Applies all DOM insertions, updates, deletions
+  Clears useLayoutEffect cleanups
+  This is where textContent, setAttribute, insertBefore, removeChild happen
+
+Layout phase:
+  Fires useLayoutEffect callbacks synchronously
+  These run after DOM mutations but before browser paint
+  Useful for reading updated DOM layout before the user sees it
+
+[Browser paint happens here]
+
+Passive effects phase (asynchronous):
+  Fires useEffect callbacks
+  These run after browser paint
+  Asynchronous, scheduled via MessageChannel macrotask
+```
+
+Understanding this sequence is why `useLayoutEffect` and `useEffect` have different timing. `useLayoutEffect` fires after DOM mutations but before browser paint, so it can read updated layout without the user seeing an intermediate state. `useEffect` fires after paint, so it does not block the browser from showing the committed DOM to the user. We cover this precisely in Phase 5.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: A developer says "this component re-renders 60 times per second, it must be causing jank." Is this necessarily true?**
+
+```jsx
+function AnimatedValue({ value }) {
+  return <span>{value.toFixed(2)}</span>;
+}
+
+// Parent runs a requestAnimationFrame loop and updates value 60fps
+```
+
+<details>
+<summary>Answer</summary>
+
+Not necessarily. Whether re-rendering 60 times per second causes jank depends entirely on what the reconciler finds when it diffs the output.
+
+`AnimatedValue` is a trivial component. The function body runs a `toFixed` call and returns a JSX span. The entire function executes in microseconds. The reconciler compares the new text content to the previous text content. If `value` changed (which it does, it is an animation), the reconciler finds one text change and writes one `textContent`. One DOM write per frame.
+
+Whether this causes jank depends on whether that DOM write triggers an expensive layout (is the span inside a flex container with complex rules? does the text width change?) and whether the browser can complete style recalculation and paint within the 16.6ms frame budget.
+
+The re-render itself (function call plus reconciliation) is not the problem. The DOM write and its downstream browser work may be. Simply counting re-renders is an unreliable proxy for performance problems. The correct approach is profiling: use the browser's performance tools to identify whether frame budget is exceeded, and use React DevTools Profiler to identify which components and phases consume the most time.
+
+</details>
+
+---
+
+**Trap 2: After a state change, how many DOM writes happen in this scenario?**
+
+```jsx
+function App() {
+  const [count, setCount] = React.useState(0);
+
+  return (
+    <div className="app">
+      <Header title="My App" />
+      <p>Count: {count}</p>
+      <Sidebar items={['Home', 'About']} />
+      <button onClick={() => setCount(c => c + 1)}>+</button>
+    </div>
+  );
+}
+
+function Header({ title }) {
+  return <h1>{title}</h1>;
+}
+
+function Sidebar({ items }) {
+  return (
+    <ul>
+      {items.map(i => <li key={i}>{i}</li>)}
+    </ul>
+  );
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+One DOM write: the text content of the `<p>` element changes from "Count: 0" to "Count: 1".
+
+Here is the reconciliation walkthrough:
+
+`App` re-renders (trigger 1: own state change). React calls `App`. New element tree produced. Reconciler diffs:
+
+`div.app`: same type, same className, no change to the element itself.
+`Header` with `title="My App"`: React calls `Header` (trigger 2: parent re-render). `Header` returns `<h1>My App</h1>`. Previous render also `<h1>My App</h1>`. No change. No flag. Zero DOM writes for `Header`.
+`p` with children `"Count: "` and `{count}`: text content changed from `"Count: 0"` to `"Count: 1"`. Flag: Update. One DOM write.
+`Sidebar` with `items={['Home', 'About']}`: React calls `Sidebar` (trigger 2). `Sidebar` returns `<ul>` with two `<li>` nodes. Same content as previous render. No change. No flags. Zero DOM writes for `Sidebar`.
+`button` with `"+"`: no change. Zero DOM writes.
+
+Total DOM writes: one `textContent` assignment on the `<p>` node.
+
+Note: `Header` and `Sidebar` both re-rendered (functions were called) but produced zero DOM writes. This illustrates exactly why "re-renders" and "DOM writes" must be counted separately.
+
+</details>
+
+---
+
+**Trap 3: A developer profiles their React app and sees the commit phase taking 80ms. They optimize the render phase by adding `React.memo` everywhere. The commit phase still takes 80ms. Why?**
+
+<details>
+<summary>Answer</summary>
+
+`React.memo` reduces the number of component functions called during the render phase. It does not reduce DOM writes during the commit phase. The commit phase duration is determined by the number and type of DOM mutations that must be applied: insertions, updates, deletions, and layout effects. If the same DOM nodes need updating (because the data changed and those specific components are not memoized or their memoization correctly recomputed), the same DOM writes happen regardless of how many other components were skipped in the render phase.
+
+The 80ms commit phase suggests a large number of DOM writes or expensive layout-triggering mutations. `React.memo` optimizations reduce render phase cost (which was probably not 80ms to begin with) without touching commit phase cost. The fix for a slow commit phase is: reduce the number of DOM mutations (render fewer items using virtualization), avoid layout-triggering writes (properties like `offsetHeight` that force synchronous layout), or split large updates across frames using `startTransition` to yield between batches. These are commit phase and browser pipeline optimizations, not render phase ones.
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** Name the six steps from state change to pixels on screen. For each, state whether it is JavaScript or DOM/browser work, and whether React can interrupt it.
+
+<details>
+<summary>Answer</summary>
+
+Step 1: trigger, the setter is called and work is enqueued. JavaScript. Interruptible in the sense that scheduling is deferred via the Scheduler.
+
+Step 2: render phase begins, the component function is called. Pure JavaScript. Interruptible in concurrent mode: React can pause between Fiber nodes and yield to the browser.
+
+Step 3: the new element tree (React elements, plain JS objects) is produced as the function's return value. Pure JavaScript. Part of the render phase, interruptible.
+
+Step 4: reconciliation, the new element tree is diffed against the previous Fiber tree. Pure JavaScript. Interruptible in concurrent mode.
+
+Step 5: commit phase, the computed DOM mutations are applied. DOM API calls. Non-interruptible. React applies all mutations in one synchronous pass.
+
+Step 6: browser pipeline, style recalculation, layout, paint, composite. Browser engine work. Outside React entirely. Non-interruptible by React.
+
+</details>
+
+---
+
+**Q2.** A component re-renders 100 times but produces zero DOM writes each time. What is the measurable cost of those 100 re-renders?
+
+<details>
+<summary>Answer</summary>
+
+The measurable cost is: 100 component function calls plus 100 reconciliation passes over the component's element tree. The function call cost is the execution time of the function body, including all JavaScript expressions, variable assignments, and the creation of the React element object tree (object allocation in the JS heap). The reconciliation cost is the time to compare the new element tree to the previous one, which involves reading properties from objects and calling `Object.is` for each prop.
+
+For a simple component (a few DOM nodes, no expensive computations), each render plus reconciliation cycle is on the order of tens of microseconds. One hundred cycles is single-digit milliseconds. For a component with 100 children, the reconciliation must process 100 Fiber nodes each cycle, making 100 cycles cost more.
+
+Zero DOM writes means no browser pipeline work (no style recalculation, no layout, no paint) was triggered by these renders. The entire cost is JavaScript execution time. Whether this is a problem depends on how expensive the function body and reconciliation are and how often the 100 renders occur.
+
+</details>
+
+---
+
+**Q3.** Why is the commit phase non-interruptible while the render phase is interruptible?
+
+<details>
+<summary>Answer</summary>
+
+The render phase operates entirely in JavaScript memory on the work-in-progress Fiber tree. Nothing visible to the user changes during this phase. If React pauses mid-render, the user sees the old UI (the current tree) unchanged. If React restarts the render from scratch, no external state has been modified, no DOM has been partially updated, and the restart produces the same result as if the interruption never happened. The idempotence of pure rendering makes interruption safe.
+
+The commit phase writes to the real DOM. The DOM is a visible, shared mutable resource. If React applied some DOM mutations and then paused, the user would see a partially updated UI: some components showing new state, others showing old state simultaneously. This visual inconsistency would be disorienting. More fundamentally, certain mutations depend on each other: an element must be inserted before its children can be positioned. Partial application of mutations may leave the DOM in a structurally invalid state. The commit phase must be atomic from the user's perspective: either all changes are applied or none are visible. Synchronous, non-interruptible execution guarantees atomicity.
+
+</details>
+
+---
+
+**Q4.** What is the difference between `useLayoutEffect` and `useEffect` in terms of when they fire relative to the six-step sequence?
+
+<details>
+<summary>Answer</summary>
+
+`useLayoutEffect` fires during the layout phase of the commit, after DOM mutations have been applied (step 5) but before the browser has painted the new pixels (step 6). It fires synchronously, blocking the browser from painting until it completes. This means code in `useLayoutEffect` can read updated DOM measurements (like `element.getBoundingClientRect()`) and make additional synchronous DOM mutations that will be included in the same paint the user sees. The user never sees the intermediate state before the `useLayoutEffect` changes.
+
+`useEffect` fires asynchronously after the browser has painted (after step 6). React schedules it via a macrotask, allowing the browser to show the committed DOM to the user before the effect runs. Code in `useEffect` runs after the user has already seen the rendered output. If `useEffect` makes state changes, it causes another render cycle starting from step 1.
+
+The practical rule: use `useLayoutEffect` when you need to read DOM layout and synchronously adjust it before the user sees the render. Use `useEffect` for everything else (data fetching, subscriptions, logging) where the timing does not need to be synchronous with paint.
+
+</details>
+
+---
+
+**Q5.** A developer uses React DevTools Profiler and sees a component taking 50ms to render. They look at the component and it is just a `<div>` with some text. Where is the 50ms actually coming from, and what are the two places to investigate?
+
+<details>
+<summary>Answer</summary>
+
+A `<div>` with some text cannot take 50ms to render at the JavaScript level. Object creation and a text comparison are nanoseconds. The 50ms must be coming from one of two places.
+
+First, the component may have a hook that runs expensive synchronous work: a `useMemo` without proper dependencies recomputing a large dataset, a `useReducer` reducer processing a heavy computation, or an inline computation in the function body that the profiler attributes to this component but is actually expensive (sorting a large array, deep cloning objects, regex operations on large strings).
+
+Second, the 50ms may not be JavaScript cost at all but browser cost reported back to the JavaScript timeline. If the component causes a DOM write that triggers an expensive layout recalculation (changing the width of a flex container, modifying text in a container with complex wrapping rules), the browser's style and layout work shows up as a long task in the performance timeline. The profiler may attribute the time to the component's commit work even though the actual expense is the browser's layout engine. The correct tool to distinguish these is the browser's Performance panel, which shows the full task timeline including JavaScript, style, layout, and paint separately.
+
+</details>

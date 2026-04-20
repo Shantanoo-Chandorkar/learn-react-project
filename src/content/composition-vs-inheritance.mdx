@@ -1,0 +1,507 @@
+﻿# Composition vs Inheritance, Why React Chose Composition
+
+### 1. The Problem
+
+You have a `Button` component. It renders correctly, has click handling, and looks good. Now you need a `DangerButton`, which is identical but red. Then a `LoadingButton`, which is identical but shows a spinner when disabled. Then a `DangerLoadingButton`.
+
+In object-oriented programming, the instinct is inheritance. `DangerButton extends Button`. `LoadingButton extends Button`. Problem solved. Except it isn't, because `DangerLoadingButton` needs to extend both, and most languages don't support multiple inheritance. You end up with a hierarchy that breaks the moment your requirements don't fit neatly into a single lineage.
+
+This problem has a name in OOP literature: the fragile base class problem and the diamond inheritance problem. It has been studied, argued about, and partially solved in languages like C++ and Java for decades. React looked at this and made a deliberate choice: don't use inheritance for UI reuse at all. Use composition instead.
+
+Understanding why that choice was made, and what composition actually means mechanically in React, is what separates a developer who uses React from one who designs with it.
+
+---
+
+### 2. The Naive Attempt
+
+Imagine you're building a design system. You start with a base card and try to extend it using classical inheritance thinking.
+
+First attempt: class-based inheritance (React supports class components, so this is valid React code, not hypothetical):
+
+```jsx
+class BaseCard extends React.Component {
+  renderHeader() {
+    return <div className="card-header">Default Header</div>;
+  }
+
+  renderBody() {
+    return <div className="card-body">Default Body</div>;
+  }
+
+  render() {
+    return (
+      <div className="card">
+        {this.renderHeader()}
+        {this.renderBody()}
+      </div>
+    );
+  }
+}
+
+class UserCard extends BaseCard {
+  renderHeader() {
+    return (
+      <div className="card-header">
+        <img src={this.props.user.avatar} alt={this.props.user.name} />
+        <h2>{this.props.user.name}</h2>
+      </div>
+    );
+  }
+
+  renderBody() {
+    return (
+      <div className="card-body">
+        <p>{this.props.user.bio}</p>
+      </div>
+    );
+  }
+}
+
+class FollowableUserCard extends UserCard {
+  renderBody() {
+    return (
+      <div className="card-body">
+        <p>{this.props.user.bio}</p>
+        <button onClick={this.props.onFollow}>Follow</button>
+      </div>
+    );
+  }
+}
+
+class PremiumFollowableUserCard extends FollowableUserCard {
+  renderHeader() {
+    return (
+      <div className="card-header premium">
+        <span className="crown">👑</span>
+        <img src={this.props.user.avatar} alt={this.props.user.name} />
+        <h2>{this.props.user.name}</h2>
+      </div>
+    );
+  }
+}
+```
+
+This looks reasonable until requirements diverge. Now you need a `FollowablePremiumCard` that has the premium header but a different body than `PremiumFollowableUserCard`. And a `VerifiedUserCard` that has a verification badge in the header, which needs to work with both premium and non-premium variants.
+
+The inheritance tree now looks like this:
+
+```
+BaseCard
+  └── UserCard
+        ├── FollowableUserCard
+        │     └── PremiumFollowableUserCard
+        └── PremiumUserCard
+              └── VerifiedPremiumUserCard
+                    └── FollowableVerifiedPremiumUserCard
+```
+
+Every new feature combination requires a new class. The tree grows exponentially. And the worst part: to understand what `FollowableVerifiedPremiumUserCard` renders, you must trace up five levels of inheritance, because each level overrides some methods and inherits others. The behavior of a component is never visible in one place.
+
+---
+
+### 3. Why That Breaks
+
+Three precise failure modes.
+
+**Failure mode 1: The fragile base class.**
+`BaseCard` defines the structure. Every subclass depends on that structure. If you rename `renderBody` to `renderContent` in `BaseCard`, every subclass silently breaks, because their `renderBody` overrides now override a method that no longer exists in the parent. The subclasses are coupled to the implementation details of their parent, not just its interface.
+
+**Failure mode 2: Behavior spread across the hierarchy.**
+To understand what a deep subclass renders, you read its code, then its parent's, then its grandparent's, collecting overrides and inherited methods. The complete picture is never in one place. This is the opposite of what you want in a UI component: you want to open a file and immediately understand what it renders.
+
+**Failure mode 3: The diamond problem.**
+You want `FollowableVerifiedPremiumCard`. It needs the premium header from `PremiumUserCard` and the follow behavior from `FollowableUserCard`. Both inherit from `UserCard`. JavaScript's prototype chain is single-inheritance. You cannot inherit from both. You must pick one and manually copy behavior from the other, which defeats the entire purpose of inheritance.
+
+---
+
+### 4. React's Mental Model
+
+Instead of extending components to add behavior, you compose them. You build small, focused components and combine them by nesting. A complex component is not a subclass of a simpler one. It is an arrangement of simpler ones.
+
+The mental shift: inheritance asks "what is this a type of?" Composition asks "what is this made of?"
+
+A `FollowableVerifiedPremiumCard` is not a type of card. It is made of a `PremiumHeader`, a `VerificationBadge`, a `UserBio`, and a `FollowButton`, arranged inside a `Card` wrapper. Every piece is self-contained. The arrangement is just JSX.
+
+---
+
+### 5. React's Solution
+
+React has two composition patterns. Containment and specialization.
+
+**Containment** is for components that don't know their children in advance. Wrappers, layouts, modals, panels. They provide structure and delegate content to whoever uses them.
+
+```jsx
+function Card({ children, className = '' }) {
+  return (
+    <div className={`card ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+function CardHeader({ children }) {
+  return (
+    <div className="card-header">
+      {children}
+    </div>
+  );
+}
+
+function CardBody({ children }) {
+  return (
+    <div className="card-body">
+      {children}
+    </div>
+  );
+}
+```
+
+Now `UserCard` is not a subclass of anything. It is an arrangement:
+
+```jsx
+function UserCard({ user, onFollow }) {
+  return (
+    <Card>
+      <CardHeader>
+        <img src={user.avatar} alt={user.name} />
+        <h2>{user.name}</h2>
+      </CardHeader>
+      <CardBody>
+        <p>{user.bio}</p>
+        {onFollow && (
+          <button onClick={() => onFollow(user.id)}>Follow</button>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+```
+
+And `PremiumFollowableCard`:
+
+```jsx
+function PremiumFollowableCard({ user, onFollow }) {
+  return (
+    <Card className="premium">
+      <CardHeader>
+        <span>👑</span>
+        <img src={user.avatar} alt={user.name} />
+        <h2>{user.name}</h2>
+        {user.isVerified && <VerificationBadge />}
+      </CardHeader>
+      <CardBody>
+        <p>{user.bio}</p>
+        <FollowButton userId={user.id} onFollow={onFollow} />
+      </CardBody>
+    </Card>
+  );
+}
+```
+
+No inheritance. No hierarchy to trace. Open the file, read the JSX, immediately know what it renders. Every combination is just a different arrangement of the same building blocks.
+
+**Specialization** is for when a general component needs a specific configured version:
+
+```jsx
+function Button({ label, variant, size, onClick, disabled }) {
+  return (
+    <button
+      className={`btn btn-${variant} btn-${size}`}
+      onClick={onClick}
+      disabled={disabled}
+    >
+      {label}
+    </button>
+  );
+}
+
+// Specialization: not a subclass, just a configured wrapper
+function DangerButton({ label, onClick, disabled }) {
+  return (
+    <Button
+      label={label}
+      variant="danger"
+      size="medium"
+      onClick={onClick}
+      disabled={disabled}
+    />
+  );
+}
+
+function LoadingButton({ label, isLoading, onClick }) {
+  return (
+    <Button
+      label={isLoading ? 'Loading...' : label}
+      variant="primary"
+      size="medium"
+      onClick={onClick}
+      disabled={isLoading}
+    />
+  );
+}
+```
+
+`DangerButton` and `LoadingButton` are not subclasses of `Button`. They are components that render `Button` with specific props. If you need a `DangerLoadingButton`, you combine:
+
+```jsx
+function DangerLoadingButton({ label, isLoading, onClick }) {
+  return (
+    <Button
+      label={isLoading ? 'Loading...' : label}
+      variant="danger"
+      size="medium"
+      onClick={onClick}
+      disabled={isLoading}
+    />
+  );
+}
+```
+
+No hierarchy. No diamond problem. Each variant is defined fully in one place.
+
+**Render props and children as functions** extend composition to share behavior, not just structure:
+
+```jsx
+function MouseTracker({ children }) {
+  const [position, setPosition] = React.useState({ x: 0, y: 0 });
+
+  function handleMouseMove(e) {
+    setPosition({ x: e.clientX, y: e.clientY });
+  }
+
+  return (
+    <div onMouseMove={handleMouseMove}>
+      {children(position)}
+    </div>
+  );
+}
+
+// Usage: the consumer decides what to render with the position
+<MouseTracker>
+  {({ x, y }) => (
+    <p>Mouse is at {x}, {y}</p>
+  )}
+</MouseTracker>
+
+// Same behavior, completely different visual output
+<MouseTracker>
+  {({ x, y }) => (
+    <div
+      className="cursor-follower"
+      style={{ transform: `translate(${x}px, ${y}px)` }}
+    />
+  )}
+</MouseTracker>
+```
+
+`MouseTracker` owns the behavior (tracking position). The consumer owns the rendering. They are cleanly separated. This is not possible with inheritance without exposing internal methods for subclasses to override, which is the fragile base class problem exactly.
+
+---
+
+### 6. Internals
+
+The difference between inheritance and composition maps directly onto the Fiber tree structure.
+
+With inheritance, a single component function (after method resolution) produces the full output. There is one Fiber node for the component, regardless of how many parent class methods contributed to the output. React cannot independently track or update the inherited pieces because from React's perspective, there is only one component.
+
+With composition, each composed component is its own Fiber node in the tree:
+
+```
+UserCard (Fiber)
+  └── Card (Fiber)
+        ├── CardHeader (Fiber)
+        │     ├── img (Fiber, host)
+        │     └── h2 (Fiber, host)
+        └── CardBody (Fiber)
+              ├── p (Fiber, host)
+              └── FollowButton (Fiber)
+                    └── button (Fiber, host)
+```
+
+Each Fiber node is independently tracked. React can re-render `FollowButton` without re-rendering `CardHeader`. If only the follow state changes, React walks from the changed state's Fiber down to `FollowButton` and re-renders only that subtree. With a monolithic inherited component, any state change in any part of the component re-renders the entire thing.
+
+Composition also enables React's bailout system to work at a fine-grained level. `React.memo` on `CardHeader` means it only re-renders when its specific props change. The rest of the card is unaffected. You cannot apply `React.memo` to a piece of an inherited component's render output, because that piece is not a separate component with separate props. It is just a section of JSX inside a single function.
+
+The practical consequence: well-composed components are naturally more performant and more maintainable because React's optimization primitives (memoization, lazy loading, Suspense boundaries, error boundaries) all operate at the component level. More components, each responsible for less, gives React more places to apply optimizations.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: React's own documentation says "we haven't found any use cases where we would recommend creating component inheritance hierarchies." But inheritance is not forbidden. When would a senior engineer still use a class component that extends React.Component?**
+
+<details>
+<summary>Answer</summary>
+
+The only remaining valid use case for class components extending `React.Component` is error boundaries. As of React 18, error boundaries can only be implemented as class components, specifically using the `componentDidCatch` and `static getDerivedStateFromError` lifecycle methods. Function components have no equivalent hook. Everything else, state, effects, context, refs, memoization, can be done with function components and hooks. A senior engineer uses class components in exactly one situation: when they need an error boundary and don't want to reach for a third-party library like `react-error-boundary`. Even then, the class component is typically a thin wrapper with no actual business logic, just the error catching mechanics.
+
+</details>
+
+---
+
+**Trap 2: What does this render, and what composition pattern is it using?**
+
+```jsx
+function Layout({ sidebar, main, footer }) {
+  return (
+    <div className="layout">
+      <aside className="sidebar">{sidebar}</aside>
+      <main className="main">{main}</main>
+      <footer className="footer">{footer}</footer>
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <Layout
+      sidebar={<NavigationMenu />}
+      main={<ArticleList />}
+      footer={<FooterLinks />}
+    />
+  );
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+`Layout` renders a three-column structure with `NavigationMenu` in the aside, `ArticleList` in the main, and `FooterLinks` in the footer. This is the named slots composition pattern, also called multi-slot composition. Instead of a single `children` prop, `Layout` accepts multiple named props (`sidebar`, `main`, `footer`) each of which can hold any React subtree. The caller decides what fills each slot. `Layout` owns the structural arrangement. The caller owns the content. This is more explicit than a single `children` prop when a component has multiple distinct regions. It is the React equivalent of the named slots feature in Web Components and Vue. It is pure composition: `Layout` has no knowledge of `NavigationMenu`, `ArticleList`, or `FooterLinks`, and those components have no knowledge of `Layout`.
+
+</details>
+
+---
+
+**Trap 3: A developer says "render props are just a workaround that hooks made obsolete." Evaluate this claim.**
+
+```jsx
+// Render prop version
+function WindowSize({ children }) {
+  const [size, setSize] = React.useState({
+    width: window.innerWidth,
+    height: window.innerHeight,
+  });
+
+  React.useEffect(() => {
+    const handler = () => setSize({
+      width: window.innerWidth,
+      height: window.innerHeight,
+    });
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
+
+  return children(size);
+}
+
+// Hook version
+function useWindowSize() {
+  const [size, setSize] = React.useState({
+    width: window.innerWidth,
+    height: window.innerHeight,
+  });
+
+  React.useEffect(() => {
+    const handler = () => setSize({
+      width: window.innerWidth,
+      height: window.innerHeight,
+    });
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
+
+  return size;
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+Partially true, but the claim is too strong. For sharing stateful logic, custom hooks have largely replaced render props because they are less verbose and don't add extra nodes to the component tree. The `useWindowSize` hook is clearly cleaner than the `WindowSize` render prop for consuming window size. However, render props are not obsolete for structural composition scenarios where the parent needs to control both behavior AND layout simultaneously. For instance, a virtualized list component that manages scroll position and renders only visible rows needs to control the actual DOM structure, not just return a value. A drag-and-drop context that needs to wrap specific DOM nodes cannot be expressed purely as a hook. Render props and children-as-functions remain the right pattern when behavior and rendering structure are inseparable. The accurate statement is: hooks replaced render props for sharing logic; render props remain appropriate for structural control.
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** React's documentation explicitly says to use composition instead of inheritance. What is the single mechanical reason React's component model makes inheritance unnecessary for the specific problem of UI reuse?
+
+<details>
+<summary>Answer</summary>
+
+Because any "extension" you would express via inheritance can be expressed via composition without losing any capability. Inheritance provides two things: shared structure (render a base layout) and shared behavior (methods the subclass can call or override). In React, shared structure is provided by containment components that accept `children` or named slot props. Shared behavior is provided by custom hooks. A component that needs both a specific layout and specific behavior composes a structural component with a behavior hook. Nothing inheritance provided is unavailable through composition, and composition avoids all of inheritance's failure modes: the fragile base class, the diamond problem, and behavior spread across a hierarchy.
+
+</details>
+
+---
+
+**Q2.** Explain why fine-grained composition makes React's performance optimization primitives more effective than coarse-grained or monolithic components.
+
+<details>
+<summary>Answer</summary>
+
+React's optimization primitives, `React.memo`, `useMemo`, `useCallback`, `React.lazy`, `Suspense`, and error boundaries, all operate at the component boundary. A component is the smallest unit React can independently memoize, lazily load, or error-isolate. A monolithic component that renders an entire page section is one optimization unit. If any part of it re-renders, all of it re-renders. Fine-grained composition creates many independent optimization units. `React.memo` on a `CardHeader` component means the header skips re-rendering when only the body's state changes. This would be impossible if header and body were sections of JSX inside a single component, because they would share the same Fiber node and re-render together. More component boundaries give React more places to apply its bailout system.
+
+</details>
+
+---
+
+**Q3.** You have a `Tooltip` component that manages its own show/hide state. A teammate wants to use it but needs the tooltip trigger to be a completely custom element, sometimes a button, sometimes an icon, sometimes a text link. How do you design `Tooltip` using composition so it is not coupled to any specific trigger element?
+
+<details>
+<summary>Answer</summary>
+
+Use the render prop or children-as-function pattern. `Tooltip` manages the `isVisible` state and the show/hide handlers. It exposes them to the consumer through `children` as a function:
+
+```jsx
+function Tooltip({ content, children }) {
+  const [isVisible, setIsVisible] = React.useState(false);
+  return (
+    <div className="tooltip-wrapper">
+      {children({
+        onMouseEnter: () => setIsVisible(true),
+        onMouseLeave: () => setIsVisible(false),
+      })}
+      {isVisible && (
+        <div className="tooltip-content">{content}</div>
+      )}
+    </div>
+  );
+}
+
+// Consumer uses any trigger element
+<Tooltip content="Delete this item">
+  {(handlers) => <button {...handlers}>🗑️</button>}
+</Tooltip>
+
+<Tooltip content="Verified account">
+  {(handlers) => <span {...handlers}>✓</span>}
+</Tooltip>
+```
+
+`Tooltip` owns the behavior. The consumer owns the trigger element. They are decoupled. The alternative with a hook would work for the state management but would require the consumer to also handle attaching handlers, which couples the consumer to `Tooltip`'s internal API. The render prop keeps that coupling explicit and contained in the composition call site.
+
+</details>
+
+---
+
+**Q4.** The `children` prop can be a function. Why does React not have a special syntax for this, and what does that tell you about how React thinks about composition?
+
+<details>
+<summary>Answer</summary>
+
+Because `children` is just a prop, and props are just JavaScript values, and functions are just JavaScript values. There is no special case needed. React's composition model is built entirely on the fact that JSX attributes are JavaScript expressions, which means any JavaScript value, including functions, can be passed as a prop. The absence of special syntax is intentional. React deliberately kept the component model minimal: a component is a function, props are its arguments, and JSX is notation for describing the tree. Everything else, render props, higher-order components, context, hooks, is built on top of these three primitives using ordinary JavaScript. This means React's composition patterns are not framework-specific abstractions. They are just functions calling functions with functions as arguments, which any JavaScript developer already understands.
+
+</details>
+
+---
+
+**Q5.** Class-based inheritance in UI frameworks was common before React (Backbone Views, Ember Components). What was the specific problem with inheritance that appeared as applications grew, and how did it manifest in production codebases?
+
+<details>
+<summary>Answer</summary>
+
+The fragile base class problem. In Backbone and early Ember, base views defined structure and lifecycle methods. Subclasses overrode methods to customize behavior. As applications grew, the base class accumulated responsibilities because it was easier to add to the base than to refactor the entire hierarchy. Over time the base class became a god object, carrying state, utilities, and rendering logic that only some subclasses needed. Any change to the base class had to be manually verified across every subclass. Developers became afraid to modify the base class because the blast radius was unknown. In production, this manifested as regression bugs where a fix for one subclass's behavior silently broke another's because they shared an overridden method in a grandparent class that nobody fully understood anymore. The hierarchy, which was supposed to make code reuse clear, became the primary source of accidental coupling in the codebase.
+
+</details>

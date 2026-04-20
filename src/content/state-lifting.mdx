@@ -1,0 +1,478 @@
+﻿# State Lifting, When Two Components Need the Same State
+
+### 1. The Problem
+
+You have two components that need to share the same piece of data. Not just read it, but stay in sync with it. When one changes it, the other must reflect the change immediately.
+
+The instinct is to give each component its own copy. Two `useState` calls, one in each component. This works until the user changes one of them, and the other is now wrong. You have two sources of truth for the same value, and they will diverge.
+
+The solution is obvious in hindsight: there can only be one source of truth. One component owns the state. The others receive it as props. But the non-obvious part is which component should own it, what happens to performance when you make that choice, and when lifting state is the wrong solution entirely.
+
+Getting this wrong is one of the most common structural mistakes in React applications. It either causes stale data bugs (state too low, not shared) or unnecessary re-renders (state too high, too much of the tree re-renders on every change).
+
+---
+
+### 2. The Naive Attempt
+
+Build a temperature converter. Celsius and Fahrenheit inputs. Changing one updates the other.
+
+First instinct: give each input its own state.
+
+```jsx
+function CelsiusInput() {
+  const [celsius, setCelsius] = React.useState(0);
+
+  return (
+    <div>
+      <label>Celsius</label>
+      <input
+        type="number"
+        value={celsius}
+        onChange={e => setCelsius(Number(e.target.value))}
+      />
+    </div>
+  );
+}
+
+function FahrenheitInput() {
+  const [fahrenheit, setFahrenheit] = React.useState(32);
+
+  return (
+    <div>
+      <label>Fahrenheit</label>
+      <input
+        type="number"
+        value={fahrenheit}
+        onChange={e => setFahrenheit(Number(e.target.value))}
+      />
+    </div>
+  );
+}
+
+function TemperatureConverter() {
+  return (
+    <div>
+      <CelsiusInput />
+      <FahrenheitInput />
+    </div>
+  );
+}
+```
+
+Each input works independently. Change Celsius, it updates. Change Fahrenheit, it updates. But they have no connection. Changing Celsius does not update Fahrenheit. They are two isolated islands of state. The converter does not convert anything.
+
+You need them to communicate. Each needs to know what the other is showing and respond to its changes. Two siblings. Neither is a child of the other. There is no prop path from one to the other except through their shared parent.
+
+The naive fix: try to make them talk directly using a ref or a global variable.
+
+```jsx
+// Attempt: module-level variable as shared state
+let sharedCelsius = 0;
+
+function CelsiusInput({ onUpdate }) {
+  const [celsius, setCelsius] = React.useState(sharedCelsius);
+
+  function handleChange(e) {
+    const val = Number(e.target.value);
+    setCelsius(val);
+    sharedCelsius = val; // write to shared variable
+    onUpdate(); // somehow tell Fahrenheit to re-read
+  }
+
+  return <input type="number" value={celsius} onChange={handleChange} />;
+}
+
+function FahrenheitInput() {
+  // how does this know to re-render when sharedCelsius changes?
+  // it has no state tied to sharedCelsius
+  // calling onUpdate from the sibling doesn't help unless
+  // we have a mechanism to force this component to re-render
+  const fahrenheit = sharedCelsius * 9/5 + 32;
+  return <input type="number" value={fahrenheit} />;
+}
+```
+
+This cannot work cleanly. `FahrenheitInput` has no state. Updating a module-level variable does not trigger its re-render. You would need to give `FahrenheitInput` a dummy state variable that gets toggled to force re-renders, which is exactly the kind of hack that indicates a wrong architecture.
+
+The data wants to flow. React has one mechanism for data flow between components: props from a parent. The fix is to move the state up.
+
+---
+
+### 3. Why That Breaks
+
+The precise failure mode: **state that needs to be shared between siblings cannot live in either sibling. It must live in their closest common ancestor.**
+
+Two siblings have no direct communication channel in React's model. Data flows down (props) and intent flows up (callbacks). For sibling A to affect sibling B, the information must travel: up from A to their shared parent via a callback, then down from the parent to B via props. If the state lives in A, B has no path to receive it. If the state lives in B, A has no path to send to it. The only location where both paths work is the parent.
+
+This is not a limitation. It is the architecture. Unidirectional data flow means every shared piece of state has exactly one owner, and every component that uses it receives it as a derived prop. There is never ambiguity about where the truth lives.
+
+---
+
+### 4. React's Mental Model
+
+Find the lowest common ancestor of all components that need a piece of state. That ancestor owns the state. Every component below it that needs the data receives it as a prop. Every component that needs to change it receives a callback prop. The ancestor handles the change, updates the state, and the new value flows down to all consumers automatically.
+
+One sentence: lift state to the lowest ancestor that is a parent of all components that need it, never higher.
+
+---
+
+### 5. React's Solution
+
+Lift the temperature value to `TemperatureConverter`, the shared parent of both inputs.
+
+```jsx
+function TemperatureConverter() {
+  // single source of truth: celsius
+  // fahrenheit is always derived from it
+  const [celsius, setCelsius] = React.useState(0);
+
+  const fahrenheit = celsius * 9/5 + 32;
+
+  function handleCelsiusChange(newCelsius) {
+    setCelsius(newCelsius);
+  }
+
+  function handleFahrenheitChange(newFahrenheit) {
+    // convert fahrenheit to celsius and store
+    // celsius is the single source of truth
+    setCelsius((newFahrenheit - 32) * 5/9);
+  }
+
+  return (
+    <div>
+      <TemperatureInput
+        label="Celsius"
+        value={celsius}
+        onChange={handleCelsiusChange}
+      />
+      <TemperatureInput
+        label="Fahrenheit"
+        value={fahrenheit}
+        onChange={handleFahrenheitChange}
+      />
+    </div>
+  );
+}
+
+function TemperatureInput({ label, value, onChange }) {
+  return (
+    <div>
+      <label>{label}</label>
+      <input
+        type="number"
+        value={Math.round(value * 100) / 100}
+        onChange={e => onChange(Number(e.target.value))}
+      />
+    </div>
+  );
+}
+```
+
+`TemperatureInput` is now stateless. It owns nothing. It receives a value and reports changes upward. It does not care whether it is displaying Celsius or Fahrenheit. It is a pure controlled input, which is reused for both.
+
+`TemperatureConverter` owns the single piece of state: `celsius`. Fahrenheit is always derived. When the Fahrenheit input changes, it converts the new Fahrenheit value back to Celsius and stores that. One source of truth, two representations, always in sync.
+
+**The controlled vs uncontrolled distinction.**
+
+This pattern, where a component receives its value and change callback from above rather than managing its own state, is called a controlled component. The parent controls the value. The component is a display and interaction layer, not a data owner.
+
+An uncontrolled component manages its own state:
+
+```jsx
+// uncontrolled: owns its own state
+function UncontrolledInput({ defaultValue }) {
+  const [value, setValue] = React.useState(defaultValue);
+  return <input value={value} onChange={e => setValue(e.target.value)} />;
+}
+
+// controlled: parent owns the state
+function ControlledInput({ value, onChange }) {
+  return <input value={value} onChange={e => onChange(e.target.value)} />;
+}
+```
+
+Controlled components are appropriate when the parent needs to know or control the value. Form submission, cross-field validation, synchronized displays. Uncontrolled components are appropriate when the parent has no interest in the value until a specific event (form submit), or when the value is genuinely local and nothing else needs to share it.
+
+The common mistake is making everything controlled by reflex, lifting state higher than necessary because it feels "more controlled." This creates unnecessary coupling and re-render scope.
+
+**Identifying the correct lifting target.**
+
+The rule is the lowest common ancestor, not the highest convenient one. This matters because the ancestor you choose determines which subtree re-renders when the state changes.
+
+```
+App
+├── Header
+│   └── UserAvatar
+├── Sidebar
+│   └── NavigationMenu
+└── Main
+    ├── SearchBar    ← needs `query`
+    └── ResultsList  ← needs `query`
+```
+
+`query` is needed by `SearchBar` and `ResultsList`. Their lowest common ancestor is `Main`. If you lift `query` to `Main`, changing it re-renders `Main`, `SearchBar`, and `ResultsList`. Correct.
+
+If you lift `query` to `App` (because it feels like "global" state), changing it re-renders `App`, `Header`, `UserAvatar`, `Sidebar`, `NavigationMenu`, `Main`, `SearchBar`, and `ResultsList`. The entire application re-renders for every keystroke. Wrong.
+
+**When lifting is the wrong solution.**
+
+Lifting is not always the answer when two components need to share state. It depends on the distance between them in the tree.
+
+If two components are immediate siblings under a parent, lifting to the parent is trivial. If they are distant cousins separated by six levels of components, lifting requires drilling the value and callback through six intermediate components that do not use them. This is prop drilling, and it is the problem Context exists to solve. We cover that in Phase 6.
+
+The decision matrix:
+
+```
+Components that need shared state are:
+  ├── Siblings or close relatives (1-2 levels apart)
+  │     → Lift to their lowest common ancestor. Use props.
+  ├── Distant relatives (3+ levels apart, many intermediaries)
+  │     → Consider Context or a state library.
+  └── Truly global (needed across unrelated subtrees)
+        → Context or a state library.
+```
+
+Lifting and Context are not alternatives. Lifting is the correct solution within a local component subtree. Context is the correct solution when the distance makes lifting impractical.
+
+---
+
+### 6. Internals
+
+Lifting state changes which Fiber node owns the state slot and therefore which Fiber node is marked dirty when the state changes.
+
+Before lifting (state in each sibling):
+
+```
+TemperatureConverter (Fiber, no state)
+├── CelsiusInput (Fiber, memoizedState → Hook{celsius: 0})
+└── FahrenheitInput (Fiber, memoizedState → Hook{fahrenheit: 32})
+```
+
+When `CelsiusInput` updates its state, React marks `CelsiusInput`'s Fiber as dirty. React re-renders `CelsiusInput` and its children. `FahrenheitInput`'s Fiber is untouched.
+
+After lifting (state in parent):
+
+```
+TemperatureConverter (Fiber, memoizedState → Hook{celsius: 0})
+├── CelsiusInput (Fiber, no state, props: {value: 0, onChange: fn})
+└── FahrenheitInput (Fiber, no state, props: {value: 32, onChange: fn})
+```
+
+When the user changes the Celsius input, `handleCelsiusChange` calls `setCelsius`. React marks `TemperatureConverter`'s Fiber as dirty. React re-renders `TemperatureConverter`, which re-renders both `CelsiusInput` and `FahrenheitInput` with new props.
+
+The re-render scope is larger after lifting: the parent and both children re-render. Before lifting, only one child re-rendered. This is the inherent cost of shared state. Both components must reflect the new value, so both must re-render. The re-render is not waste. It is necessary.
+
+The performance question is not whether lifting causes more re-renders (it does, necessarily) but whether those re-renders are expensive. If `CelsiusInput` and `FahrenheitInput` are trivial components (two DOM nodes each), the additional renders cost microseconds. If they have large subtrees, you can wrap them in `React.memo` to skip re-renders when their specific props have not changed.
+
+But critically: before adding `React.memo`, verify that both components actually receive stable props when the other changes. When the Celsius input changes, `TemperatureConverter` re-renders and passes new props to both inputs. The Fahrenheit input receives a new `value` (it must re-render to show the new temperature) and a new `onChange` function (new function reference created on every render). `React.memo` checks the `onChange` prop, sees a new reference, and re-renders anyway, defeating the optimization. The fix is `useCallback` on the handler, which we cover in Phase 7.
+
+This chain, lift state to parent, parent re-renders on change, children receive new prop references, `React.memo` fails because functions are recreated, fix with `useCallback`, is one of the most common performance optimization sequences in real React codebases. It is the direct consequence of the lifting pattern applied to components that are expensive enough to warrant memoization.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: Two components share a `selectedId`. The developer lifts it to their shared parent. Then adds `React.memo` to the children to prevent unnecessary renders. But both children re-render on every selection change. Why?**
+
+```jsx
+function Parent() {
+  const [selectedId, setSelectedId] = React.useState(null);
+
+  return (
+    <div>
+      <ItemList
+        selectedId={selectedId}
+        onSelect={id => setSelectedId(id)}
+      />
+      <ItemDetail
+        selectedId={selectedId}
+        onClose={() => setSelectedId(null)}
+      />
+    </div>
+  );
+}
+
+const ItemList = React.memo(function ItemList({ selectedId, onSelect }) {
+  console.log('ItemList rendered');
+  return <div>{selectedId}</div>;
+});
+
+const ItemDetail = React.memo(function ItemDetail({ selectedId, onClose }) {
+  console.log('ItemDetail rendered');
+  return <div>{selectedId}</div>;
+});
+```
+
+<details>
+<summary>Answer</summary>
+
+Both `onSelect` and `onClose` are arrow functions defined inline in `Parent`'s JSX. Every time `Parent` re-renders (every `setSelectedId` call), new function objects are created with new references. `React.memo` does a shallow equality check. `selectedId` may be the same (if some other state in `Parent` caused the re-render), but `onSelect` and `onClose` are always new references. The memo check fails on the function props. Both children re-render despite `React.memo`.
+
+The fix is `useCallback`:
+
+```jsx
+const handleSelect = React.useCallback(
+  id => setSelectedId(id),
+  []  // setSelectedId is stable, no deps needed
+);
+
+const handleClose = React.useCallback(
+  () => setSelectedId(null),
+  []
+);
+```
+
+With stable function references, `React.memo` can correctly bail out when only the function props are passed and `selectedId` hasn't changed. This is the canonical example of why `React.memo` and `useCallback` are used together.
+
+</details>
+
+---
+
+**Trap 2: What is wrong with this lifting decision?**
+
+```jsx
+function App() {
+  // lifted here because "both SearchBar and ResultsList need it"
+  const [query, setQuery] = React.useState('');
+
+  return (
+    <div>
+      <Header />         {/* doesn't use query */}
+      <Sidebar />        {/* doesn't use query */}
+      <Main
+        query={query}
+        setQuery={setQuery}
+      />
+    </div>
+  );
+}
+
+function Main({ query, setQuery }) {
+  return (
+    <div>
+      <SearchBar query={query} setQuery={setQuery} />
+      <ResultsList query={query} />
+    </div>
+  );
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+`query` is lifted too high. `SearchBar` and `ResultsList` are both children of `Main`. Their lowest common ancestor is `Main`, not `App`. Lifting to `App` means every keystroke calls `setQuery`, which marks `App`'s Fiber dirty, which re-renders `App`, `Header`, `Sidebar`, `Main`, `SearchBar`, and `ResultsList`. `Header` and `Sidebar` re-render on every keystroke despite never using `query`.
+
+The correct placement:
+
+```jsx
+function Main() {
+  const [query, setQuery] = React.useState('');
+
+  return (
+    <div>
+      <SearchBar query={query} setQuery={setQuery} />
+      <ResultsList query={query} />
+    </div>
+  );
+}
+```
+
+`query` lives in `Main`. Keystrokes re-render `Main`, `SearchBar`, and `ResultsList`. `App`, `Header`, and `Sidebar` are never touched. This is state colocation applied to the lifting decision: lift to the lowest ancestor that gives you the sharing you need, not higher.
+
+</details>
+
+---
+
+**Trap 3: A developer says "I'll just lift all shared state to the root App component and pass everything down as props. It's simpler because there's only one place to look." Evaluate this claim, and name the specific React pattern it will inevitably create.**
+
+<details>
+<summary>Answer</summary>
+
+The claim conflates "simple to locate" with "simple to maintain." A single source of truth at the root is correct for genuinely global state (authenticated user, theme, locale). For local interaction state (which accordion is open, what text is in a search input, which tab is active), placing it at the root creates two concrete problems.
+
+First, performance: every local state change re-renders the entire application from the root down, because the root owns the state and is marked dirty on every update. Second, it creates prop drilling: every intermediate component between the root and the consumer must accept and forward props it does not use, coupling unrelated components to the shape of state they have no business knowing about.
+
+The pattern this inevitably creates is prop drilling, where components receive props for the sole purpose of forwarding them to their children. A component with ten props it passes straight through to a child without using any of them has become a messenger, not a component. It is now coupled to every state shape it drills. Renaming a prop requires updating every messenger in the chain. This is exactly the problem Context was designed to solve for genuinely shared state, and state colocation was designed to prevent by keeping local state local.
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** State the mechanical rule for determining where lifted state should live. Apply it to: a `hoveredId` used by a `ListItem` to show a hover style, and a `selectedId` used by both a `Sidebar` navigation list and a `MainPanel` content view, where both are children of `PageLayout`.
+
+<details>
+<summary>Answer</summary>
+
+The rule: state lives in the lowest common ancestor of all components that need to read or update it.
+
+`hoveredId`: only used by `ListItem` to apply a hover style. It is local to `ListItem`. No other component needs it. It should live in `ListItem` itself, not lifted at all. Lifting it would be over-lifting.
+
+`selectedId`: needed by `Sidebar` and `MainPanel`, which are both children of `PageLayout`. The lowest common ancestor is `PageLayout`. `selectedId` should live in `PageLayout`. `Sidebar` receives `selectedId` and `onSelect` as props. `MainPanel` receives `selectedId` as a prop. `PageLayout` handles the state change and passes the new value down to both. Neither `Sidebar` nor `MainPanel` owns the state. Neither can go out of sync with the other because there is one source of truth.
+
+</details>
+
+---
+
+**Q2.** What is the difference between a controlled and an uncontrolled component? Give a concrete example of when each is the right choice.
+
+<details>
+<summary>Answer</summary>
+
+A controlled component receives its value and change handler as props. The parent owns the state. The component is a pure display and interaction layer. An uncontrolled component manages its own state internally. The parent has no visibility into or control over the current value during the editing process.
+
+Controlled is correct when: the parent needs to validate, transform, or synchronize the value with other components in real time. A form where the submit button is disabled until all fields are valid requires the parent to know each field's current value. A search input where results filter live as the user types requires the parent to know the query.
+
+Uncontrolled is correct when: the parent only needs the value at a specific point (form submission), not during editing. A file upload input is a canonical uncontrolled component: the parent does not need to track the file name as the user selects it, only the selected file when the form submits. An uncontrolled input with a `defaultValue` sets the initial value and lets the DOM own it thereafter, which is appropriate when the React component has no business logic that depends on the current in-progress value.
+
+</details>
+
+---
+
+**Q3.** Lifting state to a parent causes the parent and all its children to re-render when the state changes. Is this a problem? What is the correct way to reason about it?
+
+<details>
+<summary>Answer</summary>
+
+It is not inherently a problem. When shared state changes, the components that use it must re-render to reflect the new value. That is not waste, it is correct behavior. The question is whether components that do not use the changed state also re-render unnecessarily.
+
+If the parent that owns the state also renders components that do not use that state (unrelated siblings of the consumers), those siblings will re-render by default. For trivial components, this is not a problem. For expensive components, two options exist: first, move the state further down by extracting a smaller component that co-locates the state with only its direct consumers, avoiding the unrelated siblings entirely. Second, wrap the unrelated siblings in `React.memo` so they bail out when their props have not changed. The first option is architecturally cleaner. The second option is an optimization applied after the architecture is established. The correct reasoning: a re-render is a problem only when it is measurably slow. Avoid premature optimization. Optimize the specific re-renders that are actually slow.
+
+</details>
+
+---
+
+**Q4.** A developer builds a multi-step form. Step 1 collects name and email. Step 2 collects address. Step 3 is a review screen showing all data. Where should the form data live, and why?
+
+<details>
+<summary>Answer</summary>
+
+The form data should live in the component that renders all three steps, their lowest common ancestor. The review screen in step 3 needs name, email, and address. Step 1 needs to be able to write name and email. Step 2 needs to be able to write address. All three steps are children of whatever component manages the multi-step flow. That parent owns the accumulated form data and passes the relevant slice and change handler to each step. Step 1 receives `{ name, email }` and `onUpdateStep1`. Step 2 receives `{ address }` and `onUpdateStep2`. Step 3 receives the full `{ name, email, address }` for display.
+
+This is state lifting applied to a wizard pattern. The parent owns the complete state. Each step is a controlled form that reads and writes only its relevant slice. No step owns data. No step needs to know about other steps. The parent is the single source of truth that can assemble the final payload for submission.
+
+</details>
+
+---
+
+**Q5.** When is lifting state the wrong solution to the "two components need the same data" problem, and what should you use instead?
+
+<details>
+<summary>Answer</summary>
+
+Lifting is wrong when the lowest common ancestor is so far up the tree that the path from ancestor to consumers passes through many intermediate components that do not use the state. Lifting in this case causes two problems: prop drilling (intermediaries must accept and forward props they do not use, coupling them to the state shape) and excessive re-render scope (the distant ancestor re-renders and propagates through its entire subtree on every state change).
+
+The alternative is Context for state that must be shared across distant or unrelated parts of the tree without prop drilling. Context places the state in a provider at the appropriate level and makes it directly accessible to any consumer in the subtree without any intermediate forwarding. The remaining alternative is a global state library (Zustand, Redux) for state that is genuinely application-wide, needs computed selectors to avoid rendering consumers that don't care about a specific slice, or requires devtools and time-travel debugging. The decision: lifting for local sharing, Context for distant sharing without complex logic, a state library for global state with complex update logic.
+
+</details>
+
+---
+
+## Phase 2 Complete!
+
+You now have the complete mechanical foundation for state in React:
+
+State is the minimal set of data from which the UI is fully derivable, where each piece is independently mutable and cannot be computed from anything else. Plain variables cannot drive UI updates because React has no signal mechanism for mutations, local variables are destroyed on every render, and module-level variables have no per-instance scoping. React stores state in a positional linked list on the Fiber node, using a dispatcher to route hook calls to the correct slot on mount and update, which is why hook call order must be stable across renders. State updates are batched to produce one re-render per event, with React 18 extending batching to all async contexts via the Scheduler's macrotask deferral. Derived values must not be stored as state because they create stale synchronization bugs. And shared state lives at the lowest common ancestor of all components that need it, never higher.
+
+Next section is about re-renders: what exactly triggers them, what "re-render" actually means at the function and Fiber level, when they are not a problem, and when they are. This is where performance intuition gets built from first principles rather than rules of thumb.
