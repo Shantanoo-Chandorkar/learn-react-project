@@ -1,0 +1,414 @@
+﻿# Props, Why Do Components Take Arguments?
+
+### 1. The Problem
+
+You have a `UserCard` component. It renders an avatar, a name, and a follow button. It works perfectly for one user.
+
+Now you need to render it for 100 different users. The component's structure is identical for all 100. The data is different for each one.
+
+You have two options. Write 100 slightly different components, `UserCardShan`, `UserCardRavi`, `UserCardPriya`, each with the data hardcoded. Or write one component that accepts the data as input and uses it to fill the structure.
+
+The second option is obviously correct. And the mechanism is obvious too, because you already know it from plain JavaScript. Functions take arguments. Arguments are how you pass variable data into a fixed structure. A component is a function. Props are its arguments.
+
+That's the entire concept. But the details of how React handles props, enforces them, and what you must never do with them, are where the real understanding lives.
+
+---
+
+### 2. The Naive Attempt
+
+You're building a notification system. Each notification has an icon, a message, a timestamp, and a dismiss button. You try to build this without any data-passing mechanism, hardcoding everything:
+
+```jsx
+function Notification() {
+  return (
+    <div className="notification">
+      <span className="icon">🔔</span>
+      <p className="message">Shan liked your post</p>
+      <span className="timestamp">2 minutes ago</span>
+      <button>Dismiss</button>
+    </div>
+  );
+}
+```
+
+Works for one notification. Now you need a different one:
+
+```jsx
+function Notification2() {
+  return (
+    <div className="notification">
+      <span className="icon">💬</span>
+      <p className="message">Ravi commented on your photo</p>
+      <span className="timestamp">5 minutes ago</span>
+      <button>Dismiss</button>
+    </div>
+  );
+}
+```
+
+You're copying components. The structure is identical. Only the data differs. This is the exact problem functions with arguments were invented to solve, in 1958, when FORTRAN introduced subroutines. You are re-inventing a problem that was solved before JavaScript existed.
+
+The fix is immediate and obvious:
+
+```jsx
+function Notification({ icon, message, timestamp, onDismiss }) {
+  return (
+    <div className="notification">
+      <span className="icon">{icon}</span>
+      <p className="message">{message}</p>
+      <span className="timestamp">{timestamp}</span>
+      <button onClick={onDismiss}>Dismiss</button>
+    </div>
+  );
+}
+```
+
+One component. All data flows in as arguments. The structure is defined once.
+
+---
+
+### 3. Why That Breaks
+
+The hardcoded version has one precise failure mode: **the component's reusability is zero.** Every unique piece of data requires a unique component definition. A codebase with 50 notification variants has 50 component functions that are structurally identical. Change the notification layout and you change it 50 times. Add a new field and you update 50 components.
+
+But there's a subtler version of this failure that appears even after you introduce props. Developers who understand props exist but misunderstand what they are tend to do this:
+
+```jsx
+function UserCard({ user }) {
+  // "I'll just update the prop directly, it's faster"
+  user.name = user.name.toUpperCase();
+
+  return (
+    <div>
+      <p>{user.name}</p>
+    </div>
+  );
+}
+```
+
+This mutates the prop object. It appears to work, but it is a different category of bug, which we will get to in the internals section.
+
+---
+
+### 4. React's Mental Model
+
+Props are to components what arguments are to functions. They flow in one direction: from parent to child. A component never modifies its own props. It reads them, uses them to compute output, and that is all. Props are the component's read-only view of the outside world.
+
+One sentence: props are the inputs to a pure function, and a pure function never modifies its inputs.
+
+---
+
+### 5. React's Solution
+
+Props are passed as JSX attributes and received as a single object in the function's first argument:
+
+```jsx
+// Parent passes props as JSX attributes
+<Notification
+  icon="🔔"
+  message="Shan liked your post"
+  timestamp="2 minutes ago"
+  onDismiss={() => dismiss(id)}
+/>;
+
+// Child receives them as a single object
+function Notification(props) {
+  return (
+    <div>
+      <span>{props.icon}</span>
+      <p>{props.message}</p>
+      <span>{props.timestamp}</span>
+      <button onClick={props.onDismiss}>Dismiss</button>
+    </div>
+  );
+}
+
+// Destructured form, same thing, just more readable
+function Notification({ icon, message, timestamp, onDismiss }) {
+  // ...
+}
+```
+
+Destructuring in the parameter list is purely a JavaScript convenience. Both forms receive an identical props object. The destructured form just pulls fields out immediately.
+
+Default values for props use JavaScript's native default parameter syntax:
+
+```jsx
+function Button({ label, variant = 'primary', size = 'medium', onClick }) {
+  return (
+    <button
+      className={`btn btn-${variant} btn-${size}`}
+      onClick={onClick}
+    >
+      {label}
+    </button>
+  );
+}
+
+// Caller can omit variant and size, defaults apply
+<Button label="Submit" onClick={handleSubmit} />
+
+// Caller can override
+<Button label="Cancel" variant="secondary" onClick={handleCancel} />
+```
+
+The `children` prop is special. It is populated automatically by React with whatever you put between a component's opening and closing tags:
+
+```jsx
+function Card({ title, children }) {
+  return (
+    <div className="card">
+      <h2 className="card-title">{title}</h2>
+      <div className="card-body">{children}</div>
+    </div>
+  );
+}
+
+// Usage: anything between <Card> and </Card> becomes children
+<Card title="User Profile">
+  <img src={user.avatar} alt={user.name} />
+  <p>{user.bio}</p>
+  <FollowButton userId={user.id} />
+</Card>;
+```
+
+`children` can be a string, a single React element, an array of React elements, a function, or `undefined`. It is just a prop. There is nothing special about how React handles it beyond automatically assigning it from the JSX content between tags.
+
+Spreading props is a pattern used when a component wraps another and needs to forward all or most of its props:
+
+```jsx
+function FancyInput({ label, ...rest }) {
+  // label is extracted, everything else is forwarded
+  return (
+    <div className="fancy-input-wrapper">
+      <label>{label}</label>
+      <input {...rest} />
+    </div>
+  );
+}
+
+// Usage
+<FancyInput
+  label="Email"
+  type="email"
+  placeholder="you@example.com"
+  onChange={handleChange}
+  disabled={isSubmitting}
+/>;
+// `label` goes to the wrapper div's label element
+// `type`, `placeholder`, `onChange`, `disabled` all land on the input
+```
+
+---
+
+### 6. Internals
+
+When React creates a Fiber node for a component, the props object passed to that component is stored on the Fiber in two places:
+
+```js
+fiber.pendingProps; // the props for the current render
+fiber.memoizedProps; // the props from the last completed render
+```
+
+During the render phase, React calls your component function with `fiber.pendingProps` as the argument. After the render completes and the work is committed, React copies `pendingProps` into `memoizedProps`. On the next render, `memoizedProps` is what React compares against to determine if the component's output could have changed.
+
+This is the mechanical basis for `React.memo`. When a parent re-renders and passes new props to a memoized child, React does a shallow equality check: for each key in the props object, it checks `Object.is(memoizedProps[key], pendingProps[key])`. If all keys pass, the component's Fiber is marked as able to bail out. React reuses the existing output without calling the component function. If any key fails, the function is called with the new props.
+
+Now, why mutating props is a concrete bug, not just a style violation:
+
+```jsx
+function UserCard({ user }) {
+  user.name = user.name.toUpperCase(); // mutation
+  return <p>{user.name}</p>;
+}
+```
+
+The `user` object is owned by the parent. The parent passed a reference to it. The child and the parent now share the same object in memory. When the child mutates `user.name`, it mutates the parent's object. The parent does not know this happened. No state update was called. No re-render was scheduled. But the underlying data changed. The parent's copy of `user.name` is now uppercased, silently, without the parent's knowledge.
+
+On the next render of the parent, when it passes `user` to `UserCard` again, `memoizedProps.user === pendingProps.user` is `true` because it's the same reference. React may bail out of re-rendering `UserCard` because props appear unchanged. But the data inside the object was already mutated. The component's output was based on mutated data that React can no longer track or reconcile correctly. The `UI = f(state)` contract is broken.
+
+The rule is absolute: treat props as immutable. Never write to them. If you need a modified version, derive a new value:
+
+```jsx
+function UserCard({ user }) {
+  const displayName = user.name.toUpperCase(); // new value, original untouched
+  return <p>{displayName}</p>;
+}
+```
+
+There's one more internal detail worth knowing. When you pass a function as a prop, like `onDismiss`, you are passing a reference to a function object. On every render of the parent, a new function object is created unless you use `useCallback`. This means `memoizedProps.onDismiss !== pendingProps.onDismiss` on every parent re-render, even if the function's behavior hasn't changed. For memoized children, this silently defeats `React.memo`. This is the exact problem `useCallback` solves, and we will trace it precisely in Phase 7.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: What does this render, and is there a bug?**
+
+```jsx
+function Greeting({ name = 'Guest' }) {
+  return <p>Hello, {name}!</p>;
+}
+
+// Call site A
+<Greeting />
+
+// Call site B
+<Greeting name={null} />
+
+// Call site C
+<Greeting name={undefined} />
+```
+
+<details>
+<summary>Answer</summary>
+
+Call site A: renders "Hello, Guest!" because `name` is `undefined` (prop not passed), and the default parameter applies when the value is `undefined`.
+
+Call site B: renders "Hello, !" with nothing after the comma. `null` is an explicit value. Default parameters only trigger for `undefined`, not `null`. React renders `null` as nothing, so the name is blank. This is often a bug in codebases that pass `null` from an API response expecting the default to apply. It does not.
+
+Call site C: renders "Hello, Guest!" because `name={undefined}` is equivalent to not passing the prop at all. Passing `undefined` explicitly does trigger the default parameter. This asymmetry between `null` and `undefined` in default parameters is a common source of subtle bugs when consuming API data where absent fields might be `null` or `undefined` depending on the backend.
+
+</details>
+
+---
+
+**Trap 2: Will React.memo prevent re-renders here?**
+
+```jsx
+const Child = React.memo(function Child({ config }) {
+  console.log('Child rendered');
+  return <div>{config.label}</div>;
+});
+
+function Parent() {
+  const [count, setCount] = React.useState(0);
+
+  return (
+    <div>
+      <button onClick={() => setCount((c) => c + 1)}>Count: {count}</button>
+      <Child config={{ label: 'Settings' }} />
+    </div>
+  );
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+No. `Child` re-renders on every click. `React.memo` does a shallow equality check on props. The `config` prop is an object literal `{ label: 'Settings' }` created inline in `Parent`'s JSX. Every time `Parent` re-renders (every button click), a new object is created with a new reference. Even though the contents are identical, `Object.is(memoizedProps.config, pendingProps.config)` is `false` because they are two different objects in memory. `React.memo` sees a changed prop and re-renders `Child`. To fix it, move the config object outside the component (if it's static) or wrap it in `useMemo` (if it depends on state). The lesson: `React.memo` only helps if the props you pass are stable references. Inline objects and inline functions are never stable references.
+
+</details>
+
+---
+
+**Trap 3: What is wrong with this children usage?**
+
+```jsx
+function List({ children }) {
+  return (
+    <ul>
+      {children.map((child, i) => (
+        <li key={i}>{child}</li>
+      ))}
+    </ul>
+  );
+}
+
+// Usage A
+<List>
+  <span>First</span>
+  <span>Second</span>
+  <span>Third</span>
+</List>
+
+// Usage B
+<List>
+  <span>Only child</span>
+</List>
+```
+
+<details>
+<summary>Answer</summary>
+
+Usage A works. `children` is an array of three React elements, and `.map` works normally.
+
+Usage B throws: `children.map is not a function`. When a component receives exactly one child, React sets `props.children` to that single element directly, not wrapped in an array. `.map` does not exist on a single React element object. This is one of the most common `children` bugs. The fix is to use `React.Children.map` instead of `children.map`, because `React.Children.map` handles single children, arrays, and nested children correctly by normalizing them first. Alternatively, wrap `children` in `React.Children.toArray(children)` before calling `.map`. The deeper lesson: never assume `props.children` is an array. Its type depends entirely on how many children were passed.
+
+</details>
+
+---
+
+**Trap 4: Predict the output.**
+
+```jsx
+function Badge({ count, ...rest }) {
+  console.log(rest);
+  return <span {...rest}>{count}</span>;
+}
+
+<Badge count={5} className="badge" onClick={() => console.log('clicked')} data-testid="badge" />;
+```
+
+<details>
+<summary>Answer</summary>
+
+`rest` will be `{ className: 'badge', onClick: [Function], 'data-testid': 'badge' }`. The `count` prop is explicitly destructured and consumed by the component. Everything else lands in `rest` via the rest/spread operator. The `{...rest}` spread on `<span>` passes all remaining props directly to the native `span` DOM element. `className`, `onClick`, and `data-testid` all become actual HTML attributes or event listeners on the span. This pattern is called "prop forwarding" and is standard in wrapper or primitive components that need to stay transparent to the DOM. The risk: if a consumer passes an unrecognized prop like `isActive` as a boolean, it will be forwarded to the DOM element, and React will warn about unknown DOM attributes. Wrapper components sometimes need to filter the rest object before spreading.
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** Props flow one direction: parent to child. This is called unidirectional data flow. What specific problem does this solve compared to two-way binding?
+
+<details>
+<summary>Answer</summary>
+
+Two-way binding automatically syncs a JS model to a DOM input and back. When either changes, the other updates. This creates implicit cycles: a model change updates the DOM, the DOM change updates the model, which could trigger another model change. In systems with multiple components sharing state this way, a change in one place can cascade unpredictably through the system, and tracing the source of a bug requires following chains of automatic synchronization in both directions. Unidirectional flow means data can only move one way: state lives in a parent and flows down as props. Changes flow back up through explicit callback functions, not automatic syncing. The source of every state change is always a specific event handler that called a specific setter. The flow is traceable. Bugs are locatable. There is no implicit cycle.
+
+</details>
+
+---
+
+**Q2.** Where does React store props on the Fiber node, and how does this enable `React.memo`?
+
+<details>
+<summary>Answer</summary>
+
+React stores the incoming props for the current render in `fiber.pendingProps` and the props from the last completed render in `fiber.memoizedProps`. When a memoized component is about to render, React compares each key in `pendingProps` against the same key in `memoizedProps` using `Object.is`. If every key passes, the Fiber is marked for bailout and React reuses the previous render output without calling the component function. If any key fails (reference changed for objects, new primitive value, etc.), React calls the component function with the new `pendingProps`. After commit, `memoizedProps` is updated to the new props for use in the next comparison.
+
+</details>
+
+---
+
+**Q3.** A component receives a `user` prop and derives a display name from it: `const display = user.firstName + ' ' + user.lastName`. Is this correct? What if instead it does `user.displayName = user.firstName + ' ' + user.lastName`?
+
+<details>
+<summary>Answer</summary>
+
+The first form is correct. It creates a new local variable `display` without modifying `user`. The `user` object passed from the parent is untouched. The second form mutates the prop object directly, adding a new property to it. The parent's `user` object now has a `displayName` property it didn't have before, silently. This breaks the parent's ownership of its own data. If the parent renders again and passes the same `user` reference to a memoized child, React sees the same reference and may bail out, even though the object now has a mutated field. More broadly, a component mutating its props is a hidden side effect in what should be a pure function, which violates the `UI = f(state)` contract and makes the component's behavior impossible to reason about in isolation.
+
+</details>
+
+---
+
+**Q4.** Why does `React.Children.map` exist as a separate utility instead of just using `children.map`?
+
+<details>
+<summary>Answer</summary>
+
+Because `props.children` is not reliably an array. Its type depends on how many children were passed: a single child is the element itself (not an array), multiple children are an array, and zero children is `undefined`. Calling `.map` directly on `children` throws when there is exactly one child, because a React element object has no `.map` method. `React.Children.map` normalizes the input first, handling single elements, arrays, nested arrays, and null/undefined children, before iterating. It also assigns keys correctly to the returned elements. Using `React.Children.map` makes a component robust to any number of children, whereas `children.map` is a bug waiting to happen the moment a consumer passes a single child.
+
+</details>
+
+---
+
+**Q5.** You're building a `TextInput` wrapper component. A teammate says "just use `{...props}` and spread everything onto the native input, it's the cleanest API." What is the risk of this pattern?
+
+<details>
+<summary>Answer</summary>
+
+Blind spreading forwards every prop, including ones the native DOM element does not understand. If a consumer passes custom boolean props like `isRequired`, `isValid`, or `showError` for the wrapper's own logic, those props will also land on the `<input>` DOM node. React will log warnings about unknown DOM attributes, and in some cases the attribute will be serialized and appear in the HTML as a string, which can cause unexpected behavior. The correct pattern is to destructure the props the wrapper component consumes internally, and spread only the remainder: `function TextInput({ label, isValid, ...inputProps }) { return <input {...inputProps} /> }`. This way only genuine HTML input attributes reach the DOM element.
+
+</details>

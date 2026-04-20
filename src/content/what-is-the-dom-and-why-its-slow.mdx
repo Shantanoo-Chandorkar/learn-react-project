@@ -1,0 +1,251 @@
+# What is the DOM and why is it slow?
+
+### 1. The Problem
+
+You have a webpage. The user clicks a button. The number on screen should go from 0 to 1. Simple. But how does that actually happen? The browser didn't ship with a "update this number" button. You have to reach into the page and change it yourself. To do that, you need to understand what you're reaching into, and why that reach is more expensive than it looks.
+
+---
+
+### 2. The Naive Attempt
+
+You know JS. You'd do something like this:
+
+```html
+<div id="counter">0</div>
+<button onclick="increment()">+</button>
+
+<script>
+  let count = 0;
+
+  function increment() {
+    count++;
+    document.getElementById('counter').innerText = count;
+  }
+</script>
+```
+
+This works. Click the button, number goes up. Totally fine. So what's the problem?
+
+Scale this. Now you have a dashboard. 50 components. User updates a name field. That name appears in the header, the sidebar, the profile card, and the activity log. You now have to manually find every element that displays that name and update each one. You have to know where everything is, track every dependency yourself, and make sure you never miss one.
+
+```js
+function updateUsername(newName) {
+  document.getElementById('header-name').innerText = newName;
+  document.getElementById('sidebar-name').innerText = newName;
+  document.getElementById('profile-card-name').innerText = newName;
+  document.getElementById('activity-log-name').innerText = newName;
+  // miss one and the UI is inconsistent forever
+}
+```
+
+Still works, technically. But there's a deeper problem you haven't hit yet.
+
+---
+
+### 3. Why That Breaks
+
+Two distinct failure modes are happening here.
+
+**Failure mode 1: Manual synchronization is unscalable.**
+You are the one keeping the data (`count`, `newName`) and the UI in sync. The browser has no idea those are connected. Every time data changes, you are personally responsible for finding every DOM node that reflects that data and updating it. In a real app this is thousands of nodes. Miss one and the UI lies to the user.
+
+**Failure mode 2: Direct DOM manipulation is slow, but not for the reason you think.**
+The DOM is not a JavaScript object. It's a C++ structure exposed to JavaScript through a bridge. Every time you call `document.getElementById` or set `.innerText`, you are crossing that bridge. The bridge itself has cost. But the real cost is what happens after: the browser may need to recalculate layout (reflow) and repaint pixels on screen (repaint). If you touch 50 nodes in a loop, you might trigger 50 reflows. Browsers batch some of this, but you can easily force them not to by interleaving reads and writes:
+
+```js
+// This forces the browser to reflow twice
+const height = element.offsetHeight; // READ: forces reflow to get current value
+element.style.height = height + 10 + 'px'; // WRITE: invalidates layout
+const newHeight = element.offsetHeight; // READ again: forces another reflow
+```
+
+Every read of a layout property after a write forces the browser to flush its pending style changes to give you an accurate answer. This is called layout thrashing, and it's brutally expensive.
+
+---
+
+### 4. React's Mental Model
+
+The DOM is a slow, stateful, C++-backed tree. JavaScript is fast. So instead of touching the DOM directly when data changes, React keeps a lightweight copy of what the DOM should look like entirely in JavaScript, figures out the minimum set of real DOM changes needed, and applies only those.
+
+One sentence: React keeps your UI description in cheap JS memory and touches the expensive real DOM as little as possible.
+
+---
+
+### 5. React's Solution
+
+React introduces the Virtual DOM: a plain JavaScript object tree that mirrors the structure of the real DOM.
+
+```js
+// What React actually creates when you write JSX
+{
+  type: 'div',
+  props: { className: 'counter' },
+  children: [
+    { type: 'span', props: {}, children: ['0'] }
+  ]
+}
+```
+
+This object lives entirely in JS memory. Creating and comparing JS objects is orders of magnitude faster than touching real DOM nodes. When your data changes, React creates a new version of this object tree, compares it to the previous one (reconciliation), identifies only what changed, and then makes the minimum number of real DOM operations to bring the screen in sync.
+
+You stop writing: "find this element and update it."
+You start writing: "given this data, here is what the UI should look like."
+React figures out the diff and handles the DOM for you.
+
+---
+
+### 6. Internals
+
+The Virtual DOM is implemented as a tree of Fiber nodes (in React 16+). Each Fiber is a JavaScript object roughly shaped like this:
+
+```js
+{
+  type: 'div',           // what element or component this is
+  stateNode: domNode,    // reference to the actual DOM node (if committed)
+  child: Fiber,          // first child
+  sibling: Fiber,        // next sibling
+  return: Fiber,         // parent
+  pendingProps: {},      // props for this render
+  memoizedProps: {},     // props from last render
+  memoizedState: {},     // state from last render
+  flags: 0,             // what work needs to happen (insert, update, delete)
+}
+```
+
+The Fiber tree is a linked list, not a recursive tree structure. This is intentional. A recursive tree traversal cannot be paused midway. A linked list traversal can be interrupted and resumed, which is exactly what React's concurrent mode needs to do. We'll go deep on this in Phase 8, but the seed is here: the data structure choice is not cosmetic, it enables interruptibility.
+
+When state changes, React doesn't throw away the entire Fiber tree. It creates a work-in-progress copy (the "alternate" tree), makes changes there, and when the work is done, swaps it in. This double-buffering technique means the current UI is never in a half-updated state.
+
+The actual DOM write only happens in the commit phase, which is synchronous and non-interruptible, because you can't leave the real DOM half-updated.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: "The Virtual DOM is faster than the real DOM."**
+
+```
+Is this statement true or false?
+
+"React is fast because the Virtual DOM is faster than the real DOM."
+```
+
+<details>
+<summary>Answer</summary>
+
+False, and this is a very common misconception. The Virtual DOM itself adds overhead, not reduces it. Creating and diffing JS objects takes time. The reason React can be faster in practice is that it batches and minimizes real DOM operations. A naive implementation that directly touched the DOM optimally would be faster than React. React's advantage is that it does the optimization for you automatically, so you don't have to think about it. If you directly manipulated the DOM with perfect efficiency, you wouldn't need the Virtual DOM at all. React trades some raw performance for developer ergonomics and correctness.
+
+</details>
+
+---
+
+**Trap 2: What does this code do to browser performance?**
+
+```js
+const boxes = document.querySelectorAll('.box');
+
+boxes.forEach((box) => {
+  const width = box.offsetWidth; // read
+  box.style.width = width * 2 + 'px'; // write
+});
+```
+
+<details>
+<summary>Answer</summary>
+
+This triggers layout thrashing. For each box, it reads `offsetWidth` (which forces the browser to flush pending style changes and recalculate layout to return an accurate value), then immediately writes a new style (which invalidates the layout again). For N boxes this is N reflows instead of 1. The fix is to separate reads from writes: collect all widths first, then apply all writes.
+
+```js
+const widths = Array.from(boxes).map((box) => box.offsetWidth); // all reads
+boxes.forEach((box, i) => {
+  box.style.width = widths[i] * 2 + 'px'; // all writes
+});
+```
+
+This results in 1 reflow instead of N.
+
+</details>
+
+---
+
+**Trap 3: Predict the render behavior.**
+
+```jsx
+function App() {
+  const [count, setCount] = React.useState(0);
+  return (
+    <div>
+      <p>{count}</p>
+      <button onClick={() => setCount(count + 1)}>+</button>
+    </div>
+  );
+}
+```
+
+"When the button is clicked, React re-renders the entire DOM. True or false?"
+
+<details>
+<summary>Answer</summary>
+
+False. React re-renders the component, meaning it calls the `App` function again and gets a new Virtual DOM tree. Then the reconciler diffs the new tree against the previous tree. The only real DOM node that changed is the text content inside `<p>`. React will update exactly that one text node. The `<div>`, `<p>` element itself, and `<button>` are untouched in the real DOM because they didn't change in the Virtual DOM diff.
+
+This is the exact value proposition of the Virtual DOM: component-level re-renders don't mean page-level DOM repaints.
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** What is the structural difference between the Virtual DOM and the real DOM, in terms of where each lives and what it costs to read from?
+
+<details>
+<summary>Answer</summary>
+
+The real DOM is a C++ structure maintained by the browser engine, exposed to JS via a bridge. Every read or write crosses that bridge and can trigger layout recalculation. The Virtual DOM is a plain JavaScript object in the JS heap. Reading and writing JS objects costs only memory allocation and property access, no bridge, no layout engine. That's why diffing in JS is cheap and DOM manipulation is expensive.
+
+</details>
+
+---
+
+**Q2.** You call `element.offsetWidth` immediately after changing `element.style.padding`. What does the browser have to do before it can return a value?
+
+<details>
+<summary>Answer</summary>
+
+The browser has to flush all pending style mutations and run a full layout recalculation (reflow) before it can return an accurate `offsetWidth`. Because `style.padding` changes the element's size, the previously computed layout is now invalid, and the browser must recompute it to give you a correct answer. This is a forced synchronous layout.
+
+</details>
+
+---
+
+**Q3.** React's Fiber tree uses a linked list instead of a recursive tree. What specific capability does this enable that a recursive tree cannot support?
+
+<details>
+<summary>Answer</summary>
+
+Interruptibility. A recursive function call stack cannot be paused partway through, because the execution state lives on the call stack, which belongs to the JS engine. A linked list traversal is just a pointer walk through heap objects. React can stop walking, save where it is (the current Fiber pointer), yield control back to the browser to handle a higher-priority task (like a user input event), and then resume from the saved pointer. This is the mechanical foundation of Concurrent Mode.
+
+</details>
+
+---
+
+**Q4.** If the Virtual DOM adds overhead compared to doing nothing, why does React still use it?
+
+<details>
+<summary>Answer</summary>
+
+Because the alternative is you, manually tracking which DOM nodes to update when data changes. At any non-trivial scale, developers consistently get this wrong, miss updates, or do redundant updates. The Virtual DOM trades a small, predictable overhead (JS object creation and diffing) for correctness and the elimination of an entire class of manual synchronization bugs. It also enables batching: React can accumulate multiple state changes and apply them in a single pass rather than updating the DOM after every individual change.
+
+</details>
+
+---
+
+**Q5.** What are the two distinct costs of touching the DOM? Name them precisely.
+
+<details>
+<summary>Answer</summary>
+
+First, the bridge crossing cost: JavaScript and the DOM live in different worlds (JS heap vs browser's C++ rendering engine), and every property access or method call crosses a boundary with overhead. Second, the layout and paint cost: certain DOM reads and writes trigger the browser to recalculate element geometry (reflow) and repaint pixels on screen (repaint). Reflow is particularly expensive because changing one element's size can cascade and affect the layout of its ancestors and siblings.
+
+</details>

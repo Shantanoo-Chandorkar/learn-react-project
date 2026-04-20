@@ -1,0 +1,511 @@
+﻿# `useState` Internals, How Does React Remember State Between Renders?
+
+### 1. The Problem
+
+You call `useState(0)` inside a function. The function returns. The function is called again. You call `useState(0)` again. Somehow the second call returns `1`, not `0`. The initializer `0` is ignored. The previous value is remembered.
+
+How? The function has no memory. Local variables are gone. There is no `this`. There is no class instance. There is no object that persists between calls. Just a plain function, called twice, somehow returning different values for the same call.
+
+If you cannot answer this precisely, you do not know what React is actually doing. You are using magic. And using magic means you cannot reason about edge cases, cannot debug subtle bugs, and cannot understand why the Rules of Hooks exist as hard constraints rather than style guidelines.
+
+---
+
+### 2. The Naive Attempt
+
+You want to build `useState` yourself. You understand the problem: the value must survive between function calls. First attempt: use a module-level variable.
+
+```js
+let state;
+let initialized = false;
+
+function useState(initialValue) {
+  if (!initialized) {
+    state = initialValue;
+    initialized = true;
+  }
+
+  function setState(newValue) {
+    state = newValue;
+    rerender(); // hypothetical
+  }
+
+  return [state, setState];
+}
+```
+
+Works for one state call. Now use two:
+
+```jsx
+function Counter() {
+  const [count, setCount] = useState(0);
+  const [name, setName] = useState('Shan');
+  // ...
+}
+```
+
+The second `useState` call finds `initialized = true` and returns the same `state` variable. Both `count` and `name` point to the same storage slot. Setting one overwrites the other. This obviously fails.
+
+Second attempt: use an array of slots and a cursor:
+
+```js
+const states = [];
+let cursor = 0;
+
+function useState(initialValue) {
+  const currentCursor = cursor;
+
+  if (states[currentCursor] === undefined) {
+    states[currentCursor] = initialValue;
+  }
+
+  function setState(newValue) {
+    states[currentCursor] = newValue;
+    cursor = 0; // reset for next render
+    rerender();
+  }
+
+  cursor++;
+  return [states[currentCursor - 1], setState];
+}
+```
+
+Now two `useState` calls get different slots: slot 0 for `count`, slot 1 for `name`. The cursor advances on each call. On re-render, cursor resets to 0 and the calls map to the same slots in the same order.
+
+This is essentially what React does. The data structure React uses is a linked list instead of an array, but the mechanism is identical: ordered slots, position-based identification, cursor reset on each render.
+
+Now try using this inside a conditional:
+
+```jsx
+function Counter({ showName }) {
+  const [count, setCount] = useState(0); // slot 0
+
+  if (showName) {
+    const [name, setName] = useState('Shan'); // slot 1 ONLY IF showName is true
+  }
+
+  const [flag, setFlag] = useState(false); // slot 1 if showName false, slot 2 if true
+}
+```
+
+First render with `showName = true`:
+
+- slot 0: `count = 0`
+- slot 1: `name = 'Shan'`
+- slot 2: `flag = false`
+
+Second render with `showName = false`:
+
+- slot 0: `count = 0` (correct)
+- slot 1: `flag` reads `states[1]` which is `'Shan'` (WRONG)
+- slot 2: undefined, new slot created for nothing
+
+`flag` is now `'Shan'`. The entire hook list is corrupted. This is not a hypothetical. This is precisely what happens in React when you break the Rules of Hooks.
+
+---
+
+### 3. Why That Breaks
+
+The precise failure mode: **hooks are identified by call order, not by name or key. Any variation in call order between renders corrupts the slot-to-hook mapping for every hook after the variation point.**
+
+This is not a React design limitation. It is an inherent consequence of the decision to identify state storage by position. The alternative would be to require developers to provide explicit keys: `useState('count', 0)`. React's team considered this and rejected it because string keys introduce their own problems (collisions, refactoring friction, verbosity). Position-based identification is simpler and fully correct as long as call order is stable.
+
+The Rules of Hooks are not arbitrary rules invented to make your life harder. They are the direct logical consequence of position-based slot identification. Violating them produces incorrect behavior as a mathematical certainty, not as an occasional edge case.
+
+---
+
+### 4. React's Mental Model
+
+React maintains a linked list of hook state objects on each Fiber node. Each `useState` call during a render corresponds to one node in the list, identified by its position. The dispatcher, a global pointer React sets before calling your component function, knows whether the component is mounting (create new nodes) or updating (read existing nodes). Your `useState` call hits the dispatcher, which either creates or reads the node at the current list position, then advances the internal pointer to the next node.
+
+One sentence: React stores hook state in a positional linked list on the Fiber, uses a global dispatcher to route hook calls to the right list node, and advances through the list in lockstep with your hook calls on every render.
+
+---
+
+### 5. React's Solution
+
+The public API is clean:
+
+```jsx
+function Counter() {
+  const [count, setCount] = React.useState(0);
+  const [name, setName] = React.useState('Shan');
+  const [isVisible, setIsVisible] = React.useState(true);
+
+  // ...
+}
+```
+
+Under the hood, after mount, the Fiber's `memoizedState` linked list looks like:
+
+```
+fiber.memoizedState
+    ↓
+Hook Node 0          Hook Node 1          Hook Node 2
+{                    {                    {
+  memoizedState: 0,    memoizedState:       memoizedState: true,
+  queue: {...},        'Shan',              queue: {...},
+  next: ──────────→    queue: {...},        next: null
+}                      next: ──────────→  }
+                     }
+```
+
+On every render, React walks this list from the head, in order, one node per hook call. The order must match. Always.
+
+---
+
+### 6. Internals
+
+This is the full mechanical trace. React's actual source uses more complexity for concurrent features, but this is the accurate conceptual model.
+
+**The Dispatcher**
+
+React maintains a module-level variable called the current dispatcher:
+
+```js
+// Simplified from ReactCurrentDispatcher.js
+const ReactCurrentDispatcher = {
+  current: null, // points to either HooksDispatcherOnMount or HooksDispatcherOnUpdate
+};
+```
+
+Before React calls your component function, it sets this pointer:
+
+```js
+// Before calling Counter() for the first time:
+ReactCurrentDispatcher.current = HooksDispatcherOnMount;
+
+// Before calling Counter() on re-render:
+ReactCurrentDispatcher.current = HooksDispatcherOnUpdate;
+```
+
+When your component calls `React.useState(0)`, that call routes to `ReactCurrentDispatcher.current.useState(0)`. The dispatcher is different depending on whether this is a mount or update. This is how the same `useState` call does two different things depending on context.
+
+**The Mount Dispatcher**
+
+```js
+// Simplified mountState
+function mountState(initialState) {
+  // Get or create the current work-in-progress hook node
+  const hook = mountWorkInProgressHook();
+  // mountWorkInProgressHook creates a new node and appends it to the list
+
+  // Use lazy initializer if provided
+  if (typeof initialState === 'function') {
+    initialState = initialState(); // call it once, here, never again
+  }
+
+  hook.memoizedState = initialState;
+  hook.baseState = initialState;
+
+  // Create the update queue for this state slot
+  const queue = {
+    pending: null,
+    dispatch: null,
+    lastRenderedReducer: basicStateReducer,
+    lastRenderedState: initialState,
+  };
+  hook.queue = queue;
+
+  // Bind the dispatch function to THIS fiber and THIS queue
+  const dispatch = (queue.dispatch = dispatchSetState.bind(
+    null,
+    currentlyRenderingFiber, // the specific Fiber being rendered right now
+    queue,
+  ));
+
+  return [hook.memoizedState, dispatch];
+}
+```
+
+`mountWorkInProgressHook` creates a new hook node and appends it to the linked list:
+
+```js
+function mountWorkInProgressHook() {
+  const hook = {
+    memoizedState: null,
+    baseState: null,
+    baseQueue: null,
+    queue: null,
+    next: null, // pointer to next hook in the list
+  };
+
+  if (workInProgressHook === null) {
+    // This is the first hook: attach to fiber's memoizedState
+    currentlyRenderingFiber.memoizedState = workInProgressHook = hook;
+  } else {
+    // Append to end of the list
+    workInProgressHook = workInProgressHook.next = hook;
+  }
+
+  return workInProgressHook;
+}
+```
+
+`workInProgressHook` is the cursor, a module-level pointer that advances with each hook call.
+
+**The Update Dispatcher**
+
+```js
+// Simplified updateState
+function updateState(initialState) {
+  // initialState is IGNORED here
+  return updateReducer(basicStateReducer);
+}
+
+function updateWorkInProgressHook() {
+  // Read the NEXT node from the existing linked list
+  // Does NOT create a new node
+  // Advances the cursor to the next position
+  let nextCurrentHook;
+
+  if (currentHook === null) {
+    // First hook call: start from the head of the list
+    const current = currentlyRenderingFiber.alternate;
+    nextCurrentHook = current.memoizedState;
+  } else {
+    // Subsequent hook calls: advance to next node
+    nextCurrentHook = currentHook.next;
+  }
+
+  currentHook = nextCurrentHook; // advance cursor
+  // ... copy to work-in-progress hook
+  return workInProgressHook;
+}
+```
+
+On update, the cursor walks the existing list. It does not create new nodes. It reads existing ones in order. If your hook calls skip a position (conditional) or add a position (dynamic hook call), the cursor is at the wrong node and every subsequent hook reads wrong state.
+
+**The Setter: dispatchSetState**
+
+```js
+function dispatchSetState(fiber, queue, action) {
+  // Create an update object
+  const update = {
+    lane: requestUpdateLane(fiber), // priority of this update
+    action, // the new value or updater function
+    hasEagerState: false,
+    eagerState: null,
+    next: null,
+  };
+
+  // Optimization: if the component is not currently rendering,
+  // compute the new state eagerly to bail out early if unchanged
+  const currentState = queue.lastRenderedState;
+  const eagerState = queue.lastRenderedReducer(currentState, action);
+  if (Object.is(eagerState, currentState)) {
+    // State didn't change. Don't schedule a re-render.
+    return;
+  }
+
+  // Enqueue the update
+  enqueueUpdate(fiber, queue, update);
+
+  // Schedule a re-render for this fiber
+  scheduleUpdateOnFiber(fiber);
+}
+```
+
+The `Object.is` bail-out is important. Calling `setCount(0)` when `count` is already `0` does nothing. React compares the new state to the current state using `Object.is` (strict equality plus correct NaN handling). If they are the same, no re-render is scheduled. This is why mutating an object and passing the same reference to the setter never triggers a re-render: same reference means `Object.is` returns `true` and React bails out.
+
+**The full render cycle for a second click on a counter:**
+
+```
+fiber.alternate exists (previous committed fiber)
+fiber.alternate.memoizedState = Hook0{ memoizedState: 1, queue: {pending: null} }
+
+ReactCurrentDispatcher.current = HooksDispatcherOnUpdate
+
+React calls Counter()
+
+  useState(0) called
+    → updateState(0)  [0 is ignored]
+    → updateWorkInProgressHook()
+       currentHook = fiber.alternate.memoizedState  [Hook0, value: 1]
+       workInProgressHook = copy of Hook0
+    → updateReducer processes queue
+       queue.pending = { action: 2, next: null }  [setCount(2) was called]
+       newState = basicStateReducer(1, 2) = 2
+       hook.memoizedState = 2
+       queue.pending = null
+    → returns [2, setCount]
+  count = 2
+
+Counter() returns new JSX with count=2
+
+Reconciler diffs:
+  <p>Count: 2</p> vs <p>Count: 1</p>
+  → p's text content changed, flag p's Fiber with Update
+
+Commit phase:
+  p.textContent = "Count: 2"
+
+fiber.memoizedState.memoizedState = 2  [persisted]
+```
+
+**The double-linked alternate tree:**
+
+React maintains two Fiber trees: the current tree (what is on screen) and the work-in-progress tree (being built for the next render). Each Fiber has an `alternate` pointer to its counterpart in the other tree. This is how `updateWorkInProgressHook` reads the previous state: it reads from `fiber.alternate.memoizedState`. When the render commits, the trees swap. The work-in-progress tree becomes current. The old current tree becomes the new work-in-progress tree for the next update. This double-buffering ensures the user always sees a complete, consistent UI: the current tree is only swapped when the entire new tree is ready.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: Why does this throw in development, and what is the precise internal reason?**
+
+```jsx
+function Counter({ showExtra }) {
+  const [count, setCount] = React.useState(0);
+
+  if (showExtra) {
+    const [extra, setExtra] = React.useState('hello');
+  }
+
+  const [flag, setFlag] = React.useState(false);
+
+  return (
+    <div>
+      {count} {flag.toString()}
+    </div>
+  );
+}
+```
+
+First render: `showExtra = true`. Second render: `showExtra = false`.
+
+<details>
+<summary>Answer</summary>
+
+On the first render with `showExtra = true`, React creates three hook nodes in the linked list: Hook0 (`count = 0`), Hook1 (`extra = 'hello'`), Hook2 (`flag = false`). The list has three nodes.
+
+On the second render with `showExtra = false`, React switches to the update dispatcher. It walks the existing list. First `useState` call: cursor reads Hook0, returns `[0, setCount]`. Correct. The `if` block is skipped, so the second `useState` call does not happen. Third `useState` call is now the second call: cursor reads Hook1, which holds `'hello'`. `flag` is set to `'hello'`, not `false`. React renders `flag.toString()` which calls `.toString()` on the string `'hello'`, rendering `'hello'` instead of `'false'`.
+
+React detects this in development by counting the number of hook calls and comparing it to the previous render. When the count changes, React throws "Rendered fewer hooks than expected." In production without this check, you get silent data corruption: wrong state values for every hook after the conditional one. The Rules of Hooks are enforced by this detection in development, but the fundamental failure is the cursor misalignment in the linked list.
+
+</details>
+
+---
+
+**Trap 2: Calling `setState` with the same value. How many re-renders happen?**
+
+```jsx
+function App() {
+  const [count, setCount] = React.useState(0);
+  console.log('rendered');
+
+  return <button onClick={() => setCount(0)}>Set to 0</button>;
+}
+```
+
+The button is clicked three times. How many times does `'rendered'` appear in the console?
+
+<details>
+<summary>Answer</summary>
+
+Once on mount, then once on the first click, then zero additional times on subsequent clicks.
+
+On mount: `'rendered'` logs once.
+
+On first click: `setCount(0)` is called. React's `dispatchSetState` computes the eager state: `basicStateReducer(0, 0) = 0`. It compares with `Object.is(0, 0)` which is `true`. React bails out immediately without scheduling a re-render. So `'rendered'` does not log.
+
+Wait, there is a subtlety. React's bail-out on the first call after mount is not guaranteed in all React versions. React may re-render once to confirm the bail-out, then stop. In React 18, clicking the button once may log `'rendered'` once (the confirmation render), then subsequent clicks with the same value do not log again. This is an implementation detail: React performs one "eager bail-out check" and one possible confirmation render, then fully bails out for subsequent identical updates. The mental model: `setState` with the same value by reference or primitive equality causes React to skip re-renders, but the first such call may still trigger one render for internal bookkeeping. Subsequent identical calls do not.
+
+</details>
+
+---
+
+**Trap 3: What is the bug in this custom hook, and how does it relate to the linked list?**
+
+```jsx
+function useConditionalState(condition, initialValue) {
+  if (condition) {
+    const [value, setValue] = React.useState(initialValue);
+    return [value, setValue];
+  }
+  return [null, () => {}];
+}
+
+function Form({ isEditing }) {
+  const [text, setText] = useConditionalState(isEditing, '');
+  return <input value={text || ''} onChange={(e) => setText(e.target.value)} />;
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+The `useState` call inside `useConditionalState` is inside an `if (condition)` block. React does not know or care that the conditional is inside a custom hook rather than directly in the component. The Rules of Hooks apply to the entire call chain: the linked list position is determined by the call order during the component's render, and any hook called anywhere in the render call stack (including in custom hooks) occupies a slot in the list.
+
+When `isEditing` changes from `true` to `false` between renders, the `useState` inside the custom hook is skipped on the second render. The linked list has one fewer node than the previous render. Every hook after this position in `Form` reads the wrong slot. React throws in development.
+
+The correct pattern is to call `useState` unconditionally and conditionally use the value:
+
+```js
+function useConditionalState(condition, initialValue) {
+  const [value, setValue] = React.useState(initialValue); // always called
+  if (condition) {
+    return [value, setValue];
+  }
+  return [null, () => {}];
+}
+```
+
+The hook always occupies its slot. The condition only affects what is returned to the caller.
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** React uses a linked list for hook state instead of a plain array with string keys. What is the tradeoff, and what invariant must be maintained as a consequence?
+
+<details>
+<summary>Answer</summary>
+
+A linked list with position-based identification requires no developer-provided keys, avoids key collision bugs, and keeps the API minimal. The tradeoff is that position becomes load-bearing: every hook call must occur in the same order on every render. If the number or order of hook calls changes between renders, the cursor misaligns and every hook after the mismatch point reads wrong state. The invariant that must be maintained: hook calls must be unconditional, must not be inside loops with variable iteration counts, and must not be inside conditionals that may change between renders. This invariant is enforced by React's development-mode hook count comparison and by ESLint's `eslint-plugin-react-hooks` rule.
+
+</details>
+
+---
+
+**Q2.** What does the dispatcher mechanism (`ReactCurrentDispatcher.current`) achieve, and why is it set before calling your component function rather than being determined inside `useState` itself?
+
+<details>
+<summary>Answer</summary>
+
+The dispatcher is a global pointer that routes `useState` calls to either the mount implementation (creates new nodes) or the update implementation (reads existing nodes). It is set before calling your function because the decision of which implementation to use is a property of the render context (is this a mount or an update?), not a property of the individual hook call. If `useState` determined this itself, it would need to check some global state on every call anyway. By setting the dispatcher once before the function runs, all hook calls during that render automatically use the correct implementation without any per-call checking. It also means React can swap the dispatcher for other contexts, for example a "server" dispatcher for React Server Components that disallows stateful hooks, or a "re-render" dispatcher for state updates triggered during render, without changing the hook implementations themselves.
+
+</details>
+
+---
+
+**Q3.** `dispatchSetState` performs an eager bail-out check using `Object.is` before scheduling a re-render. What does this mean for objects and arrays passed to state setters?
+
+<details>
+<summary>Answer</summary>
+
+`Object.is` for objects and arrays is a reference equality check. Two distinct objects with identical contents are not equal under `Object.is`. This means: passing a new object to the setter always schedules a re-render, even if the contents are identical. And passing a mutated version of the same object never schedules a re-render, because the reference is unchanged. The consequence is the immutability requirement: always create new objects and arrays when updating state. `setUser({ ...user, name: 'Ravi' })` creates a new reference, passes the `Object.is` check as different, and schedules a re-render. `user.name = 'Ravi'; setUser(user)` passes the same reference, `Object.is` returns `true`, and no re-render is scheduled. The UI never updates. The eager bail-out is correct behavior, but it requires you to understand that React's change detection is reference-based, not deep equality.
+
+</details>
+
+---
+
+**Q4.** What is the `alternate` Fiber, and why does React need two Fiber trees instead of one?
+
+<details>
+<summary>Answer</summary>
+
+Every Fiber node has an `alternate` pointer to a corresponding Fiber in a second tree. React maintains two trees: the current tree, which represents what is currently on screen, and the work-in-progress tree, which is being built for the next render. When a re-render starts, React builds the work-in-progress tree by processing components and updating hook state. During this process it reads from `fiber.alternate` (the current tree) to get previous state and props for comparison. When the render is complete and committed, the trees swap: the work-in-progress tree becomes current and vice versa. This double-buffering ensures the user always sees a complete, consistent UI. The current tree is never partially modified. Changes are prepared in the work-in-progress tree and applied atomically by swapping the tree pointer. If a render is interrupted (in concurrent mode), the work-in-progress tree is discarded and rebuilt, and the current tree remains on screen unchanged.
+
+</details>
+
+---
+
+**Q5.** A developer writes a custom hook that calls `useState` inside a `for` loop: `for (let i = 0; i < fields.length; i++) { useState('') }`. The array `fields` always has the same length. Is this safe?
+
+<details>
+<summary>Answer</summary>
+
+It is technically safe if and only if `fields.length` is guaranteed to never change across renders. The loop with a constant iteration count calls `useState` the same number of times in the same order on every render. The linked list cursor advances consistently. However, this is dangerous in practice because nothing in the code structure enforces the constant-length guarantee. If `fields` is a prop or derived from state, a parent could pass a different-length array on a future render, the hook count changes, and the list corrupts. The correct pattern is to manage an array as a single state value: `useState(fields.map(() => ''))`, storing the entire collection in one slot. This is one `useState` call regardless of collection size, safe unconditionally. The loop approach violates the spirit of the Rules of Hooks even when it technically works, because it creates a hidden invariant that is not visible at the call site and cannot be linted or enforced.
+
+</details>

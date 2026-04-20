@@ -1,0 +1,401 @@
+﻿# JSX, What Is It and Why Does It Exist?
+
+### 1. The Problem
+
+You now know a component is a function that returns a description of UI. That description is a tree. A card has a div, which has an img, a paragraph, and a button. The button has text. The tree has depth, nesting, siblings, and hierarchy.
+
+The question is: what is the least painful way to write that tree in JavaScript?
+
+JavaScript has no native syntax for trees. It has objects and arrays. A tree described in objects and arrays is valid, but deeply nested UI structures written as raw object literals are unreadable. There had to be a better notation. JSX is that notation.
+
+But JSX is not HTML. It is not a template language. It does not run in the browser. Understanding exactly what it is and what it compiles to is the difference between using React by feel and understanding it precisely.
+
+---
+
+### 2. The Naive Attempt
+
+Before JSX, you had to describe your UI tree using `React.createElement`. This is the actual API. JSX is syntax sugar over it. Let's write a real component without JSX to feel why that's unacceptable.
+
+Here is a profile card. Avatar, name, bio, and a follow button. Straightforward UI.
+
+```jsx
+// What you write with JSX
+function ProfileCard({ user, onFollow }) {
+  return (
+    <div className="card">
+      <img src={user.avatar} alt={user.name} className="avatar" />
+      <div className="card-body">
+        <h2 className="name">{user.name}</h2>
+        <p className="bio">{user.bio}</p>
+        <button
+          className={user.isFollowing ? 'btn-secondary' : 'btn-primary'}
+          onClick={() => onFollow(user.id)}
+        >
+          {user.isFollowing ? 'Unfollow' : 'Follow'}
+        </button>
+      </div>
+    </div>
+  );
+}
+```
+
+Now write the exact same component without JSX, using only `React.createElement`:
+
+```js
+// What you would write without JSX
+function ProfileCard({ user, onFollow }) {
+  return React.createElement(
+    'div',
+    { className: 'card' },
+    React.createElement('img', { src: user.avatar, alt: user.name, className: 'avatar' }),
+    React.createElement(
+      'div',
+      { className: 'card-body' },
+      React.createElement('h2', { className: 'name' }, user.name),
+      React.createElement('p', { className: 'bio' }, user.bio),
+      React.createElement(
+        'button',
+        {
+          className: user.isFollowing ? 'btn-secondary' : 'btn-primary',
+          onClick: () => onFollow(user.id),
+        },
+        user.isFollowing ? 'Unfollow' : 'Follow',
+      ),
+    ),
+  );
+}
+```
+
+Both produce the exact same output. They are semantically identical. The JSX version is parsed by a compiler (Babel or the TypeScript compiler) and transformed into the `createElement` calls before the browser ever sees it.
+
+The `createElement` version is correct but completely unreadable. The nesting structure is invisible. You cannot tell at a glance that `h2` and `p` are siblings inside `card-body`. You cannot scan the hierarchy the way you can with the JSX version. For a component with 40 elements, this becomes genuinely unmaintainable.
+
+---
+
+### 3. Why That Breaks
+
+One precise failure mode: **nested function calls do not communicate structure.**
+
+HTML and XML use indented angle brackets. Your brain reads indentation and nesting as hierarchy. `React.createElement` calls are just nested function arguments. The structure is encoded in the depth of argument nesting, which is extremely hard to scan visually, especially when props objects and children are interleaved at the same nesting level.
+
+There is also a secondary problem. Conditional and dynamic content with `createElement` requires you to break out of the call chain entirely:
+
+```js
+// With createElement, a conditional child requires a variable
+const button = user.isFollowing
+  ? React.createElement('button', { className: 'btn-secondary' }, 'Unfollow')
+  : React.createElement('button', { className: 'btn-primary' }, 'Follow');
+
+return React.createElement(
+  'div',
+  null,
+  React.createElement('p', null, user.name),
+  button, // the variable goes here as a child argument
+);
+```
+
+With JSX, the conditional lives inline:
+
+```jsx
+return (
+  <div>
+    <p>{user.name}</p>
+    {user.isFollowing ? (
+      <button className="btn-secondary">Unfollow</button>
+    ) : (
+      <button className="btn-primary">Follow</button>
+    )}
+  </div>
+);
+```
+
+The JSX version puts the logic where it belongs, inside the structure. The `createElement` version forces you to hoist it into a variable, disconnecting it spatially from the structure it belongs to.
+
+---
+
+### 4. React's Mental Model
+
+JSX is a syntactic shorthand for `React.createElement` calls. It looks like HTML so that the hierarchical structure of UI is visually obvious. It is not HTML. It is JavaScript. Every JSX expression is a function call that produces a plain JavaScript object. The browser never sees JSX. Only the compiled JavaScript reaches the browser.
+
+One sentence: JSX is a compiler-level convenience that lets you write nested function calls as if they were an indented tree, because trees are how humans think about UI.
+
+---
+
+### 5. React's Solution
+
+JSX has a simple, mechanical transformation rule. Every JSX element maps to a `React.createElement` call (or `_jsx` in the modern JSX transform):
+
+```
+<Type props>children</Type>
+    ↓
+React.createElement(Type, props, ...children)
+```
+
+The `Type` is either a string for native DOM elements (`'div'`, `'button'`) or a direct reference to a component function (`UserCard`, `Button`). This is why component names must be capitalized: lowercase means a string, capitalized means a variable reference.
+
+```jsx
+<div className="card" />
+// compiles to:
+React.createElement('div', { className: 'card' })
+
+<UserCard user={user} />
+// compiles to:
+React.createElement(UserCard, { user: user })
+// UserCard is a reference to the function, not a string
+```
+
+JSX expressions in curly braces `{}` are plain JavaScript evaluated at call time:
+
+```jsx
+<p className={isActive ? 'active' : 'inactive'}>{user.name.toUpperCase()}</p>;
+// compiles to:
+React.createElement('p', { className: isActive ? 'active' : 'inactive' }, user.name.toUpperCase());
+```
+
+The curly braces are not a template interpolation syntax like Handlebars `{{ }}`. They are a literal JavaScript expression slot. Anything valid as a JavaScript expression is valid inside `{}`, because after compilation it's just a function argument.
+
+The modern JSX transform (React 17+) changed the compiled output slightly, importing `_jsx` from `react/jsx-runtime` instead of using `React.createElement`, so you no longer need `import React from 'react'` at the top of every file. The semantics are identical:
+
+```js
+// Old transform (React 16 and below)
+import React from 'react';
+// JSX compiles to React.createElement(...)
+
+// New transform (React 17+)
+import { jsx as _jsx } from 'react/jsx-runtime';
+// JSX compiles to _jsx(...)
+// React import no longer required for JSX to work
+```
+
+---
+
+### 6. Internals
+
+`React.createElement` (and `_jsx`) return a React element, which is a plain JavaScript object. Here is the actual shape:
+
+```js
+{
+  $$typeof: Symbol(react.element),  // forgery protection, explained below
+  type: 'div',                      // string for DOM elements, function for components
+  key: null,                        // for list reconciliation
+  ref: null,                        // for DOM node access
+  props: {
+    className: 'card',
+    children: [                     // nested elements become the children prop
+      { $$typeof: Symbol(react.element), type: 'img', props: { src: '...' }, ... },
+      { $$typeof: Symbol(react.element), type: 'div', props: { className: 'card-body', children: [...] }, ... },
+    ]
+  },
+  _owner: null,                     // which component created this element (dev only)
+}
+```
+
+The `$$typeof` field is `Symbol(react.element)`. Symbols cannot be serialized to JSON. This is a deliberate security feature.
+
+If a server sends JSON to the client and the client renders it as React elements, an attacker could potentially inject a crafted object that looks like a React element into the JSON payload. Without `$$typeof`, React would render it. But `Symbol(react.element)` cannot survive JSON serialization, because `JSON.stringify` silently drops Symbol values. A parsed JSON object can never have `$$typeof: Symbol(react.element)`, because symbols cannot come from JSON. React checks this field before treating any object as a React element, so JSON-injected objects are never rendered.
+
+The `children` prop deserves special attention. When you write:
+
+```jsx
+<div className="card">
+  <img src="..." />
+  <p>Hello</p>
+</div>
+```
+
+The compiled output is:
+
+```js
+React.createElement(
+  'div',
+  { className: 'card' },
+  React.createElement('img', { src: '...' }),
+  React.createElement('p', null, 'Hello'),
+);
+```
+
+React takes all arguments after the props object and puts them on `props.children`. A single child becomes the value directly. Multiple children become an array. This is why `props.children` sometimes behaves differently for single vs multiple children, though React normalizes this in most contexts.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: Why does this JSX throw a "React is not defined" error in React 16?**
+
+```jsx
+// React 16, old JSX transform
+function Card() {
+  return (
+    <div className="card">
+      <p>Hello</p>
+    </div>
+  );
+}
+// No import at the top of the file
+```
+
+<details>
+<summary>Answer</summary>
+
+In React 16 and the old JSX transform, JSX compiles to `React.createElement(...)`. `React` must be in scope as a variable for this call to work, even if you never write `React` anywhere in your code directly. If you forget `import React from 'react'`, the compiled code references an undefined variable and throws. In React 17+ with the new JSX transform, the compiler automatically imports `_jsx` from `react/jsx-runtime` at the top of the compiled output. You no longer need to import React manually. This is also why upgrading to the new transform allows removing hundreds of `import React from 'react'` lines from a codebase without changing any behavior.
+
+</details>
+
+---
+
+**Trap 2: Predict the output. What does this render?**
+
+```jsx
+function App() {
+  const items = ['one', 'two', 'three'];
+
+  return (
+    <ul>
+      {items.map((item) => {
+        <li>{item}</li>;
+      })}
+    </ul>
+  );
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+The `ul` renders empty. The arrow function uses curly braces `{}` as its body, not parentheses `()`. A function body with curly braces requires an explicit `return` statement. Without it, the function returns `undefined`. `undefined` is valid as a React child and renders nothing. The `map` produces an array of `undefined` values, and React renders nothing for each one. The fix is either an explicit `return`: `return <li>{item}</li>`, or switching to a concise arrow body: `item => <li>{item}</li>` with parentheses instead of curly braces. This is a pure JavaScript issue, but it surfaces constantly in JSX because the JSX-inside-a-callback pattern is so common that the `{}` vs `()` distinction gets overlooked.
+
+</details>
+
+---
+
+**Trap 3: What is wrong with this JSX, and what rule does it violate?**
+
+```jsx
+function Dashboard() {
+  return (
+    <h1>Dashboard</h1>
+    <main>
+      <p>Content here</p>
+    </main>
+  );
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+JSX requires a single root element. This component tries to return two sibling elements, `h1` and `main`, which compiles to two separate `React.createElement` calls at the top level. A JavaScript function can only return one value. Returning two expressions is a syntax error. The standard fix is to wrap both in a `<div>`, but that adds an unnecessary DOM node. The idiomatic React fix is a Fragment: `<>...</>` or `<React.Fragment>...</React.Fragment>`. A Fragment compiles to `React.createElement(React.Fragment, null, ...)`, which tells React to render the children without adding a wrapping DOM element. The children appear directly in the parent's DOM as if the Fragment weren't there.
+
+</details>
+
+---
+
+**Trap 4: These two components look the same but behave differently. Why?**
+
+```jsx
+// Component A
+function App() {
+  return <usercard user={user} />;
+}
+
+// Component B
+function App() {
+  return <UserCard user={user} />;
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+Component A tries to render a native DOM element named `usercard`. JSX lowercases are treated as string types: `React.createElement('usercard', { user })`. The browser receives a `<usercard>` element, which is an unknown HTML element. It renders as an empty unknown element. The `user` prop, being an object, cannot be serialized as an HTML attribute and may warn or be dropped. Component B renders the `UserCard` function component: `React.createElement(UserCard, { user })`. The `type` is the function reference, not a string. React calls `UserCard(props)` during reconciliation. The capitalization convention is not arbitrary style. It is the mechanical signal that tells the JSX compiler whether `type` should be a string literal or a variable reference.
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** JSX is often described as "HTML in JavaScript." Why is this description wrong, and what is a more accurate description?
+
+<details>
+<summary>Answer</summary>
+
+HTML is a markup language parsed by the browser's HTML parser into a DOM tree. JSX is a syntax extension for JavaScript, parsed by a JavaScript compiler (Babel, TypeScript, or the React compiler) into `React.createElement` function calls, which produce plain JavaScript objects. JSX never reaches the browser as JSX. It is compiled before the browser sees it. The browser only ever receives JavaScript. A more accurate description: JSX is a syntactic shorthand for nested function calls that produce React element objects, designed to look like a tree so that UI hierarchy is visually apparent in the source code.
+
+</details>
+
+---
+
+**Q2.** What does `props.children` contain for each of these components?
+
+```jsx
+// Case A
+<Button>Click me</Button>
+
+// Case B
+<Card>
+  <Header />
+  <Body />
+</Card>
+
+// Case C
+<Wrapper />
+```
+
+<details>
+<summary>Answer</summary>
+
+Case A: `props.children` is the string `"Click me"`. A single text node is passed directly as the value, not wrapped in an array. Case B: `props.children` is an array of two React elements: `[{ type: Header, ... }, { type: Body, ... }]`. Multiple children compile to multiple arguments after the props object in `createElement`, which React collects into an array and assigns to `props.children`. Case C: `props.children` is `undefined`. No children were passed. This is why you check `props.children` before rendering it or use a default value, because a component that expects children but receives none would otherwise try to render `undefined`.
+
+</details>
+
+---
+
+**Q3.** Why can't you use `if` statements directly inside JSX? What can you use instead, and why do those work?
+
+<details>
+<summary>Answer</summary>
+
+JSX expressions inside `{}` must be JavaScript expressions, not statements. An `if` block is a statement, it does not evaluate to a value. A function call argument must be an expression. Since JSX compiles to `React.createElement(type, props, ...children)`, every child must be an expression that produces a value. The alternatives that work are: the ternary operator `condition ? a : b`, which is an expression that evaluates to one of two values; the logical AND `condition && element`, which evaluates to `element` if condition is truthy or `false`/`undefined` if falsy, both of which React treats as "render nothing"; and an immediately-invoked function expression or a variable assigned before the return that holds the conditional result. The rule is simple: if it can be a function argument, it can go in JSX curly braces.
+
+</details>
+
+---
+
+**Q4.** What is `$$typeof` and why does it use a Symbol instead of a string like `"react.element"`?
+
+<details>
+<summary>Answer</summary>
+
+`$$typeof` is a field React checks on every object before treating it as a renderable element. It exists to prevent JSON injection attacks. If a server sends user-controlled JSON to a client and the client passes it directly to React as a child, an attacker could craft a JSON payload that looks like a React element object and get React to render arbitrary content, including event handlers with script-like behavior. Using a Symbol prevents this because Symbols cannot be serialized or deserialized via JSON. `JSON.stringify` silently omits Symbol-keyed and Symbol-valued properties. `JSON.parse` can never produce a Symbol value. A string like `"react.element"` could be included in attacker-controlled JSON and pass a string equality check. A Symbol value cannot be replicated from JSON under any circumstances.
+
+</details>
+
+---
+
+**Q5.** What does this compile to, and what does React do with the result?
+
+```jsx
+<>
+  <p>First</p>
+  <p>Second</p>
+</>
+```
+
+<details>
+<summary>Answer</summary>
+
+It compiles to:
+
+```js
+React.createElement(
+  React.Fragment,
+  null,
+  React.createElement('p', null, 'First'),
+  React.createElement('p', null, 'Second'),
+);
+```
+
+`React.Fragment` is a special built-in type that React recognizes during reconciliation. When React processes a Fiber node whose type is `React.Fragment`, it renders the children directly into the parent's DOM position without creating any wrapper DOM element. The two `p` elements appear in the DOM as direct siblings of whatever contains this component. The Fragment itself leaves no trace in the real DOM. It exists only in the Fiber tree as an organizational node that React uses to group children with a single return value.
+
+</details>

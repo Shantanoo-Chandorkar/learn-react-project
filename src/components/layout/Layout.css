@@ -134,6 +134,60 @@
   color: #495057;
 }
 
+/* Nested Accordion Styles */
+.sidebar-nested-accordion {
+  margin-bottom: 0.5rem;
+}
+
+.sidebar-nested-accordion-trigger {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 0.9rem 1.5rem 0.9rem 2.5rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  color: #495057;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: color 0.2s;
+}
+
+.sidebar-nested-accordion-trigger:hover {
+  color: #007bff;
+}
+
+.sidebar-nested-accordion-chevron {
+  width: 0.875rem;
+  height: 0.875rem;
+  flex-shrink: 0;
+  transition: transform 0.25s ease;
+  color: #adb5bd;
+}
+
+[data-state='open'] > .sidebar-nested-accordion-trigger .sidebar-nested-accordion-chevron {
+  transform: rotate(180deg);
+}
+
+.sidebar-nested-accordion-content {
+  overflow: hidden;
+}
+
+.sidebar-nested-accordion-content[data-state='open'] {
+  animation: accordionSlideDown 0.25s ease;
+}
+
+.sidebar-nested-accordion-content[data-state='closed'] {
+  animation: accordionSlideUp 0.25s ease;
+}
+
+.sidebar-nested-accordion-content ul li a {
+  padding-left: 3.5rem;
+}
+
 /* Chevron icon — rotates 180° when the section is open */
 .sidebar-accordion-chevron {
   width: 1rem;

@@ -1,0 +1,505 @@
+﻿# Derived State vs Stored State
+
+### 1. The Problem
+
+You have a list of products. The user can search by name and filter by category. You need to display the filtered results and the count of matching items.
+
+You have four pieces of data: the full list, the search query, the active category, and the filtered results. The question is: which of these are state?
+
+Most developers, without a precise definition, reach for `useState` on all four. It feels right. They all change. They all affect the UI. But three of them being state and one being derived from those three creates a class of bug that is subtle, hard to reproduce, and directly caused by having two sources of truth for the same logical value.
+
+This is one of the most common architectural mistakes in React codebases. It appears in every team, at every experience level, because the failure is not immediately visible. The UI works correctly in the happy path. It breaks under specific sequences of updates, prop changes, or async timing, which are exactly the conditions that appear in production and are hardest to reproduce in development.
+
+---
+
+### 2. The Naive Attempt
+
+Build the product filter. Store everything as state.
+
+```jsx
+function ProductList({ products }) {
+  const [query, setQuery] = React.useState('');
+  const [category, setCategory] = React.useState('all');
+  const [filtered, setFiltered] = React.useState(products);
+  const [count, setCount] = React.useState(products.length);
+
+  function handleQueryChange(e) {
+    const newQuery = e.target.value;
+    setQuery(newQuery);
+
+    const newFiltered = products.filter(
+      (p) =>
+        p.name.toLowerCase().includes(newQuery.toLowerCase()) &&
+        (category === 'all' || p.category === category),
+    );
+    setFiltered(newFiltered);
+    setCount(newFiltered.length);
+  }
+
+  function handleCategoryChange(newCategory) {
+    setCategory(newCategory);
+
+    const newFiltered = products.filter(
+      (p) =>
+        p.name.toLowerCase().includes(query.toLowerCase()) &&
+        (newCategory === 'all' || p.category === newCategory),
+    );
+    setFiltered(newFiltered);
+    setCount(newFiltered.length);
+  }
+
+  return (
+    <div>
+      <input value={query} onChange={handleQueryChange} />
+      <CategoryPicker value={category} onChange={handleCategoryChange} />
+      <p>{count} products found</p>
+      <ul>
+        {filtered.map((p) => (
+          <li key={p.id}>{p.name}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+```
+
+This works. Test it. Query changes update the list. Category changes update the list. Count updates. Everything correct.
+
+Now the parent component updates the `products` prop. A new product was added via an API call and the parent re-fetches.
+
+```jsx
+// Parent
+function App() {
+  const [products, setProducts] = React.useState(initialProducts);
+
+  async function refresh() {
+    const updated = await fetchProducts();
+    setProducts(updated);
+  }
+
+  return <ProductList products={updated} />;
+}
+```
+
+The parent passes a new `products` array to `ProductList`. `ProductList` re-renders with the new `products` prop. But `filtered` and `count` are state. They were initialized from the old `products`. They do not update. The list shows stale results. The count is wrong. The new product is invisible until the user changes the query or category, which triggers a re-filter.
+
+You now have a bug that only appears after a parent re-fetch. It works fine in the unit test. It works fine in most manual testing. It appears in production when the user refreshes data without interacting with the filter.
+
+---
+
+### 3. Why That Breaks
+
+The precise failure mode: **stored derived state is initialized once and has no automatic mechanism to stay in sync with its sources.**
+
+`filtered` was initialized as `products.filter(...)` at mount time. `useState`'s initializer runs once. When `products` changes (a new prop from the parent), `filtered` does not automatically recompute. It holds the value from the last explicit `setFiltered` call, which was either the mount initialization or the last time the user interacted with the search or filter.
+
+This is a violation of the single source of truth principle. There are now two sources of truth for "which products match the current filter":
+
+1. The combination of `products`, `query`, and `category`, which is always correct.
+2. The `filtered` state variable, which is correct only when it was last explicitly synced.
+
+These two sources diverge the moment `products` changes without the user triggering a filter interaction.
+
+The attempted fix using `useEffect` to resync:
+
+```jsx
+React.useEffect(() => {
+  const newFiltered = products.filter(
+    (p) =>
+      p.name.toLowerCase().includes(query.toLowerCase()) &&
+      (category === 'all' || p.category === category),
+  );
+  setFiltered(newFiltered);
+  setCount(newFiltered.length);
+}, [products, query, category]);
+```
+
+This partially fixes the bug but introduces new problems. The effect runs after render, meaning there is always one render where `filtered` shows stale data before the effect fires and corrects it. You have added latency, added complexity, added a dependency array that must be kept correct, and you are still maintaining a redundant copy. The filter logic now exists in three places: the initial state, `handleQueryChange`, `handleCategoryChange`, and the `useEffect`. Four places. All must be kept in sync. Any one of them diverging is a bug.
+
+---
+
+### 4. React's Mental Model
+
+If a value can be computed from existing state and props using a pure function with no asynchronous work, it is not state. It is a derived value. It should be computed during render and assigned to a local variable. It does not need to be stored, synchronized, or managed. It is always current because it is always recomputed from its sources, which are always current.
+
+The test: can you delete this `useState` call and replace it with a `const` computed from other state and props? If yes, you must.
+
+One sentence: derived state stored as state is a bug waiting to surface, because any change to its sources that does not go through your manual sync code will leave it stale.
+
+---
+
+### 5. React's Solution
+
+Remove `filtered` and `count` from state entirely. Compute them during render.
+
+```jsx
+function ProductList({ products }) {
+  const [query, setQuery] = React.useState('');
+  const [category, setCategory] = React.useState('all');
+
+  // derived: computed from state and props during render
+  // always current, cannot go stale, no sync required
+  const filtered = products.filter(
+    (p) =>
+      p.name.toLowerCase().includes(query.toLowerCase()) &&
+      (category === 'all' || p.category === category),
+  );
+
+  // derived from derived: still just a local variable
+  const count = filtered.length;
+
+  function handleQueryChange(e) {
+    setQuery(e.target.value);
+    // no manual sync needed: filtered recomputes on next render
+  }
+
+  function handleCategoryChange(newCategory) {
+    setCategory(newCategory);
+    // no manual sync needed
+  }
+
+  return (
+    <div>
+      <input value={query} onChange={handleQueryChange} />
+      <CategoryPicker value={category} onChange={handleCategoryChange} />
+      <p>{count} products found</p>
+      <ul>
+        {filtered.map((p) => (
+          <li key={p.id}>{p.name}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+```
+
+Two state variables instead of four. Zero sync logic. Zero `useEffect`. When `products` changes (new prop), the component re-renders, `filtered` recomputes from the new `products` and current `query` and `category`. The result is always correct. Structurally impossible to be stale.
+
+The filter logic exists in exactly one place. There is no `handleQueryChange` version, no `handleCategoryChange` version, no `useEffect` version. One definition, always used, always current.
+
+**What about performance?**
+
+A common objection: "but filtering on every render is expensive." For most lists (under a few thousand items), filtering during render is imperceptible. Premature optimization here costs architectural correctness for a performance win you cannot measure.
+
+When filtering genuinely is expensive (large datasets, complex predicates), the correct tool is `useMemo`, which caches the computed value and only recomputes when its dependencies change:
+
+```jsx
+const filtered = React.useMemo(
+  () =>
+    products.filter(
+      (p) =>
+        p.name.toLowerCase().includes(query.toLowerCase()) &&
+        (category === 'all' || p.category === category),
+    ),
+  [products, query, category],
+);
+```
+
+`useMemo` is not a replacement for state. It is a performance optimization for derived values that are expensive to compute. The value is still derived. It is still not stored as state. It is still always computed from its sources. The only difference is that the computation is cached until the sources change.
+
+**The getDerivedStateFromProps trap.**
+
+Before hooks, class components had a lifecycle method `getDerivedStateFromProps` specifically for syncing state from props. It was deprecated because it almost always caused bugs identical to the manual sync approach above. React's documentation now explicitly says: most uses of `getDerivedStateFromProps` are wrong and should be replaced with deriving the value during render. The lifecycle exists only for extremely rare cases where you need to synchronize a genuinely independent piece of state with a changing prop, not for caching derived values.
+
+**Recognizing derived state in a codebase.**
+
+The signals that a piece of state is actually derived:
+
+```jsx
+// Signal 1: state that is always set alongside another setter
+function handleQueryChange(e) {
+  setQuery(e.target.value);
+  setFiltered(products.filter(...)); // always set together: derived
+}
+
+// Signal 2: useEffect that exists only to sync one state from others
+useEffect(() => {
+  setFiltered(products.filter(...));
+}, [products, query, category]); // recomputes when sources change: derived
+
+// Signal 3: state that is initialized from a prop
+const [localProducts, setLocalProducts] = useState(products);
+// never independently updated: derived (just use the prop directly)
+
+// Signal 4: state that is always a transformation of other state
+const [upperName, setUpperName] = useState(name.toUpperCase());
+// always name.toUpperCase(): derived
+```
+
+Every one of these signals indicates that the `useState` call should be replaced with a `const` computed during render.
+
+---
+
+### 6. Internals
+
+The performance concern about recomputing derived values on every render deserves precise examination.
+
+React calls your component function on every render. Every line in the function body executes. A derived value computed as `const filtered = products.filter(...)` runs on every render, including renders triggered by unrelated state changes.
+
+```jsx
+function ProductList({ products }) {
+  const [query, setQuery] = React.useState('');
+  const [category, setCategory] = React.useState('all');
+  const [unrelated, setUnrelated] = React.useState(0);
+
+  // This runs even when unrelated changes
+  const filtered = products.filter(
+    (p) =>
+      p.name.toLowerCase().includes(query.toLowerCase()) &&
+      (category === 'all' || p.category === category),
+  );
+
+  return (
+    <div>
+      <button onClick={() => setUnrelated((u) => u + 1)}>Unrelated</button>
+      <ul>
+        {filtered.map((p) => (
+          <li key={p.id}>{p.name}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+```
+
+Clicking "Unrelated" re-renders `ProductList` (because `unrelated` state changed) and recomputes `filtered` even though `products`, `query`, and `category` did not change.
+
+This is where `useMemo` is appropriate:
+
+```jsx
+const filtered = React.useMemo(
+  () =>
+    products.filter(
+      (p) =>
+        p.name.toLowerCase().includes(query.toLowerCase()) &&
+        (category === 'all' || p.category === category),
+    ),
+  [products, query, category],
+);
+```
+
+`useMemo` stores the result in the hook's state slot on the Fiber. Its internal structure:
+
+```js
+// After first render:
+hook.memoizedState = {
+  value: [...filteredProducts], // the cached result
+  deps: [products, query, category], // the dependencies
+};
+
+// On re-render triggered by unrelated:
+// React reads the hook node
+// compares current deps to memoizedState.deps using Object.is for each
+// products: same reference → equal
+// query: same string → equal
+// category: same string → equal
+// All equal → return memoizedState.value without calling the function
+```
+
+If any dependency changes (new `products` reference, different `query` string, different `category` string), React calls the function and stores the new result. If none changed, the cached value is returned.
+
+The critical point: `useMemo` is a performance optimization for derived values. It does not change the conceptual model. The value is still derived. It is still not state. It still cannot go stale relative to its dependencies because `useMemo` recomputes whenever they change. `useMemo` trades the cost of recomputing on every render for the cost of checking dependencies on every render (which is cheaper for expensive computations) and a cache that may save the recomputation.
+
+`useMemo` also has a cost: the dependency comparison runs on every render, the cache occupies memory, and the function closure captures its dependencies. For trivial computations (sorting a 10-item array, string concatenation), `useMemo` costs more than the computation it is caching. Only use it when you can measure a performance problem.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: What is wrong with this component? It works in most cases but has a specific failure mode.**
+
+```jsx
+function UserDisplay({ userId }) {
+  const [user, setUser] = React.useState(null);
+  const [displayName, setDisplayName] = React.useState('');
+
+  React.useEffect(() => {
+    fetchUser(userId).then((data) => {
+      setUser(data);
+      setDisplayName(data.firstName + ' ' + data.lastName);
+    });
+  }, [userId]);
+
+  return <p>{displayName}</p>;
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+`displayName` is derived state. It is always `user.firstName + ' ' + user.lastName`, a pure function of `user`. Storing it separately creates a window where `user` and `displayName` are out of sync: after `setUser(data)` enqueues and before `setDisplayName(...)` enqueues, React may or may not render an intermediate state where `user` is updated but `displayName` is still the previous value. In React 18 with automatic batching these two setters are batched, so in practice the glitch may not be visible. But the structural problem remains: if `user` is ever updated independently (a websocket push, an optimistic update, any path that updates `user` but not `displayName`), `displayName` goes stale.
+
+The fix: remove `displayName` state entirely.
+
+```jsx
+function UserDisplay({ userId }) {
+  const [user, setUser] = React.useState(null);
+
+  React.useEffect(() => {
+    fetchUser(userId).then((data) => setUser(data));
+  }, [userId]);
+
+  const displayName = user ? user.firstName + ' ' + user.lastName : '';
+
+  return <p>{displayName}</p>;
+}
+```
+
+`displayName` is always current because it is always computed from the current `user` state.
+
+</details>
+
+---
+
+**Trap 2: This pattern appears frequently in codebases that migrate from class components. What is the bug?**
+
+```jsx
+function EditForm({ initialValues }) {
+  const [values, setValues] = React.useState(initialValues);
+
+  function handleChange(field, value) {
+    setValues((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function handleReset() {
+    setValues(initialValues);
+  }
+
+  return (
+    <form>
+      <input value={values.name} onChange={(e) => handleChange('name', e.target.value)} />
+      <button type="button" onClick={handleReset}>
+        Reset
+      </button>
+    </form>
+  );
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+`useState(initialValues)` captures the initial prop value at mount time. This is intentional here, because the form is meant to have independent state that the user edits. That part is correct.
+
+The bug is `handleReset`. It calls `setValues(initialValues)`, resetting to the `initialValues` reference from the current render's closure. If the parent re-renders and passes a new `initialValues` object (same contents, new reference, or genuinely new values), `handleReset` resets to the latest prop value, which may differ from what was shown when the user started editing. Whether this is a bug depends on intent, but it is almost always unintended.
+
+The deeper issue: if `initialValues` is intended as a truly frozen initial snapshot (reset means "go back to how the form looked when it first opened"), then the initial value should be captured once and held in a ref, not read from the current prop each render:
+
+```jsx
+const frozenInitial = React.useRef(initialValues);
+
+function handleReset() {
+  setValues(frozenInitial.current); // always the original mount-time value
+}
+```
+
+If `initialValues` is intended as a "current external source of truth" that resets should reflect, then the form should not have independent state at all and should use the prop as a controlled value. The `useState(prop)` pattern is only correct when you explicitly want to initialize once and diverge. It requires a conscious decision about which of these two models you want.
+
+</details>
+
+---
+
+**Trap 3: Is this `useMemo` necessary? Is it correct?**
+
+```jsx
+function Dashboard({ user, posts }) {
+  const stats = React.useMemo(
+    () => ({
+      totalPosts: posts.length,
+      avgLikes: posts.reduce((sum, p) => sum + p.likes, 0) / posts.length,
+      name: user.name,
+    }),
+    [posts, user],
+  );
+
+  return (
+    <div>
+      <p>{stats.name}</p>
+      <p>{stats.totalPosts} posts</p>
+      <p>{stats.avgLikes.toFixed(1)} avg likes</p>
+    </div>
+  );
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+The `useMemo` is probably unnecessary and may actually be harmful here.
+
+For necessity: `posts.length` is a property access. `posts.reduce` on a reasonably sized array is microseconds. `user.name` is a property access. These computations are not expensive. `useMemo` adds dependency comparison overhead on every render (three `Object.is` calls), cache storage on the Fiber, and complexity. For a computation this trivial, the overhead of `useMemo` likely exceeds the cost it saves.
+
+For correctness: the `useMemo` is technically correct, it will recompute when `posts` or `user` references change. But there is a subtlety: `user` is listed as a dependency because `user.name` is used. If the parent passes a new `user` object with the same `name` but different other fields, the memo recomputes unnecessarily. A more precise dependency would be `user.name` directly, but then you'd have `[posts, user.name]`, which works but is inconsistent with how objects are usually handled.
+
+The correct approach for this component: no `useMemo`, just inline computation. If `posts` had 100,000 items and `avgLikes` calculation were slow, `useMemo` would be warranted. At typical data sizes, the right answer is measure first, memoize second.
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** State the two-question test for determining whether a value should be stored as state or computed as a derived value. Apply it to: `isLoggedIn` (derived from `user !== null`), `sortedItems` (derived from `items` sorted by `sortKey`), and `errorMessage` (set by a failed API call, displayed in a banner).
+
+<details>
+<summary>Answer</summary>
+
+The two questions: does this value change independently, not as a pure function of other state and props? And, does changing it need to trigger a re-render?
+
+`isLoggedIn`: fails the first question. It is always `user !== null`, a pure function of `user`. It has no independent existence. If `user` changes, `isLoggedIn` changes derivably. Storing it as state means it can go out of sync with `user`. Correct form: `const isLoggedIn = user !== null` computed during render.
+
+`sortedItems`: fails the first question. It is always `[...items].sort(...)`, a pure function of `items` and `sortKey`. If either changes, the sort result changes derivably. Correct form: `const sortedItems = [...items].sort(...)` computed during render, or wrapped in `useMemo` if the array is large.
+
+`errorMessage`: passes both questions. It is not derivable from other state, it is set by an external event (a failed API call) that React has no knowledge of until you tell it. It changes independently. Changing it needs to update the UI. Correct form: `useState(null)` for `errorMessage`, set by the API error handler.
+
+</details>
+
+---
+
+**Q2.** A developer argues: "storing derived state is fine as long as you use a `useEffect` to keep it in sync." What is the specific failure mode that `useEffect` synchronization cannot prevent?
+
+<details>
+<summary>Answer</summary>
+
+The stale render problem. `useEffect` runs after render. The sequence is: state or props change, component renders with potentially stale derived state, React commits the (stale) DOM, then the effect fires and updates the derived state, causing a second render. There is always a committed render where the UI reflects incorrect derived state, however briefly. For fast operations this may be imperceptible, but it is architecturally incorrect. For slow operations or visible reflows, it produces a flash of wrong UI. Additionally, `useEffect` with dependencies introduces the possibility of a desynchronized dependency array (missing a dependency, or a dependency that changes reference but not content), which can cause the derived state to be stale indefinitely. Computing the derived value during render has neither of these failure modes: the value is always computed from the current sources, the computation runs as part of the render, and there is no intermediate committed state with stale data.
+
+</details>
+
+---
+
+**Q3.** When is `useMemo` appropriate for a derived value, and what is the cost of using it unnecessarily?
+
+<details>
+<summary>Answer</summary>
+
+`useMemo` is appropriate when the computation is measurably expensive (sorting or filtering large collections, complex mathematical transformations, deep object construction) and the component re-renders frequently for reasons unrelated to the computation's dependencies. The concrete test: profile the component, identify that the specific computation takes a meaningful amount of time (several milliseconds or more), and verify that it runs unnecessarily often.
+
+The cost of using it unnecessarily: on every render, React must read the hook's state slot from the Fiber's linked list, compare each dependency using `Object.is`, and decide whether to use the cached value or recompute. For trivial computations (property access, string concatenation, array length), this overhead is comparable to or greater than the computation itself. It adds memory pressure (the cached value and dependency array are held on the Fiber), increases code complexity (the dependency array must be maintained), and can mask incorrect dependencies (if a dependency is missing from the array, the cached value is stale without any error). The guideline: compute first without `useMemo`, measure, apply `useMemo` only where you can show it improves performance.
+
+</details>
+
+---
+
+**Q4.** The `useState(prop)` pattern is sometimes valid and sometimes a bug. What is the precise condition under which it is valid?
+
+<details>
+<summary>Answer</summary>
+
+It is valid when you explicitly intend the state to be initialized from the prop once at mount and then evolve independently of the prop. The clearest example is a form field that is pre-populated with a server value but then edited by the user. The initial server value is used to seed the form, but subsequent user edits produce local state that is intentionally different from the server value. The prop is the initializer, not the source of truth.
+
+It is a bug when you intend the component to stay in sync with the prop as the prop changes. `useState(prop)` only uses the initializer on the first render. If the prop changes (parent passes a new value), the state does not update. The component shows the old value forever. This is the "stale prop as state" bug.
+
+The signal that you want the valid pattern: the component has explicit user interaction that modifies the value (editing a field, reordering a list, toggling a local UI state). The signal that you have the bug: the component has no user interaction that modifies the value, or you have a `useEffect` that watches the prop and resets the state to match it (which means you should just use the prop directly).
+
+</details>
+
+---
+
+**Q5.** A senior engineer reviews your PR and says "this `useEffect` is a code smell." The effect updates one state variable whenever another state variable changes. Why is this always a sign that the second state variable should not exist?
+
+<details>
+<summary>Answer</summary>
+
+A `useEffect` that watches state A and updates state B exists solely to keep B in sync with A. If B is always a function of A, then B is derived state. The `useEffect` is the mechanism attempting to maintain a synchronization invariant that should not need to exist in the first place. The effect introduces latency (B is stale until after the render when A changed), adds complexity (dependency array, cleanup concerns), and creates a class of bugs where A and B are temporarily out of sync during the render between the state change and the effect firing. Removing state B and computing its value during render from A eliminates the effect, the latency, the complexity, and the entire class of sync bugs. The presence of a `useEffect` that updates state from other state is a reliable indicator that the updated state is derived and should be a `const` computed during render instead.
+
+</details>

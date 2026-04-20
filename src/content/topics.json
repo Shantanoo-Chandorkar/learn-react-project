@@ -87,126 +87,287 @@
     "id": 15,
     "title": "Var, Let, Const",
     "slug": "var-let-const",
-    "category": "interview-prep"
+    "category": "interview-prep",
+    "subcategory": "javascript-es6"
   },
   {
     "id": 16,
     "title": "Event Loop",
     "slug": "event-loop",
-    "category": "interview-prep"
+    "category": "interview-prep",
+    "subcategory": "javascript-es6"
   },
   {
     "id": 17,
     "title": "Execution Context & Call Stack",
     "slug": "execution-context-and-call-stack",
-    "category": "interview-prep"
+    "category": "interview-prep",
+    "subcategory": "javascript-es6"
   },
   {
     "id": 18,
     "title": "Lexical Scope & Scope Chain",
     "slug": "lexical-scope-and-scope-chain",
-    "category": "interview-prep"
+    "category": "interview-prep",
+    "subcategory": "javascript-es6"
   },
   {
     "id": 19,
     "title": "Closures",
     "slug": "closures",
-    "category": "interview-prep"
+    "category": "interview-prep",
+    "subcategory": "javascript-es6"
   },
   {
     "id": 20,
     "title": "'this' Keyword",
     "slug": "this-keyword",
-    "category": "interview-prep"
+    "category": "interview-prep",
+    "subcategory": "javascript-es6"
   },
   {
     "id": 21,
     "title": "Arrow Functions",
     "slug": "arrow-functions",
-    "category": "interview-prep"
+    "category": "interview-prep",
+    "subcategory": "javascript-es6"
   },
   {
     "id": 22,
     "title": "Prototype & Class",
     "slug": "prototype-and-class",
-    "category": "interview-prep"
+    "category": "interview-prep",
+    "subcategory": "javascript-es6"
   },
   {
     "id": 23,
     "title": "Objects Deep Dive",
     "slug": "objects-deep-dive",
-    "category": "interview-prep"
+    "category": "interview-prep",
+    "subcategory": "javascript-es6"
   },
   {
     "id": 24,
     "title": "Destructuring",
     "slug": "destructuring",
-    "category": "interview-prep"
+    "category": "interview-prep",
+    "subcategory": "javascript-es6"
   },
   {
     "id": 25,
     "title": "Array Methods",
     "slug": "array-methods",
-    "category": "interview-prep"
+    "category": "interview-prep",
+    "subcategory": "javascript-es6"
   },
   {
     "id": 26,
     "title": "Modules: ESM vs CJS",
     "slug": "modules-esm-vs-cjs",
-    "category": "interview-prep"
+    "category": "interview-prep",
+    "subcategory": "javascript-es6"
   },
   {
     "id": 27,
     "title": "Promises & Async/Await",
     "slug": "promises-and-async-await",
-    "category": "interview-prep"
+    "category": "interview-prep",
+    "subcategory": "javascript-es6"
   },
   {
     "id": 28,
     "title": "DOM & Browser APIs",
     "slug": "dom-and-browser-apis",
-    "category": "interview-prep"
+    "category": "interview-prep",
+    "subcategory": "javascript-web"
   },
   {
     "id": 29,
     "title": "Performance and Rendering",
     "slug": "performance-and-rendering",
-    "category": "interview-prep"
+    "category": "interview-prep",
+    "subcategory": "javascript-web"
   },
   {
     "id": 30,
     "title": "CORS",
     "slug": "cors",
-    "category": "interview-prep"
+    "category": "interview-prep",
+    "subcategory": "javascript-web"
   },
   {
     "id": 31,
     "title": "Security Practices",
     "slug": "security-practices",
-    "category": "interview-prep"
+    "category": "interview-prep",
+    "subcategory": "javascript-web"
   },
   {
     "id": 32,
     "title": "Array MCQ Traps",
     "slug": "array-mcq-traps",
-    "category": "interview-prep"
+    "category": "interview-prep",
+    "subcategory": "mcqs"
   },
   {
     "id": 33,
     "title": "Tricky React MCQs Pt 1",
     "slug": "tricky-react-mcqs-part-1",
-    "category": "interview-prep"
+    "category": "interview-prep",
+    "subcategory": "mcqs"
   },
   {
     "id": 34,
     "title": "Tricky React MCQs Pt 2",
     "slug": "tricky-react-mcqs-part-2",
-    "category": "interview-prep"
+    "category": "interview-prep",
+    "subcategory": "mcqs"
   },
   {
     "id": 35,
     "title": "Tricky React MCQs Pt 3",
     "slug": "tricky-react-mcqs-part-3",
-    "category": "interview-prep"
+    "category": "interview-prep",
+    "subcategory": "mcqs"
+  },
+  {
+    "id": 36,
+    "title": "What is the DOM and why is it slow",
+    "slug": "what-is-the-dom-and-why-its-slow",
+    "category": "react",
+    "subcategory": "foundation"
+  },
+  {
+    "id": 37,
+    "title": "The UI = f(state) idea",
+    "slug": "ui-as-a-function-of-state",
+    "category": "react",
+    "subcategory": "foundation"
+  },
+  {
+    "id": 38,
+    "title": "What was web dev like before React",
+    "slug": "web-dev-before-react",
+    "category": "react",
+    "subcategory": "foundation"
+  },
+  {
+    "id": 39,
+    "title": "The core problem: keeping UI in sync with data",
+    "slug": "keeping-ui-in-sync-with-data",
+    "category": "react",
+    "subcategory": "foundation"
+  },
+  {
+    "id": 40,
+    "title": "What is a component, really",
+    "slug": "what-is-a-component",
+    "category": "react",
+    "subcategory": "components"
+  },
+  {
+    "id": 41,
+    "title": "JSX, what is it and why does it exist",
+    "slug": "jsx-what-it-is-and-why-it-exists",
+    "category": "react",
+    "subcategory": "components"
+  },
+  {
+    "id": 42,
+    "title": "Props, why do components take arguments",
+    "slug": "props-why-components-take-arguments",
+    "category": "react",
+    "subcategory": "components"
+  },
+  {
+    "id": 43,
+    "title": "Composition vs inheritance",
+    "slug": "composition-vs-inheritance",
+    "category": "react",
+    "subcategory": "components"
+  },
+  {
+    "id": 44,
+    "title": "The component tree",
+    "slug": "the-component-tree",
+    "category": "react",
+    "subcategory": "components"
+  },
+  {
+    "id": 45,
+    "title": "What is state, really",
+    "slug": "what-is-state",
+    "category": "react",
+    "subcategory": "state"
+  },
+  {
+    "id": 46,
+    "title": "Why `let count = 0` breaks completely",
+    "slug": "why-plain-variables-break-in-react",
+    "category": "react",
+    "subcategory": "state"
+  },
+  {
+    "id": 47,
+    "title": "useState internals, how does React remember state between renders",
+    "slug": "usestate-internals",
+    "category": "react",
+    "subcategory": "state"
+  },
+  {
+    "id": 48,
+    "title": "Why state updates are async / batched",
+    "slug": "why-state-updates-are-async-and-batched",
+    "category": "react",
+    "subcategory": "state"
+  },
+  {
+    "id": 49,
+    "title": "Derived state vs stored state",
+    "slug": "derived-state-vs-stored-state",
+    "category": "react",
+    "subcategory": "state"
+  },
+  {
+    "id": 50,
+    "title": "State lifting",
+    "slug": "state-lifting",
+    "category": "react",
+    "subcategory": "state"
+  },
+  {
+    "id": 51,
+    "title": "What triggers a re-render",
+    "slug": "what-triggers-a-re-render",
+    "category": "react",
+    "subcategory": "re-renders"
+  },
+  {
+    "id": 52,
+    "title": "What re-render actually means",
+    "slug": "what-re-render-actually-means",
+    "category": "react",
+    "subcategory": "re-renders"
+  },
+  {
+    "id": 53,
+    "title": "The reconciler's job",
+    "slug": "the-reconcilers-job",
+    "category": "react",
+    "subcategory": "re-renders"
+  },
+  {
+    "id": 54,
+    "title": "When re-renders are NOT a problem",
+    "slug": "when-re-renders-are-not-a-problem",
+    "category": "react",
+    "subcategory": "re-renders"
+  },
+  {
+    "id": 55,
+    "title": "When re-renders ARE a problem",
+    "slug": "when-re-renders-are-a-problem",
+    "category": "react",
+    "subcategory": "re-renders"
   }
 ]

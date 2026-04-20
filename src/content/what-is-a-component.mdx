@@ -1,0 +1,346 @@
+﻿# What is a Component, Really?
+
+### 1. The Problem
+
+You have a UI. It has a header with a user avatar and name. It has a sidebar with navigation links. It has a main area with a list of cards. Each card has an avatar, a title, a timestamp, and a follow button.
+
+You write all of this as one block of HTML and one block of JavaScript. It works. Then the designer says the same card UI needs to appear in three places: the main feed, the search results page, and the notifications panel. The follow button also appears standalone in the header when you hover over a username.
+
+Now you have a choice. Copy the card HTML to all three places and duplicate the follow button logic everywhere. Or find a way to define "what a card is" and "what a follow button is" once, and reuse that definition wherever needed.
+
+The second option is obvious. But the question is: what mechanism do you use? HTML has no native reuse primitive beyond copy-paste. JavaScript has functions. The question React answered is: what if UI elements were just functions?
+
+---
+
+### 2. The Naive Attempt
+
+You need a user card in three places. You try to solve reuse without any framework.
+
+```js
+function createUserCard(user) {
+  const card = document.createElement('div');
+  card.className = 'user-card';
+
+  const avatar = document.createElement('img');
+  avatar.src = user.avatar;
+  avatar.className = 'avatar';
+
+  const name = document.createElement('p');
+  name.className = 'name';
+  name.textContent = user.name;
+
+  const followBtn = document.createElement('button');
+  followBtn.className = 'btn btn-primary';
+  followBtn.textContent = 'Follow';
+  followBtn.addEventListener('click', () => {
+    // toggle follow state... but where does the state live?
+    // this closure captures `user`, but mutations here
+    // don't propagate back to whoever called createUserCard
+    followBtn.textContent = followBtn.textContent === 'Follow' ? 'Unfollow' : 'Follow';
+    followBtn.className =
+      followBtn.className === 'btn btn-primary' ? 'btn btn-secondary' : 'btn btn-primary';
+  });
+
+  card.appendChild(avatar);
+  card.appendChild(name);
+  card.appendChild(followBtn);
+
+  return card;
+}
+
+// usage
+document.getElementById('feed').appendChild(createUserCard(users[0]));
+document.getElementById('search').appendChild(createUserCard(users[1]));
+document.getElementById('notifications').appendChild(createUserCard(users[2]));
+```
+
+Reuse achieved. You call `createUserCard` three times and get three cards. This is genuinely better than copy-pasting HTML.
+
+But notice what you just built. `createUserCard` is a function that takes data and returns a DOM node. That is, structurally, exactly what a React component is. You're already there conceptually.
+
+The problem shows up the moment the card needs to do anything more than toggle its own button.
+
+```js
+// New requirement: when a card is followed, update the
+// global follower count shown in the header.
+followBtn.addEventListener('click', () => {
+  const isFollowing = followBtn.textContent === 'Follow';
+
+  if (isFollowing) {
+    // need to update the header... but how does this function
+    // know about the header? It was given a `user` object.
+    // It has no reference to anything outside itself.
+    document.getElementById('header-follower-count').textContent =
+      parseInt(document.getElementById('header-follower-count').textContent) + 1;
+    // now we're querying global DOM from inside a reusable function.
+    // the function is no longer truly reusable.
+    // it assumes a specific DOM structure exists outside itself.
+  }
+});
+```
+
+The reusable function just reached outside itself and queried a global DOM node by ID. It now has a hidden dependency on the page structure. Use it on a page that doesn't have `#header-follower-count` and it silently fails. Reuse is broken.
+
+---
+
+### 3. Why That Breaks
+
+Two failure modes, both structural.
+
+**Failure mode 1: DOM node factories couple themselves to global state.**
+`createUserCard` was supposed to be self-contained. But the moment it needs to communicate with anything outside itself, it has two options: reach into the global DOM (brittle, breaks reuse) or accept a callback (better, but now every caller must know what callbacks to provide and wire them up manually). As interactions grow, the function signature becomes a growing list of callbacks and the caller bears the wiring burden.
+
+**Failure mode 2: The returned DOM node has no update pathway.**
+`createUserCard` returns a DOM node. That node is now in the browser. If the `user` object changes later (the user changes their name, their avatar updates via WebSocket), you have no way to update the card. The function was called once. The DOM node it returned has no connection back to the data. To update it, you'd have to either call `createUserCard` again and replace the old node (losing event listeners, focus state, scroll position) or write a separate `updateUserCard` function that knows how to mutate an existing card's internals. You now have two functions that must stay in sync, one to create and one to update.
+
+---
+
+### 4. React's Mental Model
+
+A component is a function that takes data as input and returns a description of UI as output. Not a DOM node, a description. React owns the actual DOM node. The function just says what it should look like.
+
+Because it returns a description and not a real DOM node, React can call the function again whenever the data changes, get a new description, diff it against the previous description, and update only what changed in the real DOM. The function is always current. The DOM is always in sync. You never write "update this card."
+
+One sentence: a component is a pure function from data to UI description, called by React as many times as needed to keep the description current.
+
+---
+
+### 5. React's Solution
+
+```jsx
+function UserCard({ user, onFollow }) {
+  return (
+    <div className="user-card">
+      <img src={user.avatar} className="avatar" alt={user.name} />
+      <p className="name">{user.name}</p>
+      <button
+        className={user.isFollowing ? 'btn btn-secondary' : 'btn btn-primary'}
+        onClick={() => onFollow(user.id)}
+      >
+        {user.isFollowing ? 'Unfollow' : 'Follow'}
+      </button>
+    </div>
+  );
+}
+```
+
+Four things to notice.
+
+First, `UserCard` takes `user` and `onFollow` as inputs, called props. It doesn't reach into global DOM. It doesn't know where it's rendered. It is genuinely self-contained.
+
+Second, `onFollow` is a callback prop. The component doesn't decide what following does. Its caller decides. `UserCard` just signals that a follow action happened. This is how components communicate upward without coupling themselves to the outside world.
+
+Third, there is no `updateUserCard`. If `user.isFollowing` changes, the caller re-renders `UserCard` with the new `user` object. React calls the function again, gets a new description, and updates only the button text and class in the real DOM. Create and update are the same function.
+
+Fourth, reuse is clean:
+
+```jsx
+function Feed({ users, onFollow }) {
+  return (
+    <div id="feed">
+      {users.map((user) => (
+        <UserCard key={user.id} user={user} onFollow={onFollow} />
+      ))}
+    </div>
+  );
+}
+
+function SearchResults({ users, onFollow }) {
+  return (
+    <div id="search">
+      {users.map((user) => (
+        <UserCard key={user.id} user={user} onFollow={onFollow} />
+      ))}
+    </div>
+  );
+}
+```
+
+`UserCard` is used in `Feed`, `SearchResults`, and anywhere else. It is identical in all three places. The caller provides the data. The component provides the structure.
+
+---
+
+### 6. Internals
+
+When React encounters `<UserCard user={user} onFollow={onFollow} />`, it does not immediately create a DOM node. It creates a React element, which is a plain JavaScript object:
+
+```js
+{
+  type: UserCard,       // reference to the function itself
+  props: {
+    user: user,
+    onFollow: onFollow,
+  },
+  key: null,
+  ref: null,
+}
+```
+
+This object is the "description" returned by JSX. It is not a DOM node. It is not even a component instance yet. It is a lightweight record that says "I want a `UserCard` rendered with these props."
+
+React takes this element and creates a Fiber node for it. The Fiber is the actual unit of work React tracks:
+
+```js
+{
+  type: UserCard,
+  pendingProps: { user, onFollow },
+  memoizedProps: null,       // props from last render, null on first
+  memoizedState: null,       // hooks state, null if no hooks yet
+  stateNode: null,           // for host components (div, p), this is the DOM node
+                             // for function components, this is null
+  child: Fiber,              // Fiber for the root element returned by UserCard
+  sibling: null,
+  return: Fiber,             // parent Fiber
+  flags: Placement,          // needs to be inserted into the DOM
+  alternate: null,           // the previous Fiber for this component
+}
+```
+
+React calls `UserCard(props)`. The function runs and returns a new React element tree (the JSX). React creates Fiber nodes for each element in that tree. This continues recursively until every node in the tree is a host element, meaning a native DOM element like `div`, `img`, `p`, `button`. Host elements have real DOM nodes as their `stateNode`. Function components never have a `stateNode` because they are not DOM nodes. They are an organizational abstraction that exists only in the Fiber tree.
+
+When `user.isFollowing` changes and `UserCard` re-renders, React calls `UserCard(newProps)` again. It gets a new React element tree. It diffs the new Fiber tree against the previous one (the `alternate`). It finds that the `button`'s `className` and `textContent` changed. It marks the `button`'s Fiber with an `Update` flag. In the commit phase, it calls `button.className = 'btn btn-secondary'` and `button.textContent = 'Unfollow'` on the real DOM button node. The `div`, `img`, and `p` nodes are untouched.
+
+This is what "React owns the DOM" means mechanically. The `stateNode` on the `button`'s Fiber is the actual DOM button element. React holds that reference. You never do.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: What is the difference between a React element and a React component?**
+
+```jsx
+const element = <UserCard user={user} onFollow={fn} />;
+const component = UserCard;
+```
+
+<details>
+<summary>Answer</summary>
+
+A React component is a function (or class) that accepts props and returns JSX. It is a definition, a blueprint. A React element is the result of calling JSX syntax with a component type and props. It is a plain JavaScript object describing what to render: `{ type: UserCard, props: { user, onFollow }, key: null }`. The component is the factory. The element is what the factory produces. React takes elements and uses the `type` field to know which component function to call during reconciliation. A common confusion is thinking `<UserCard />` calls the function. It does not. It creates an element object. React calls the function during the render phase when it processes the Fiber for that element.
+
+</details>
+
+---
+
+**Trap 2: What does this render?**
+
+```jsx
+function Wrapper() {
+  const card = UserCard({
+    user: { name: 'Shan', avatar: '...', isFollowing: false },
+    onFollow: () => {},
+  });
+  return <div>{card}</div>;
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+It renders the output of `UserCard` as JSX, so visually it appears correct. But this is a critical mistake. Calling `UserCard(props)` directly bypasses React's component system entirely. React does not create a Fiber node for `UserCard`. There is no reconciliation for it. Hooks inside `UserCard` would either fail or attach to the wrong Fiber (the `Wrapper`'s Fiber), because React's hook dispatcher tracks which component is currently rendering via the current Fiber. If `UserCard` has any hooks like `useState` or `useEffect`, they would behave incorrectly or throw. The correct way is `<UserCard user={...} onFollow={...} />`, which creates a React element that React processes through its reconciler, creating a proper Fiber and calling the function in the right context.
+
+</details>
+
+---
+
+**Trap 3: What is wrong with this component, and will it cause a bug?**
+
+```jsx
+function UserCard({ user, onFollow }) {
+  console.log('UserCard rendered');
+
+  const handleClick = function () {
+    onFollow(user.id);
+  };
+
+  return (
+    <div className="user-card">
+      <p>{user.name}</p>
+      <button onClick={handleClick}>Follow</button>
+    </div>
+  );
+}
+
+const MemoizedCard = React.memo(UserCard);
+
+function Feed({ users }) {
+  const [filter, setFilter] = React.useState('all');
+
+  function handleFollow(id) {
+    console.log('followed', id);
+  }
+
+  return (
+    <div>
+      <button onClick={() => setFilter('active')}>Filter</button>
+      {users.map((u) => (
+        <MemoizedCard key={u.id} user={u} onFollow={handleFollow} />
+      ))}
+    </div>
+  );
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+`React.memo` wraps `UserCard` to skip re-renders when props haven't changed. But it will never actually skip re-renders here, because `handleFollow` is defined inside `Feed`. Every time `Feed` re-renders (when `filter` changes), a new `handleFollow` function is created with a new reference. `React.memo` does a shallow equality check on props. The `user` prop hasn't changed, but `onFollow` has a new reference, so the check fails and `UserCard` re-renders anyway. `React.memo` is effectively useless here. The fix is `useCallback` wrapping `handleFollow`, which we'll cover in Phase 7. This trap is the exact reason `React.memo` alone is often not enough, and why functions being recreated on every render is a meaningful problem.
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** What are the two things `createUserCard` (the vanilla JS approach) cannot do that a React component can, and what is the mechanical reason for each?
+
+<details>
+<summary>Answer</summary>
+
+First, it cannot update when data changes. `createUserCard` is called once and returns a DOM node. That DOM node has no link back to the `user` object. If `user` changes, there is no mechanism to re-run `createUserCard` for that specific node and patch the DOM. A React component can update because React holds the Fiber node, which holds the previous props. When new props arrive, React calls the function again with the new props, gets a new description, and diffs it against the previous one to find changes. Second, it cannot communicate upward without global coupling. A vanilla factory function either reads global state or reaches into global DOM to communicate changes. A React component communicates upward through callback props, which are provided by the parent. The component signals intent, the parent decides what to do. This works because React enforces a tree structure where parents always know about their children.
+
+</details>
+
+---
+
+**Q2.** A colleague says "JSX compiles to `document.createElement` calls." Is this accurate?
+
+<details>
+<summary>Answer</summary>
+
+No. JSX compiles to `React.createElement` calls (or the newer JSX transform equivalent, `_jsx`), which produce plain JavaScript objects called React elements. `document.createElement` creates actual DOM nodes in the browser. `React.createElement` creates lightweight description objects in JavaScript memory. The distinction matters because React elements are cheap to create, can be thrown away, can be diffed against each other, and do not cause any browser layout or paint work. Real DOM nodes are expensive, trigger layout recalculation, and must be managed carefully. JSX is a description language. The DOM is the eventual output, managed by React after reconciliation.
+
+</details>
+
+---
+
+**Q3.** What is `stateNode` on a Fiber node, and why is it `null` for function components?
+
+<details>
+<summary>Answer</summary>
+
+`stateNode` holds a reference to the "instance" associated with a Fiber node. For host components like `div`, `button`, `p`, it holds the actual DOM node created by the browser. For class components it holds the class instance. For function components it is `null` because function components have no instance. A function component is just a function. It has no persistent object that gets created and stored. Every render is a fresh function call. React manages all the persistence (state, effects, refs) through the Fiber node itself, not through any instance on the component. This is one of the core differences between function components and class components, and it's why hooks like `useState` need to store state on the Fiber rather than on `this`.
+
+</details>
+
+---
+
+**Q4.** You need to render a list of 100 `UserCard` components. A teammate says "let's just call `UserCard(props)` in a loop and collect the results instead of using JSX, it's faster because it skips React's element creation overhead." Evaluate this claim.
+
+<details>
+<summary>Answer</summary>
+
+The performance claim is false and the approach introduces correctness bugs. The overhead of creating a React element object (`{ type, props, key }`) is negligible, it's just an object literal. Calling `UserCard(props)` directly bypasses Fiber creation for each card, which means React cannot reconcile them individually. On re-render, React cannot tell which card corresponds to which previous render. If any card uses hooks, those hooks attach to the current rendering component's Fiber instead of individual card Fibers, which breaks hooks entirely. The small perceived optimization eliminates React's ability to do targeted, minimal DOM updates, and likely breaks the entire component. Using JSX is not overhead, it's the mechanism that makes React's reconciliation work.
+
+</details>
+
+---
+
+**Q5.** What is the structural reason that `onFollow` as a callback prop solves the global DOM coupling problem that the vanilla `createUserCard` had?
+
+<details>
+<summary>Answer</summary>
+
+In the vanilla version, `createUserCard` needed to know about the outside world to communicate changes, so it reached into global DOM by ID. This hardcoded an assumption about page structure inside a reusable function, destroying reuse. With a callback prop, `UserCard` makes no assumptions about the outside world. It only knows: "when the follow button is clicked, call `onFollow` with the user ID." What `onFollow` does is entirely the caller's responsibility. The caller might update a global count, make an API call, update local state, or do nothing. `UserCard` doesn't care and doesn't need to know. This is the dependency inversion principle applied to UI: high-level behavior is injected by the parent, not hardcoded in the child.
+
+</details>

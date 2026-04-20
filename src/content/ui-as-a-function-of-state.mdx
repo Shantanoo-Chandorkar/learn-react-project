@@ -1,0 +1,321 @@
+﻿# The UI = f(state) idea
+
+### 1. The Problem
+
+You have a web page. It changes over time. A user logs in, a counter increments, a list gets filtered, a modal opens. The screen at any given moment is different from what it was a second ago.
+
+The question is: how do you think about that change?
+
+There are two possible mental models. The first is imperative: you describe the steps to get from the current screen to the next screen. "Find this element. Change its text. Show that div. Hide this button." The second is declarative: you describe what the screen should look like given the current data, and something else figures out the steps.
+
+Before React, the entire web was imperative. jQuery, vanilla JS, even early frameworks, all of them worked by describing mutations. You were always writing transitions, not states.
+
+The problem with transitions is that they compose badly. One transition assumes the page is in state A and moves it to state B. Another assumes state B and moves it to state C. If anything goes out of order, or if a transition fires when the page is in an unexpected state, the UI becomes inconsistent and you have no way to reason about why without tracing every mutation that ever happened.
+
+---
+
+### 2. The Naive Attempt
+
+Build a simple profile card. The user can be logged in or logged out. Logged in shows their name and a logout button. Logged out shows a login button.
+
+```html
+<div id="app">
+  <button id="login-btn" onclick="login()">Log in</button>
+</div>
+
+<script>
+  let isLoggedIn = false;
+  let username = 'Shan';
+
+  function login() {
+    isLoggedIn = true;
+
+    // now manually describe the transition
+    document.getElementById('login-btn').style.display = 'none';
+
+    const nameEl = document.createElement('p');
+    nameEl.id = 'username';
+    nameEl.innerText = username;
+
+    const logoutBtn = document.createElement('button');
+    logoutBtn.id = 'logout-btn';
+    logoutBtn.innerText = 'Log out';
+    logoutBtn.onclick = logout;
+
+    document.getElementById('app').appendChild(nameEl);
+    document.getElementById('app').appendChild(logoutBtn);
+  }
+
+  function logout() {
+    isLoggedIn = false;
+
+    document.getElementById('username').remove();
+    document.getElementById('logout-btn').remove();
+
+    const loginBtn = document.getElementById('login-btn');
+    loginBtn.style.display = '';
+  }
+</script>
+```
+
+This works. Log in, name appears, logout button appears. Log out, they disappear, login button comes back. Correct behavior.
+
+Now add one feature: show a "Welcome back!" banner if this is the user's second login.
+
+```js
+let loginCount = 0;
+
+function login() {
+  isLoggedIn = true;
+  loginCount++;
+
+  document.getElementById('login-btn').style.display = 'none';
+
+  const nameEl = document.createElement('p');
+  nameEl.id = 'username';
+  nameEl.innerText = username;
+
+  const logoutBtn = document.createElement('button');
+  logoutBtn.id = 'logout-btn';
+  logoutBtn.innerText = 'Log out';
+  logoutBtn.onclick = logout;
+
+  document.getElementById('app').appendChild(nameEl);
+  document.getElementById('app').appendChild(logoutBtn);
+
+  if (loginCount >= 2) {
+    const banner = document.createElement('div');
+    banner.id = 'welcome-banner';
+    banner.innerText = 'Welcome back!';
+    document.getElementById('app').appendChild(banner);
+  }
+}
+
+function logout() {
+  isLoggedIn = false;
+
+  document.getElementById('username').remove();
+  document.getElementById('logout-btn').remove();
+
+  const banner = document.getElementById('welcome-banner');
+  if (banner) banner.remove(); // maybe exists, maybe not
+
+  const loginBtn = document.getElementById('login-btn');
+  loginBtn.style.display = '';
+}
+```
+
+Notice what just happened. You added one piece of data (`loginCount`) and the `logout` function had to get a defensive `if (banner)` check because the banner only conditionally exists. The UI's shape is now conditional on history, and every function that touches the DOM has to know about every other function's side effects.
+
+Add five more features. The code becomes unmaintainable not because it's complicated, but because the shape of the DOM at any moment is the accumulated result of every mutation that has ever run. To understand the current state of the screen, you have to mentally replay the entire history of mutations.
+
+---
+
+### 3. Why That Breaks
+
+The precise failure mode is: **the DOM is being used as the source of truth.**
+
+`isLoggedIn` is a JS variable, but the actual truth of whether the user is logged in lives in the DOM structure. Is the `#login-btn` hidden? Are `#username` and `#logout-btn` present? The DOM is what's real. The JS variables are just triggers.
+
+This creates two sources of truth that can drift apart. If a bug causes the `#username` element to not get removed, the DOM says "logged in" but `isLoggedIn` says `false`. Which one is right? Your code is now in an inconsistent state with no recovery path.
+
+The deeper issue is that you're writing code about transitions when you should be writing code about states. There are only two states here: logged in and logged out. But you wrote four code paths: what to add when logging in, what to remove when logging in, what to add when logging out, what to remove when logging out. Every state transition requires you to know the exact previous state. Every new feature multiplies the number of transitions you have to maintain.
+
+---
+
+### 4. React's Mental Model
+
+UI is a pure function of state. Given the same state, you always get the same UI. No history. No transitions. No mutations. Just: here is the data, here is the screen.
+
+```
+UI = f(state)
+```
+
+This is not a React-specific idea. It's a mathematical idea. A pure function has no side effects and no memory. Given input X, it always returns output Y. The same X always produces the same Y. You can reason about it in isolation.
+
+React applies this idea to UI. Your component is the function `f`. Your state is the input. The rendered output is the result. You never describe how to go from the old screen to the new screen. You only describe what the screen looks like for any given state, and React handles the transition.
+
+---
+
+### 5. React's Solution
+
+You write a function that takes state and returns a description of the UI. React calls that function whenever the state changes, gets a new description, and updates the DOM to match.
+
+```jsx
+function ProfileCard({ isLoggedIn, username, loginCount }) {
+  if (!isLoggedIn) {
+    return (
+      <div>
+        <button onClick={login}>Log in</button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {loginCount >= 2 && <div>Welcome back!</div>}
+      <p>{username}</p>
+      <button onClick={logout}>Log out</button>
+    </div>
+  );
+}
+```
+
+There is no `createElement`. No `remove()`. No defensive `if (banner)` check. No transitions. You describe two possible UIs: one for logged out, one for logged in. React handles going from one to the other when `isLoggedIn` changes.
+
+The DOM is no longer the source of truth. Your state variables are. The DOM is just a rendered consequence of state, always derivable from it, never ahead of it or behind it.
+
+---
+
+### 6. Internals
+
+React enforces the `UI = f(state)` model by making your component function a pure function from React's perspective. When state changes, React does not ask "what changed in the DOM and what do I need to mutate?" It asks "what does the UI look like now?" It calls your function with the new state, gets a complete new description of the UI as a Virtual DOM tree, and then diffs that against the previous description to find the minimum DOM changes.
+
+The consequence of this model is that React needs renders to be pure, meaning the same state should produce the same output every time. This is why you'll later see that side effects are banned inside the render function and must live in `useEffect`. A side effect in render breaks the `f(state)` contract: the output of the function would no longer depend only on its input.
+
+This model also enables React's concurrent features. If a render is pure and has no side effects, React can throw it away and redo it. It can render the same component twice with the same state and get the same result both times. It can interrupt a render partway through and restart it. None of this is possible if renders have side effects, because running a side effect twice or throwing it away would change the world. The purity requirement is not a style guideline. It is load-bearing architecture.
+
+React 18's Strict Mode deliberately calls your render function twice in development for exactly this reason: to surface any components that are accidentally impure. If double-rendering changes behavior, you have a bug.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: What will this component do on every render?**
+
+```jsx
+function Timer() {
+  const start = Date.now();
+
+  return <div>Started at: {start}</div>;
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+This is technically fine but reveals a misunderstanding. `Date.now()` inside render runs on every render, so the displayed time will change every time the component re-renders for any reason (parent re-render, any state change). The real trap is if a developer treats `start` as a stable value, like a timestamp for when the component first mounted. It's not. It's recalculated on every render. To get a stable value you'd use `useRef` or `useState` with an initializer. The deeper lesson: render is a pure function called repeatedly. Any computation inside it runs repeatedly.
+
+</details>
+
+---
+
+**Trap 2: Why is this component broken?**
+
+```jsx
+function UserCard() {
+  let isVisible = false;
+
+  function toggle() {
+    isVisible = !isVisible;
+    console.log(isVisible); // logs true, then false, then true...
+  }
+
+  return (
+    <div>
+      <button onClick={toggle}>Toggle</button>
+      {isVisible && <p>Hello!</p>}
+    </div>
+  );
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+The variable `isVisible` is a local variable inside the function body. It is created fresh every time the component renders. Clicking the button does flip it from `false` to `true`, and the `console.log` confirms it. But because `isVisible` is not React state, flipping it does not schedule a re-render. React never calls `UserCard` again. The DOM never updates. The UI = f(state) contract is broken here because `isVisible` is not part of state. It's local mutation inside the function, which has no effect on what React renders. This is the exact failure mode that `useState` exists to solve, which we'll cover in next section.
+
+</details>
+
+---
+
+**Trap 3: React Strict Mode double-invokes render. Which of these components will have a problem?**
+
+```jsx
+// Component A
+function Counter() {
+  const [count, setCount] = React.useState(0);
+  return <div>{count}</div>;
+}
+
+// Component B
+function Logger() {
+  console.log('rendered');
+  return <div>Hello</div>;
+}
+
+// Component C
+let renderCount = 0;
+function TrackedComponent() {
+  renderCount++;
+  return <div>Rendered {renderCount} times</div>;
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+Component A is fine. Same state in, same output. Calling it twice with the same state produces the same result, no problem.
+
+Component B will log twice in Strict Mode instead of once. This is not a "problem" in the sense that it breaks anything, but it surprises developers who see duplicate console logs in development and assume something is wrong. React is deliberately surfacing that renders happen more than once.
+
+Component C is actually broken. `renderCount` is a module-level variable that persists across renders. When React calls `TrackedComponent` twice in Strict Mode, `renderCount` becomes 2 after the first mount, and the display says "Rendered 2 times" instead of 1. This is exactly the kind of impurity Strict Mode is designed to catch. The component's output depends on something other than its state and props, which violates `UI = f(state)`. External mutable variables inside render are a bug.
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** In one sentence, what is wrong with using the DOM as the source of truth for application state?
+
+<details>
+<summary>Answer</summary>
+
+The DOM can drift from your JavaScript variables because mutations applied to the DOM are not automatically reflected back, and any bug that causes a mutation to be skipped leaves the DOM in a state that no longer matches your data, with no automatic way to detect or recover from the inconsistency.
+
+</details>
+
+---
+
+**Q2.** What does "render must be pure" mean in the context of `UI = f(state)`, and what does React rely on this purity for?
+
+<details>
+<summary>Answer</summary>
+
+A pure render means the component function depends only on its props and state and produces no side effects. React relies on this purity to safely interrupt, restart, and repeat renders without changing the world. If render had side effects, interrupting it partway through and restarting it would run those effects twice, or leave effects half-executed. Purity is what makes concurrent rendering possible.
+
+</details>
+
+---
+
+**Q3.** You have a component that reads from `localStorage` directly inside its function body and returns different JSX based on the result. What React principle does this violate, and what should you do instead?
+
+<details>
+<summary>Answer</summary>
+
+It violates the pure function requirement. The output of the component now depends on an external data source that is not props or state. If that `localStorage` value changes between renders, the component would return different JSX for the same props and state. The correct approach is to read the `localStorage` value once and store it in state (via `useState` with an initializer), making it part of the declared input to the function. Then the component's output is again fully determined by its state.
+
+</details>
+
+---
+
+**Q4.** Transitions vs states: in the imperative model you write code about transitions. In the declarative model you write code about states. What does this change about how you handle a new conditional feature?
+
+<details>
+<summary>Answer</summary>
+
+In the imperative model, adding a new conditional feature (like the "Welcome back!" banner) requires updating every transition function that could affect it. The `login` function needs to know to add it, the `logout` function needs to know to remove it, and any other function that could change the relevant data needs to handle it. Each new feature multiplies the number of places you must update. In the declarative model, you add the condition once in the render function: "if this state condition is true, include this element." Every transition, which now just means "update the state variable," automatically causes the render to re-evaluate with the new state, and the UI reflects it correctly without any manual coordination.
+
+</details>
+
+---
+
+**Q5.** React Strict Mode double-invokes render in development. A developer says "this is a performance bug, it's making my app render twice." Are they right?
+
+<details>
+<summary>Answer</summary>
+
+No. Strict Mode double-invocation only happens in development. It is intentionally disabled in production builds. The purpose is correctness checking, not measurement. A component that behaves differently when rendered twice has a bug, and Strict Mode is designed to surface that. The developer's concern about performance is misplaced because the double invocation never reaches production. If they're seeing unexpected behavior from it, the correct response is to fix the impure component, not to disable Strict Mode.
+
+</details>

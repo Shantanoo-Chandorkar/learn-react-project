@@ -1,0 +1,499 @@
+﻿# Why State Updates Are Async and Batched
+
+### 1. The Problem
+
+You call `setCount(1)`. Then you call `setName('Ravi')`. Your instinct, shaped by years of synchronous JavaScript, says: first the count updates and the component re-renders, then the name updates and the component re-renders again. Two state changes, two re-renders.
+
+If React worked that way, it would be correct, but brutally slow. Every event handler that touches multiple pieces of state would cause multiple re-renders, multiple reconciliation passes, multiple DOM writes, for what the user perceives as a single interaction.
+
+But React does not work that way. It batches. And the rules of what gets batched, when, and why changed significantly in React 18. Understanding the mechanics of batching is what lets you reason about when your component actually re-renders, why `console.log` after a setter shows old state, and what the rare cases are where you need to opt out.
+
+---
+
+### 2. The Naive Attempt
+
+You have a form. Submitting it should reset three fields and set a loading flag. You write the obvious handler:
+
+```jsx
+function Form() {
+  const [name, setName] = React.useState('');
+  const [email, setEmail] = React.useState('');
+  const [message, setMessage] = React.useState('');
+  const [isLoading, setIsLoading] = React.useState(false);
+
+  console.log('Form rendered');
+
+  async function handleSubmit() {
+    setIsLoading(true);
+    setName('');
+    setEmail('');
+    setMessage('');
+
+    await submitToAPI({ name, email, message });
+
+    setIsLoading(false);
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input value={name} onChange={(e) => setName(e.target.value)} />
+      <input value={email} onChange={(e) => setEmail(e.target.value)} />
+      <textarea value={message} onChange={(e) => setMessage(e.target.value)} />
+      <button type="submit">{isLoading ? 'Sending...' : 'Send'}</button>
+    </form>
+  );
+}
+```
+
+In React 17, when submit is clicked:
+
+- `setIsLoading(true)` → re-render 1
+- `setName('')` → re-render 2
+- `setEmail('')` → re-render 3
+- `setMessage('')` → re-render 4
+- `await submitToAPI(...)` → pause
+- `setIsLoading(false)` → re-render 5
+
+Five re-renders for one user action. The first four happen synchronously inside the event handler before the `await`. The fifth happens after the async operation. In React 17, only the first four were batched (React 17 batched inside synthetic event handlers but not across async boundaries). The `setIsLoading(false)` after `await` triggered its own separate render.
+
+In React 18, all five are handled more intelligently. But understanding why requires understanding what batching actually is.
+
+---
+
+### 3. Why That Breaks
+
+Two failure modes, one performance, one correctness.
+
+**Failure mode 1: Intermediate states cause redundant renders and visual glitches.**
+
+If each setter triggered an immediate synchronous re-render, the user would see the component in every intermediate state: loading AND old name AND old email AND old message all simultaneously in various combinations as each setter fires. For the 100ms between the first and last setter call, the UI is in a partially updated state. This is not hypothetical in slow environments or under CPU throttling.
+
+Beyond the visual problem, each intermediate render runs reconciliation and potentially writes to the DOM. Four DOM update cycles instead of one is a real performance cost at scale.
+
+**Failure mode 2: Reading state after setting it gives stale values.**
+
+```jsx
+function handleSubmit() {
+  setIsLoading(true);
+  console.log(isLoading); // false, not true
+  // isLoading is the snapshot from this render
+  // setIsLoading does not mutate it
+  // the new value only exists in the next render
+}
+```
+
+If state updates were synchronous, `isLoading` after `setIsLoading(true)` would be `true`. Because they are not, it is still `false`. This surprises every developer who expects setter calls to behave like variable assignments. The state snapshot is immutable for the duration of the render and all synchronous code in that event. This is correct behavior, but it requires understanding why batching exists to accept it rather than fight it.
+
+---
+
+### 4. React's Mental Model
+
+React defers state updates. Instead of processing each setter call immediately, React collects all updates made during a unit of work (an event handler, a lifecycle, a scheduled callback) and processes them together in a single re-render pass after the current work completes.
+
+This is batching: multiple state updates collapsed into a single re-render, producing a single new snapshot of the UI.
+
+One sentence: React batches state updates because a UI transition is caused by an event, not by individual variable changes, and re-rendering once per event is correct, efficient, and visually consistent.
+
+---
+
+### 5. React's Solution
+
+**React 17 and earlier: partial batching.**
+
+React 17 batched state updates only inside React synthetic event handlers. Updates inside `setTimeout`, `Promise.then`, `async/await` continuations, or native DOM event listeners were not batched.
+
+```jsx
+// React 17
+
+// BATCHED: inside a React synthetic event handler
+function handleClick() {
+  setCount((c) => c + 1); // queued
+  setName('Ravi'); // queued
+  // one re-render here
+}
+
+// NOT BATCHED: inside setTimeout (React 17)
+setTimeout(() => {
+  setCount((c) => c + 1); // re-render 1
+  setName('Ravi'); // re-render 2
+}, 1000);
+
+// NOT BATCHED: after await (React 17)
+async function handleSubmit() {
+  setIsLoading(true); // re-render 1
+  await fetch('/api');
+  setIsLoading(false); // re-render 2  ← separate, not batched
+}
+```
+
+**React 18: automatic batching everywhere.**
+
+React 18 extended batching to all contexts. Updates inside `setTimeout`, `Promise.then`, `async/await` continuations, and native event listeners are all automatically batched.
+
+```jsx
+// React 18
+
+// BATCHED: inside React event handler (same as before)
+function handleClick() {
+  setCount((c) => c + 1); // queued
+  setName('Ravi'); // queued
+  // one re-render
+}
+
+// BATCHED: inside setTimeout (new in React 18)
+setTimeout(() => {
+  setCount((c) => c + 1); // queued
+  setName('Ravi'); // queued
+  // one re-render
+}, 1000);
+
+// BATCHED: after await (new in React 18)
+async function handleSubmit() {
+  setIsLoading(true); // queued
+  setName(''); // queued
+  // one re-render for both
+  await fetch('/api');
+  setIsLoading(false); // queued after the await
+  // one re-render
+}
+```
+
+The form example from section 2 now produces two re-renders instead of five: one for the four synchronous setters before the `await`, and one for the single setter after the `await`. Each `await` is a boundary: synchronous setters before it are batched together, and execution resumes after the `await` as a new synchronous context where further setters are batched together.
+
+**Opting out: `flushSync`.**
+
+There are rare cases where you need a state update to be applied immediately, before continuing. React 18 provides `flushSync` for this:
+
+```jsx
+import { flushSync } from 'react-dom';
+
+function handleClick() {
+  flushSync(() => {
+    setCount((c) => c + 1);
+  });
+  // React has committed the count update to the DOM here
+  // the DOM reflects the new count before the next line
+
+  flushSync(() => {
+    setName('Ravi');
+  });
+  // React has committed the name update here
+}
+// total: two synchronous renders, two DOM commits
+```
+
+`flushSync` forces React to flush all pending state updates inside the callback synchronously, commit the result to the DOM, and only then return. The DOM is updated before `flushSync` returns. This is an escape hatch for cases where you need to read updated DOM measurements immediately after a state change, such as calculating layout before animating.
+
+`flushSync` is rare. If you find yourself reaching for it often, it is almost always a sign of an architectural issue where state management and DOM measurement are tangled together.
+
+---
+
+### 6. Internals
+
+Batching is implemented through React's Scheduler and the concept of an execution context.
+
+**The execution context flag.**
+
+React maintains a bitmask called `executionContext` that tracks what kind of work is currently happening:
+
+```js
+// Simplified from ReactFiberWorkLoop.js
+let executionContext = NoContext;
+
+const BatchedContext = 0b0001;
+const RenderContext = 0b0010;
+const CommitContext = 0b0100;
+```
+
+When a React synthetic event handler fires, React wraps the call with:
+
+```js
+function batchedUpdates(fn) {
+  const prevExecutionContext = executionContext;
+  executionContext |= BatchedContext; // set the batched flag
+  try {
+    return fn(); // call your event handler
+  } finally {
+    executionContext = prevExecutionContext; // restore
+    // if we just left the last batched context, flush work
+    if (executionContext === NoContext) {
+      flushSyncCallbackQueue();
+    }
+  }
+}
+```
+
+Inside `fn()`, your handler runs. Every call to a state setter calls `scheduleUpdateOnFiber`. This function checks `executionContext`. If `BatchedContext` is set, it enqueues the Fiber for work but does not immediately process it. The updates accumulate. When `batchedUpdates` exits and restores the context to `NoContext`, it flushes all accumulated work in one pass.
+
+In React 17, `setTimeout` callbacks, Promise callbacks, and async continuations ran outside `batchedUpdates`. They had `executionContext === NoContext`. Each setter call saw `NoContext`, did not batch, and triggered immediate processing. This is why React 17's batching was incomplete.
+
+**React 18's solution: the transition to concurrent root and automatic batching.**
+
+React 18 requires opting into the new root API:
+
+```js
+// React 17
+ReactDOM.render(<App />, document.getElementById('root'));
+
+// React 18
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+```
+
+With `createRoot`, React 18 changed when work is scheduled and flushed. Rather than flushing synchronously inside event callbacks, React 18 schedules work through the Scheduler using a `MessageChannel` post-message:
+
+```js
+// Simplified scheduler mechanism
+const channel = new MessageChannel();
+channel.port1.onmessage = performWorkUntilDeadline;
+
+function scheduleCallback(callback) {
+  channel.port2.postMessage(null); // schedule via macrotask
+}
+```
+
+`MessageChannel` tasks are macrotasks. They execute after the current synchronous JavaScript execution completes, including after any awaited microtasks. By deferring work to a macrotask, React naturally collects all synchronous state updates from the current event, all microtask continuations (Promise callbacks, async/await), and processes them together as one batch.
+
+This is why automatic batching works across async boundaries in React 18. The state update is not processed when `setIsLoading(true)` is called. It is enqueued. Processing is deferred to the scheduler's macrotask. By the time the macrotask runs, all the synchronous setters and any synchronous microtask continuations have completed and their updates are all in the queue. React processes them in one pass.
+
+**How batched updates are processed.**
+
+Each enqueued update is an object on a Fiber's hook queue:
+
+```js
+{
+  action: newValue,     // or updater function
+  lane: SyncLane,       // priority
+  next: null,           // next update in the queue
+}
+```
+
+Multiple setters on the same state slot create a linked list of update objects:
+
+```
+queue.pending → update3 → update2 → update1 → (circular, back to update3)
+```
+
+React processes this queue during the render phase. It applies each update in order, threading the result of each as the input to the next:
+
+```js
+function processUpdateQueue(baseState, updateQueue) {
+  let state = baseState;
+  let update = updateQueue.pending;
+
+  do {
+    const action = update.action;
+    // if action is a function (functional update), call it with current state
+    // if action is a value, use it directly
+    state = typeof action === 'function' ? action(state) : action;
+    update = update.next;
+  } while (update !== updateQueue.pending);
+
+  return state;
+}
+```
+
+This is why functional updates `setCount(prev => prev + 1)` compose correctly even when batched: each one receives the output of the previous update as `prev`, not the snapshot from the render. Three batched functional updates starting from `count = 0` correctly produce `3`. Three batched value updates `setCount(count + 1)` all compute `0 + 1` and produce `1`.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: What does this log, and how many times does the component render?**
+
+```jsx
+function App() {
+  const [a, setA] = React.useState(0);
+  const [b, setB] = React.useState(0);
+
+  console.log('render', a, b);
+
+  function handleClick() {
+    setA(1);
+    setB(2);
+    console.log('after setters', a, b);
+  }
+
+  return <button onClick={handleClick}>Go</button>;
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+On mount: `render 0 0` logs once.
+
+On click:
+
+`after setters 0 0` logs immediately. `a` and `b` are the snapshots from this render, both `0`. The setters do not mutate them. `a` and `b` are still `0` after the calls.
+
+Then React batches `setA(1)` and `setB(2)` into a single re-render. `render 1 2` logs once.
+
+Total logs: `render 0 0`, `after setters 0 0`, `render 1 2`.
+
+Total renders: 2 (mount + one batched update).
+
+The trap is expecting `a` and `b` to be updated after the setter calls, or expecting two separate renders for two separate setter calls. Both expectations are wrong. Setters do not mutate the current snapshot, and React 18 batches both updates into one re-render.
+
+</details>
+
+---
+
+**Trap 2: In React 18, how many renders does this produce?**
+
+```jsx
+function App() {
+  const [count, setCount] = React.useState(0);
+  const [flag, setFlag] = React.useState(false);
+
+  console.log('render');
+
+  async function handleClick() {
+    setCount((c) => c + 1);
+    setFlag((f) => !f);
+    await delay(100);
+    setCount((c) => c + 1);
+    setFlag((f) => !f);
+  }
+
+  return <button onClick={handleClick}>Go</button>;
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+In React 18 with automatic batching: two re-renders after the click.
+
+The first two setters (`setCount` and `setFlag`) execute synchronously before the `await`. They are batched. One re-render.
+
+`await delay(100)` pauses execution. The microtask and macrotask queues run. React processes the first batch.
+
+After 100ms, execution resumes. The second two setters execute synchronously. They are batched. One re-render.
+
+Total: 2 renders after the click.
+
+In React 17 (legacy root), the behavior is different: `setCount` and `setFlag` before the `await` would be batched (inside a React synthetic event handler context), but the two setters after the `await` would not be batched, producing two separate renders for them. Total: 3 renders.
+
+This is the practical difference automatic batching makes for async handlers.
+
+</details>
+
+---
+
+**Trap 3: When should you use `flushSync`, and what is wrong with using it here?**
+
+```jsx
+function List() {
+  const [items, setItems] = React.useState([1, 2, 3]);
+  const listRef = React.useRef(null);
+
+  function addItem() {
+    flushSync(() => {
+      setItems((prev) => [...prev, prev.length + 1]);
+    });
+    // scroll to bottom of list after adding
+    listRef.current.scrollTop = listRef.current.scrollHeight;
+  }
+
+  return (
+    <ul ref={listRef} style={{ height: 100, overflow: 'auto' }}>
+      {items.map((i) => (
+        <li key={i}>{i}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+Is the use of `flushSync` here correct?
+
+<details>
+<summary>Answer</summary>
+
+Yes, this is one of the legitimate uses of `flushSync`. The pattern is: update state, immediately read a DOM measurement that depends on the updated state. Without `flushSync`, React would batch the `setItems` call and defer the DOM update. The `scrollTop` assignment on the next line would execute before React committed the new item to the DOM, so `scrollHeight` would not yet include the new item's height, and the scroll would be incorrect.
+
+`flushSync` forces React to commit the state update synchronously before returning, so `listRef.current.scrollHeight` reflects the updated DOM including the new item.
+
+The wrong use of `flushSync` would be using it for every state update to "ensure" updates are applied immediately out of a misunderstanding that async updates are a bug. `flushSync` disables batching and concurrent features for the wrapped updates, making them synchronous and blocking. Overusing it turns off React 18's performance improvements and can cause visual tearing in concurrent mode. It is an escape hatch for the specific case of needing a DOM measurement that depends on a state-driven update, not a general "make state synchronous" utility.
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** What is the precise definition of batching in React's context, and what problem does it solve?
+
+<details>
+<summary>Answer</summary>
+
+Batching is the process of collecting multiple state updates that occur within a single unit of work and processing them together in a single re-render pass rather than processing each one separately. It solves two problems. First, performance: multiple setters in one event handler produce one reconciliation and one DOM commit pass instead of N. Second, consistency: the component re-renders once with all updates applied simultaneously, so the UI never shows an intermediate state where some updates have been applied and others haven't. Without batching, a handler that sets loading to true and resets three form fields would produce a render where loading is true but the fields still have their old values, which may display inconsistently depending on how the component renders those combinations.
+
+</details>
+
+---
+
+**Q2.** What changed in React 18's batching behavior compared to React 17, and what is the mechanism that enables the change?
+
+<details>
+<summary>Answer</summary>
+
+React 17 batched state updates only inside React synthetic event handlers, specifically code wrapped in React's `batchedUpdates` function. Updates inside `setTimeout`, `Promise.then` callbacks, `async/await` continuations, and native event listeners were not batched because they ran outside `batchedUpdates` and saw `executionContext === NoContext`, causing each setter to trigger an immediate render.
+
+React 18 extended batching to all contexts by changing when work is processed. With `createRoot`, React 18 schedules work through the Scheduler using `MessageChannel` macrotasks instead of processing synchronously inside event callbacks. Because work is deferred to a macrotask, all synchronous state updates and microtask continuations (async/await) complete before the macrotask runs, and React processes all accumulated updates in one pass. The batching is now a consequence of scheduling architecture rather than explicit wrapping.
+
+</details>
+
+---
+
+**Q3.** Three functional updates and three value updates are batched together on the same state slot starting from `count = 0`. What is the final state for each case?
+
+```js
+// Case A: three functional updates batched
+setCount((prev) => prev + 1);
+setCount((prev) => prev + 1);
+setCount((prev) => prev + 1);
+
+// Case B: three value updates batched
+setCount(count + 1); // count is 0
+setCount(count + 1); // count is 0
+setCount(count + 1); // count is 0
+```
+
+<details>
+<summary>Answer</summary>
+
+Case A: final state is `3`. React processes the update queue sequentially. The first functional update receives `prev = 0`, returns `1`. The second receives `prev = 1`, returns `2`. The third receives `prev = 2`, returns `3`. Each functional update receives the output of the previous update as input.
+
+Case B: final state is `1`. All three value updates have `action = 1` (because `count` is `0` at the time the handlers ran, `0 + 1 = 1` for all three). React processes them in order: state becomes `1`, then `1` again, then `1` again. The last applied value wins, and they are all the same value. Three value updates that all compute from the same snapshot produce the same result as one update.
+
+This is the practical reason to use functional updates whenever an update logically depends on the previous value: value updates computed from a stale snapshot do not compose correctly when batched.
+
+</details>
+
+---
+
+**Q4.** Why does `console.log(myState)` immediately after `setMyState(newValue)` always show the old value, even in React 18?
+
+<details>
+<summary>Answer</summary>
+
+`setMyState` does not mutate the `myState` variable. `myState` is a constant in the current render's execution, the value read from `memoizedState` when React called the component function. It cannot change during that execution. `setMyState` enqueues an update on the Fiber's hook queue and schedules a re-render. It returns immediately without modifying anything visible to the current execution context. The new state value is only materialized when React processes the update queue on the next render and calls the component function again. At that point, `useState` reads the new `memoizedState` and returns the updated value. The `console.log` after the setter runs in the same execution as the setter, before any re-render, so it sees the same snapshot that the entire current render is based on.
+
+</details>
+
+---
+
+**Q5.** A developer wraps every `setState` call in `flushSync` to ensure state is "always up to date." What are the consequences?
+
+<details>
+<summary>Answer</summary>
+
+Three concrete consequences. First, performance regression: `flushSync` disables batching for the wrapped updates, forcing a synchronous render and DOM commit for each call. Multiple state updates in one handler that would normally produce one render now produce one render per `flushSync` call. Second, concurrent features are disabled for those updates: `flushSync` forces synchronous rendering, bypassing React's scheduler and priority system. Transitions, Suspense, and deferred rendering do not apply to synchronous renders, so the app loses the performance benefits of React 18's concurrent model. Third, it does not solve the actual problem: after `flushSync(() => setState(x))` returns, the DOM is updated, but the `state` variable in the current closure is still the old snapshot. `flushSync` makes the DOM reflect the new state, but it does not make the current render's state variable reflect it. The developer reaching for `flushSync` to read updated state after setting it is misunderstanding the problem. The solution to needing the new value immediately is the functional update form or deriving the value as a local variable.
+
+</details>

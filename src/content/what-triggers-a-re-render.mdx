@@ -1,0 +1,557 @@
+﻿# What Triggers a Re-render?
+
+### 1. The Problem
+
+Most React developers have a vague model of re-renders: "state changes cause re-renders." That is partially right and mostly incomplete. There are four distinct triggers, each with different mechanics, different scope, and different implications for how you structure components.
+
+If you only know "state changes cause re-renders," you will be surprised when:
+
+- A component re-renders even though its state did not change
+- A component does not re-render even though data it displays changed
+- Calling `setState` with the same value triggers a render on the first call but not the second
+- A component deep in the tree re-renders because of a context change even though no parent re-rendered
+
+Each of these surprises has a precise mechanical explanation. Understanding all four triggers is what lets you look at any component, in any tree, and predict exactly when and why it will re-render.
+
+---
+
+### 2. The Naive Attempt
+
+You have a dashboard. Multiple components. Some with state, some without. You add `console.log('rendered')` to each one and start interacting with the UI. The logs do not match your expectations.
+
+```jsx
+function UserAvatar({ url }) {
+  console.log('UserAvatar rendered');
+  return <img src={url} />;
+}
+
+function Header({ user }) {
+  console.log('Header rendered');
+  return (
+    <div>
+      <UserAvatar url={user.avatar} />
+      <p>{user.name}</p>
+    </div>
+  );
+}
+
+function Sidebar() {
+  console.log('Sidebar rendered');
+  return <nav>Navigation</nav>;
+}
+
+function Dashboard() {
+  const [count, setCount] = React.useState(0);
+  const user = { name: 'Shan', avatar: 'https://example.com/shan.jpg' };
+
+  console.log('Dashboard rendered');
+
+  return (
+    <div>
+      <Header user={user} />
+      <Sidebar />
+      <button onClick={() => setCount((c) => c + 1)}>Clicks: {count}</button>
+    </div>
+  );
+}
+```
+
+Click the button. Console output:
+
+```
+Dashboard rendered
+Header rendered
+UserAvatar rendered
+Sidebar rendered
+```
+
+`Sidebar` has no state. It receives no props that changed. It has no connection to `count`. Yet it re-rendered. `UserAvatar` re-rendered. `Header` re-rendered. Everything re-rendered.
+
+A developer without a complete mental model of triggers might conclude: "React re-renders everything on every state change." That is wrong, but it feels right from this observation. The correct explanation is more specific and requires understanding trigger 2: parent re-render.
+
+---
+
+### 3. Why That Breaks
+
+There is no single "why that breaks" here, because each trigger is a legitimate and correct behavior. The failure is in the developer's mental model, not in React.
+
+The mental model that breaks: "my component only re-renders when its own state changes."
+
+The reality: your component re-renders for four distinct reasons, and only one of them is your own state change. Operating under the wrong model leads to:
+
+- Adding `console.log` to debug, getting unexpected output, concluding there is a bug when there isn't
+- Adding unnecessary `React.memo` to prevent "surprising" re-renders that are actually cheap and correct
+- Missing actual bugs because you assume a component won't re-render when it actually does, leaving stale closures uncaught
+
+---
+
+### 4. React's Mental Model
+
+A re-render is React calling your component function to get a new description of what the UI should look like. React calls your function when it has reason to believe the output might have changed. There are exactly four reasons React concludes this.
+
+One sentence: React re-renders a component when its own state changes, when its parent re-renders, when a context it consumes changes, or when it explicitly requests a re-render via a force mechanism.
+
+---
+
+### 5. React's Solution
+
+The four triggers, each with precise mechanics.
+
+---
+
+**Trigger 1: The component's own state changes.**
+
+The most understood trigger. A `useState` setter is called with a value that differs from the current state under `Object.is`. React marks the component's Fiber as having pending work and schedules a re-render.
+
+```jsx
+function Counter() {
+  const [count, setCount] = React.useState(0);
+
+  // clicking this schedules a re-render of Counter
+  return <button onClick={() => setCount((c) => c + 1)}>{count}</button>;
+}
+```
+
+Precision: if the setter is called with the same value (`Object.is` returns `true`), React may still call the component function once to confirm the bail-out, then stop. After the first confirmation render with the same value, subsequent calls with the same value produce zero re-renders. This is the eager bail-out in `dispatchSetState`.
+
+`useReducer` follows the same rule: if the reducer returns the same state reference, React bails out after the confirmation render.
+
+---
+
+**Trigger 2: The parent re-renders.**
+
+When a parent component re-renders, React processes its returned JSX. Every component in that JSX is a child. By default, React calls the function of every child component. Not because the child's state changed. Not because the child's props necessarily changed. Simply because the parent re-rendered.
+
+```jsx
+function Parent() {
+  const [count, setCount] = React.useState(0);
+
+  return (
+    <div>
+      <Child /> {/* re-renders when Parent re-renders */}
+      <p>{count}</p>
+    </div>
+  );
+}
+
+function Child() {
+  // no state, no changing props
+  // still re-renders every time Parent does
+  return <p>I am child</p>;
+}
+```
+
+This is the trigger that surprises most developers. `Child` appears to have nothing to do with `count`. But React does not analyze the JSX to determine whether `Child`'s output could possibly have changed. It calls `Child` and lets the reconciler figure out whether the DOM needs updating. Calling `Child` is cheap. Figuring out ahead of time whether calling `Child` would change anything is not cheap in the general case.
+
+The exception is `React.memo`, which wraps the child in a shallow prop equality check. If no props changed by reference, React skips the call. If any prop changed, React calls the function. `React.memo` converts trigger 2 from "parent re-rendered" to "parent re-rendered AND at least one prop changed."
+
+---
+
+**Trigger 3: A context the component consumes changes.**
+
+When a Context value changes, every component in the tree that called `useContext` with that context re-renders, regardless of whether the component has a parent re-render or state change. This can be distant. The re-rendering consumer does not need to be a child of the component whose state caused the context value to change. It only needs to be a descendant of the Provider.
+
+```jsx
+const ThemeContext = React.createContext('light');
+
+function App() {
+  const [theme, setTheme] = React.useState('light');
+
+  return (
+    <ThemeContext.Provider value={theme}>
+      <Layout />
+      <button onClick={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}>
+        Toggle theme
+      </button>
+    </ThemeContext.Provider>
+  );
+}
+
+function Layout() {
+  // does not consume ThemeContext
+  // re-renders only because App (its parent) re-renders
+  return <Sidebar />;
+}
+
+function Sidebar() {
+  // does not consume ThemeContext
+  // re-renders because Layout re-renders (trigger 2)
+  return <NavItem />;
+}
+
+function NavItem() {
+  const theme = React.useContext(ThemeContext);
+  // re-renders because: (a) it is a descendant of re-rendering App (trigger 2)
+  // AND (b) it consumes a context whose value changed (trigger 3)
+  // in this case both triggers fire simultaneously
+  return <span className={theme}>Navigation</span>;
+}
+```
+
+Context trigger is distinct from the parent trigger because it bypasses `React.memo`. A component wrapped in `React.memo` will not re-render due to trigger 2 if its props are stable. But it will re-render due to trigger 3 if a context it consumes changes, because the context change is not detectable from props.
+
+```jsx
+const MemoizedNavItem = React.memo(NavItem);
+// React.memo prevents re-renders from trigger 2 (stable props)
+// but does NOT prevent re-renders from trigger 3 (context change)
+// if ThemeContext value changes, MemoizedNavItem still re-renders
+```
+
+This is the context performance trap. A single context value changing re-renders every consumer in the entire subtree, no matter how deep or how many layers of `React.memo` are in between. We cover this precisely in Phase 6.
+
+---
+
+**Trigger 4: A force re-render via useReducer or external subscription.**
+
+Any call to a state setter or dispatch function schedules a re-render, including when triggered from outside a user interaction: WebSocket messages, timer callbacks, subscription handlers, custom hooks that subscribe to external stores.
+
+```jsx
+function useWindowWidth() {
+  const [width, setWidth] = React.useState(window.innerWidth);
+
+  React.useEffect(() => {
+    function handleResize() {
+      setWidth(window.innerWidth); // trigger 1: state change
+      // this fires from a native event, not a React event
+      // but React 18 batches it anyway
+    }
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  return width;
+}
+
+function Header() {
+  const width = useWindowWidth();
+  // re-renders on every window resize because useWindowWidth
+  // calls setWidth, which is trigger 1 on the hook's state slot
+  return <div>Width: {width}</div>;
+}
+```
+
+`useSyncExternalStore` (React 18) is the correct API for subscribing to external stores. It uses a subscription + snapshot model that triggers re-renders when the external store changes:
+
+```jsx
+function useStore(subscribe, getSnapshot) {
+  return React.useSyncExternalStore(subscribe, getSnapshot);
+}
+```
+
+When the external store calls its subscribers, React schedules a re-render for every component that subscribed via `useSyncExternalStore`. This is trigger 4, and it is conceptually trigger 1 (React scheduling a re-render from a state-like signal) but originating from outside React's state system.
+
+---
+
+**The complete trigger map:**
+
+```
+Re-render triggers
+├── Trigger 1: Own state change
+│   ├── useState setter called with different value (Object.is check)
+│   ├── useReducer dispatch producing different state
+│   └── useSyncExternalStore store change
+│
+├── Trigger 2: Parent re-rendered
+│   ├── Default: always re-renders when parent does
+│   └── With React.memo: only re-renders if props changed
+│
+├── Trigger 3: Consumed context changed
+│   ├── useContext(SomeContext) re-renders when SomeContext.Provider
+│   │   value changes by Object.is
+│   └── NOT blocked by React.memo (memo checks props, not context)
+│
+└── Trigger 4: Force / external
+    └── (Largely subsumed by trigger 1 in modern React)
+```
+
+---
+
+### 6. Internals
+
+Each trigger maps to a specific operation in React's work scheduling system.
+
+**Trigger 1 internals: `scheduleUpdateOnFiber`.**
+
+When `dispatchSetState` is called (the setter from `useState`), it calls `scheduleUpdateOnFiber(fiber, lane)` with the Fiber node that owns that state slot. This function marks the Fiber and all its ancestors with the update's lane in their `childLanes` field. The `childLanes` propagation is how React knows a subtree has pending work without having to check every Fiber. It walks from the dirty Fiber to the root, marking each ancestor's `childLanes` with the lane. During the render phase, React uses `childLanes` to skip entire subtrees that have no pending work.
+
+```js
+// Simplified
+function scheduleUpdateOnFiber(fiber, lane) {
+  // Mark the fiber itself
+  fiber.lanes = mergeLanes(fiber.lanes, lane);
+
+  // Walk up the tree marking ancestors
+  let node = fiber.return; // parent
+  while (node !== null) {
+    node.childLanes = mergeLanes(node.childLanes, lane);
+    node = node.return;
+  }
+
+  // Schedule the root for processing
+  ensureRootIsScheduled(root);
+}
+```
+
+**Trigger 2 internals: the render phase default.**
+
+During the render phase, React calls `beginWork` on each Fiber. For a function component Fiber, `beginWork` checks whether to bail out or call the function. The default case without `React.memo`:
+
+```js
+// Simplified beginWork for function component
+function updateFunctionComponent(current, workInProgress, Component, nextProps) {
+  // Call the component function with new props
+  let nextChildren = renderWithHooks(current, workInProgress, Component, nextProps);
+  // reconcile children (diff the output)
+  reconcileChildren(current, workInProgress, nextChildren);
+  return workInProgress.child;
+}
+```
+
+There is no prop comparison here. The function is called. The reconciler will compare the output to the previous output and compute minimal DOM changes. The function is cheap to call. The comparison is where correctness is enforced.
+
+With `React.memo`, `beginWork` reaches a different code path:
+
+```js
+function updateMemoComponent(current, workInProgress, Component, nextProps) {
+  const prevProps = current.memoizedProps;
+  const compare = Component.compare || shallowEqual;
+
+  if (compare(prevProps, nextProps)) {
+    // props are equal: bail out, reuse previous output
+    return bailoutOnAlreadyFinishedWork(current, workInProgress, renderLanes);
+  }
+
+  // props changed: call the wrapped component
+  return updateSimpleMemoComponent(...);
+}
+```
+
+`bailoutOnAlreadyFinishedWork` does not call the function. It reuses the existing child Fibers. The component is skipped entirely.
+
+**Trigger 3 internals: context propagation.**
+
+When a Context Provider's value changes, React does not immediately re-render all consumers. Instead, it walks the Fiber tree below the Provider looking for consumers. When it finds a Fiber that has the context in its dependencies (tracked during mount when `useContext` was first called), it marks that Fiber with a `ForceUpdate` lane. This lane causes `beginWork` to call the component function regardless of props or `React.memo`.
+
+```js
+// During context value change, React walks subtree
+// When it finds a consumer fiber:
+fiber.lanes = mergeLanes(fiber.lanes, SomeUpdateLane);
+```
+
+The `ForceUpdate` lane bypasses `React.memo`'s prop comparison. Even if all props are identical, the forced lane causes the function to be called. This is why context re-renders bypass memoization.
+
+React 18 optimized context propagation: it only walks the subtree below the changed Provider, not the entire tree. Providers higher in the tree that did not change do not trigger this walk.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: Will `Child` re-render when the button is clicked? Explain precisely.**
+
+```jsx
+const Child = React.memo(function Child({ value }) {
+  console.log('Child rendered');
+  return <p>{value}</p>;
+});
+
+function Parent() {
+  const [count, setCount] = React.useState(0);
+  const [value] = React.useState('hello');
+
+  return (
+    <div>
+      <button onClick={() => setCount((c) => c + 1)}>Click</button>
+      <Child value={value} />
+    </div>
+  );
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+`Child` does not re-render after the first mount (in the normal case).
+
+When the button is clicked, `Parent`'s state (`count`) changes. This is trigger 1 for `Parent`. `Parent` re-renders. `Child` would normally re-render due to trigger 2 (parent re-render). But `Child` is wrapped in `React.memo`. React checks `prevProps.value === nextProps.value` using shallow equality. `value` is `'hello'` in both cases (same string primitive, `Object.is('hello', 'hello')` is `true`). The memo check passes. `Child` bails out. Zero renders for `Child` after mount.
+
+Caveat: in React 18 Strict Mode development, React double-invokes renders to detect impure components. You may see `Child rendered` twice on mount. This is not a production behavior.
+
+</details>
+
+---
+
+**Trap 2: `React.memo` is applied. Does it prevent the re-render here?**
+
+```jsx
+const ThemeConsumer = React.memo(function ThemeConsumer() {
+  const theme = React.useContext(ThemeContext);
+  return <div className={theme}>Themed content</div>;
+});
+
+function App() {
+  const [theme, setTheme] = React.useState('light');
+
+  return (
+    <ThemeContext.Provider value={theme}>
+      <ThemeConsumer />
+      <button onClick={() => setTheme('dark')}>Dark mode</button>
+    </ThemeContext.Provider>
+  );
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+No. `React.memo` does not prevent re-renders caused by context changes (trigger 3).
+
+When `theme` changes, `App` re-renders (trigger 1: own state change). `ThemeConsumer` would normally re-render due to trigger 2 (parent re-render). `React.memo` checks props. `ThemeConsumer` receives no props, so props are trivially equal. Trigger 2 is blocked by `React.memo`.
+
+However, `ThemeConsumer` also consumes `ThemeContext` via `useContext`. The context value changed. React marks `ThemeConsumer`'s Fiber with a `ForceUpdate` lane directly. This bypasses `React.memo`'s prop check. `ThemeConsumer` re-renders due to trigger 3 regardless of `React.memo`.
+
+`React.memo` only protects against trigger 2 (parent re-render propagation). It has no effect on trigger 3 (context changes).
+
+</details>
+
+---
+
+**Trap 3: How many times does `App` render, and what does each render's `console.log` show?**
+
+```jsx
+function App() {
+  const [a, setA] = React.useState(0);
+  const [b, setB] = React.useState(0);
+
+  console.log('render', a, b);
+
+  React.useEffect(() => {
+    setA(1);
+    setB(1);
+  }, []);
+
+  return (
+    <div>
+      {a} {b}
+    </div>
+  );
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+In React 18 with `createRoot`: two renders.
+
+Render 1 (mount): `render 0 0`. The component mounts. The effect has not run yet.
+
+After mount, the effect runs. `setA(1)` and `setB(1)` are called. React 18 batches these two state updates (both inside the same effect callback, which is a synchronous context). One re-render is scheduled.
+
+Render 2 (batched update): `render 1 1`. Both `a` and `b` are updated to `1` in the same render.
+
+In React 17 (legacy root): three renders. Effects after mount in React 17 did not batch state updates made inside them (they ran in `flushPassiveEffects` which did not set the batching context). `setA(1)` would trigger render 2 (`render 1 0`), and `setB(1)` would trigger render 3 (`render 1 1`).
+
+In Strict Mode development (React 18): the mount render is doubled for purity checking. You would see `render 0 0` twice, then `render 1 1` once. In production, it is `render 0 0` once then `render 1 1` once.
+
+</details>
+
+---
+
+**Trap 4: A developer adds `React.memo` to a component that uses `useContext`. They expect no more unnecessary re-renders. What is wrong with their expectation?**
+
+```jsx
+const UserCard = React.memo(function UserCard({ userId }) {
+  const theme = React.useContext(ThemeContext);
+  const notifications = React.useContext(NotificationContext);
+  return (
+    <div className={theme}>
+      User {userId}: {notifications.count} notifications
+    </div>
+  );
+});
+```
+
+<details>
+<summary>Answer</summary>
+
+`React.memo` protects against trigger 2 (parent re-renders with unchanged props) but not trigger 3 (context changes). `UserCard` consumes two contexts: `ThemeContext` and `NotificationContext`. Any change to either context value causes `UserCard` to re-render, regardless of `React.memo`. If `NotificationContext` updates its count every second (live notification badge), `UserCard` re-renders every second even if the theme never changes and the parent never re-renders.
+
+`React.memo` is not a general memoization shield. It shields against one specific trigger (parent re-render without prop changes). Components that consume frequently-changing contexts will re-render on those changes with or without `React.memo`.
+
+The solution for preventing unnecessary context re-renders is not `React.memo` but context splitting (separate `ThemeContext` from `NotificationContext` so they change independently), or selectors via `useMemo` to derive a stable value from the context, or a state library that supports granular subscriptions. We cover this in Phase 6.
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** List the four triggers that cause a React component to re-render. For each, state the specific condition and whether `React.memo` prevents it.
+
+<details>
+<summary>Answer</summary>
+
+Trigger 1: own state change. The component's `useState` setter or `useReducer` dispatch is called with a new value that differs from the current state under `Object.is`. `React.memo` does not apply: `React.memo` checks props, not internal state. A component always re-renders when its own state changes regardless of memoization.
+
+Trigger 2: parent re-render. The parent component re-renders and produces new JSX that includes this component. By default, React calls the child's function. `React.memo` prevents this: if all props are shallowly equal to the previous render's props, React bails out and skips the function call.
+
+Trigger 3: consumed context changes. A `Context.Provider` above this component in the tree updates its value, and this component called `useContext` for that context. React marks the component's Fiber with a force-update lane. `React.memo` does not prevent this: context changes bypass `React.memo`'s prop check.
+
+Trigger 4: external subscription via `useSyncExternalStore`. The subscribed external store changes and notifies React. This is mechanically trigger 1 (a state update is scheduled on the component's Fiber). `React.memo` does not prevent it for the same reason as trigger 1.
+
+</details>
+
+---
+
+**Q2.** A component has no state, no context, and its props never change. Its parent re-renders 100 times per second (an animation). The component re-renders 100 times per second too. Is this a problem, and what is the fix?
+
+<details>
+<summary>Answer</summary>
+
+Whether it is a problem depends on what the component does. If it is a simple component that renders a few DOM nodes and the reconciler finds nothing to update in the DOM, each render costs a function call plus a diff of a small element tree, which may be microseconds per render. 100 renders per second of a trivial component is not a problem.
+
+If the component is expensive (large subtree, complex calculations in the function body, many children to reconcile), 100 renders per second is a problem.
+
+The fix: `React.memo`. Wrapping the component in `React.memo` converts trigger 2 from "parent re-renders" to "parent re-renders AND at least one prop changed." If the props truly never change, `React.memo` causes React to skip the function call entirely on every parent re-render. The component renders once on mount and is then skipped for all 100 renders per second.
+
+The deeper fix: if the animation state is the cause of the 100 renders per second, consider whether that state can be colocated in a smaller component that does not render the expensive component as a child. State colocation and the children-as-props pattern can isolate animation re-renders to a small subtree without `React.memo`.
+
+</details>
+
+---
+
+**Q3.** What is `childLanes` on a Fiber node and why does React propagate it up the tree when state changes?
+
+<details>
+<summary>Answer</summary>
+
+`childLanes` is a bitmask on a Fiber node that indicates whether any component in the subtree below it has pending work. When `scheduleUpdateOnFiber` is called for a specific Fiber, React walks from that Fiber to the root, merging the update's lane into each ancestor's `childLanes`. This creates a trail of "there is pending work somewhere below me" markers up the entire ancestor chain to the root.
+
+During the render phase, when React processes a Fiber using `beginWork`, it checks if the Fiber itself has pending work (own `lanes`) and if its subtree has pending work (`childLanes`). If neither has pending work for the current render's lanes, React bails out the entire subtree without visiting any of its children. This allows React to skip arbitrarily large parts of the Fiber tree that are irrelevant to the current update, making reconciliation efficient even for large applications. Without `childLanes`, React would have to visit every node in the tree on every update to check if it needs work.
+
+</details>
+
+---
+
+**Q4.** A parent re-renders. A child is wrapped in `React.memo`. The child receives one prop: an object `{ id: 1, name: 'Shan' }` created inline in the parent's JSX. Does `React.memo` prevent the re-render?
+
+<details>
+<summary>Answer</summary>
+
+No. `React.memo` uses shallow equality by default, comparing each prop with `Object.is`. The object `{ id: 1, name: 'Shan' }` is an object literal created inline in the parent's JSX. Every time the parent renders, a new object is created with a new memory reference. Even though the contents are identical, `Object.is(previousObject, newObject)` is `false` because they are two different objects. The shallow equality check fails on this prop, and `React.memo` does not bail out. The child re-renders.
+
+The fix is to stabilize the object reference: move it outside the component if it is constant, or wrap it in `useMemo` if it depends on state or props. This is the same issue as passing inline functions as props: new reference on every render, defeating `React.memo`. Effective use of `React.memo` requires that the props passed to the memoized component are stable references.
+
+</details>
+
+---
+
+**Q5.** Two components consume the same context. One is high in the tree, one is deep. The context value changes once. Which one re-renders first, and why?
+
+<details>
+<summary>Answer</summary>
+
+The one higher in the tree re-renders first. React's render phase processes the Fiber tree in depth-first order, starting from the root and working downward. When a context value changes, React walks the subtree below the Provider marking consumer Fibers with a force-update lane. During the subsequent render phase, React processes Fibers in their depth-first order. The consumer higher in the tree (closer to the root) is encountered before the consumer deeper in the tree, and its function is called first.
+
+This ordering matters when a context consumer higher in the tree changes its own state during render in response to the new context value (though this is rare and usually a design smell). More practically, it means the full subtree of the higher consumer (including the lower consumer) is processed in one top-down pass, maintaining the invariant that parents are always rendered before their children in any given render pass.
+
+</details>
