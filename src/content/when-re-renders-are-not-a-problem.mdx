@@ -504,6 +504,6 @@ A: `fetchReport` wrapped in `useCallback` is appropriately applied. It is used a
 
 B: `total` wrapped in `useMemo` is appropriate if `data` can be large. `data?.rows.reduce(...)` is O(n) in the number of rows. If the dashboard re-renders for reasons unrelated to `data` (some parent state change), and `data` has thousands of rows, the reduce runs unnecessarily. `useMemo` with `[data]` caches the result and recomputes only when `data` changes. This is appropriate if rows count is large enough to measure as slow. For small datasets, it is speculative.
 
-C: `title` wrapped in `useMemo` is unnecessary. `` `Report #${reportId}` `` is string template interpolation. It executes in nanoseconds. `useMemo` overhead (reading hook slot, comparing `reportId` with `Object.is`) is comparable to or greater than the string interpolation. This is a textbook case of memoizing a trivial computation. Remove it: `const title = \`Report #${reportId}\``inline. No`useMemo`.
+C: `title` wrapped in `useMemo` is unnecessary. `` `Report #${reportId}` `` is string template interpolation. It executes in nanoseconds. `useMemo` overhead (reading hook slot, comparing `reportId` with `Object.is`) is comparable to or greater than the string interpolation. This is a textbook case of memoizing a trivial computation. Remove it: ``const title = `Report #${reportId}``inline. No`useMemo`.
 
 </details>
