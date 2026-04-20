@@ -1,0 +1,474 @@
+# SSR and SSG, When HTML is Generated and Why It Matters
+
+### 1. The Problem
+
+Phase 1.1 established that server-generated HTML solves the blank screen and SEO problems. But "generate HTML on the server" leaves open the most important question: when?
+
+There are two fundamentally different answers. Generate it fresh on every request, meaning every user who visits the page gets HTML built specifically for that moment. Or generate it once at build time, meaning the HTML is a static file prepared in advance and served instantly to every user.
+
+These are not just implementation details. They represent different contracts about data freshness, infrastructure requirements, and scalability. A blog post does not need to be freshly rendered for every reader: it was written once and does not change between requests. A stock price page cannot be pre-rendered: the price is different every second and must be fetched at request time.
+
+Next.js implements both strategies, calls them SSR and SSG, and gives you per-page control over which one to use. Choosing the wrong one either serves stale data where fresh data is required, or burns server resources rendering pages that could have been static files.
+
+---
+
+### 2. The Naive Attempt
+
+A developer building a product catalog in Next.js (Pages Router) reaches for `getServerSideProps` for every page because "I want the data to be fresh":
+
+```jsx
+// pages/products/[id].js
+
+export async function getServerSideProps({ params }) {
+  const product = await db.query(
+    'SELECT * FROM products WHERE id = $1',
+    [params.id]
+  );
+  return { props: { product } };
+}
+
+export default function ProductPage({ product }) {
+  return (
+    <div>
+      <h1>{product.name}</h1>
+      <p>${product.price}</p>
+    </div>
+  );
+}
+```
+
+This works. Every request hits the database, gets fresh data, renders fresh HTML. But this product catalog has 10,000 products. The prices change once a day in a batch update at midnight. The product descriptions and images never change.
+
+With `getServerSideProps`, every request to every product page hits the database. 50,000 daily visitors to the catalog generate 50,000 database queries. Each query adds 40-80ms to the response time. The page is functionally identical for 24 hours but is being re-rendered from scratch on every single request.
+
+The database is doing 50,000 queries per day for data that could have been computed once and served as a file. The infrastructure is paying the full cost of dynamic rendering for content that has no dynamic properties.
+
+---
+
+### 3. Why That Breaks
+
+The failure mode for using SSR where SSG is appropriate: **every request pays the full cost of data fetching and rendering, even when the output would be identical for every user during that time period.**
+
+The failure mode for using SSG where SSR is required: **the page is a static file generated at build time. If the underlying data changes, the static file is wrong until the next build. Users see stale data with no mechanism for correction.**
+
+```
+SSR misuse (serving stale-safe content dynamically):
+  User A requests /products/42  → database query → render → HTML sent
+  User B requests /products/42  → database query → render → HTML sent
+  User C requests /products/42  → database query → render → HTML sent
+  All three HTML responses are identical.
+  All three paid full rendering cost.
+
+SSG misuse (serving fresh-required content statically):
+  Build at 9am → HTML generated with price: $29.99
+  Price update at 10am → price is now $24.99
+  User at 11am requests /products/42 → receives $29.99 ← wrong
+  Next build at midnight → HTML regenerated
+  14 hours of wrong price served to all users
+```
+
+---
+
+### 4. Next.js's Mental Model
+
+The question that determines which strategy to use is: **does every user who requests this page at the same time need a different HTML response, or would the response be the same for all of them?**
+
+If the response is the same for all users at a given time (and that "given time" could be hours or days), the HTML can be generated once and reused. That is SSG. If the response depends on who is requesting (authenticated user's data), when they are requesting (live prices, real-time inventory), or what they are sending (search queries, form submissions), the HTML must be generated fresh. That is SSR.
+
+One sentence: SSG asks "can I prepare this HTML in advance?" and SSR asks "must I generate this HTML at the moment of the request?"
+
+---
+
+### 5. Next.js's Solution
+
+**Server-Side Rendering (SSR).**
+
+SSR generates HTML at request time. Every incoming HTTP request triggers a fresh render. Next.js executes your data fetching and component rendering on the server, produces HTML, and sends it to the client. No two requests are guaranteed to produce the same output.
+
+In the Pages Router, SSR is opt-in per page via `getServerSideProps`:
+
+```jsx
+// pages/dashboard.js
+export async function getServerSideProps(context) {
+  const { req, res, params, query } = context;
+
+  // context.req gives you access to cookies, headers
+  // You can read the session, authenticate the user
+  const session = await getSession(req);
+  if (!session) {
+    return {
+      redirect: { destination: '/login', permanent: false }
+    };
+  }
+
+  const userData = await fetchUserDashboardData(session.userId);
+
+  return {
+    props: { userData },
+    // No revalidate: this must be fresh every request
+  };
+}
+
+export default function Dashboard({ userData }) {
+  return <DashboardLayout data={userData} />;
+}
+```
+
+`getServerSideProps` receives the full request context: the request object (headers, cookies), the response object, URL parameters, and query strings. This is what makes SSR appropriate for authenticated pages: you can read the session cookie and personalize the response.
+
+The contract: every request to `/dashboard` runs `getServerSideProps`. The function runs on the server. Its return value is passed as props to the page component. The component is rendered to HTML. The HTML is sent to the browser.
+
+In the App Router, SSR is the behavior of any Server Component that fetches data without caching:
+
+```jsx
+// app/dashboard/page.js
+import { cookies } from 'next/headers';
+
+async function DashboardPage() {
+  const session = await getSession(cookies());
+
+  if (!session) redirect('/login');
+
+  const userData = await fetch(
+    `https://api.example.com/users/${session.userId}/dashboard`,
+    { cache: 'no-store' } // ← opt out of caching: fresh on every request
+  );
+  const data = await userData.json();
+
+  return <DashboardLayout data={data} />;
+}
+```
+
+`cache: 'no-store'` tells Next.js not to cache the fetch result. Every request fetches fresh data and renders fresh HTML. This is the App Router equivalent of SSR.
+
+**Static Site Generation (SSG).**
+
+SSG generates HTML at build time. When you run `next build`, Next.js pre-renders specified pages to static HTML files. These files are stored and served directly, without any per-request server execution. Every user who requests the page receives the same pre-built HTML file.
+
+In the Pages Router, SSG is the default behavior. If you export a page without `getServerSideProps` or `getStaticProps`, Next.js pre-renders it with no data. With `getStaticProps`, you opt into build-time data fetching:
+
+```jsx
+// pages/products/[id].js
+export async function getStaticProps({ params }) {
+  const product = await db.query(
+    'SELECT * FROM products WHERE id = $1',
+    [params.id]
+  );
+
+  return {
+    props: { product },
+    revalidate: 86400, // optionally: regenerate this page every 24 hours (ISR)
+  };
+}
+
+export async function getStaticPaths() {
+  // Tell Next.js which product IDs to pre-render at build time
+  const products = await db.query('SELECT id FROM products');
+
+  return {
+    paths: products.map(p => ({ params: { id: String(p.id) } })),
+    fallback: 'blocking', // for IDs not pre-rendered: generate on demand
+  };
+}
+
+export default function ProductPage({ product }) {
+  return (
+    <div>
+      <h1>{product.name}</h1>
+      <p>${product.price}</p>
+    </div>
+  );
+}
+```
+
+`getStaticPaths` tells Next.js which dynamic routes to pre-render. It runs once at build time. For 10,000 products, it generates 10,000 HTML files during the build. Each file is stored on disk (or in a CDN).
+
+The contract: the build runs `getStaticProps` for every product ID returned by `getStaticPaths`. Each call fetches the product data and renders the HTML. The output is a static `.html` file. At runtime, requests to `/products/42` are served the pre-built file with zero server computation and zero database queries.
+
+In the App Router, SSG is the default behavior for any Server Component whose `fetch` calls use the default caching (or `cache: 'force-cache'`):
+
+```jsx
+// app/products/[id]/page.js
+async function ProductPage({ params }) {
+  const response = await fetch(
+    `https://api.example.com/products/${params.id}`
+    // default: cache: 'force-cache' → builds static HTML at build time
+  );
+  const product = await response.json();
+
+  return (
+    <div>
+      <h1>{product.name}</h1>
+      <p>${product.price}</p>
+    </div>
+  );
+}
+
+// Tell Next.js which product IDs to pre-render
+export async function generateStaticParams() {
+  const products = await fetch('https://api.example.com/products').then(r => r.json());
+  return products.map(p => ({ id: String(p.id) }));
+}
+```
+
+`generateStaticParams` is the App Router equivalent of `getStaticPaths`. It runs at build time and returns the dynamic route parameters to pre-render.
+
+**The `fallback` behavior for unbuilt pages.**
+
+`getStaticPaths` and `generateStaticParams` pre-render specific pages at build time. But your catalog might have 10,000 products and you only pre-render the top 1,000 by traffic. What happens when a user requests a product that was not pre-rendered?
+
+```jsx
+// Pages Router
+return {
+  paths: top1000ProductPaths,
+  fallback: 'blocking', // generate on demand, user waits
+  // OR
+  fallback: true,       // show fallback component while generating
+  // OR
+  fallback: false,      // return 404 for unbuilt pages
+};
+```
+
+`fallback: 'blocking'` is the most common choice: Next.js generates the page on the first request (like SSR, the user waits), then caches the result as a static file. Subsequent requests are served the cached file. The first user pays the generation cost; every subsequent user gets static performance.
+
+**SSR vs SSG: the practical difference at request time.**
+
+```
+SSR request flow:
+Browser → Next.js server → getServerSideProps/Server Component runs
+        → Database/API called → Component rendered → HTML returned
+Latency: 40ms (network) + 50ms (DB query) + 10ms (render) = ~100ms added
+
+SSG request flow:
+Browser → CDN edge server → Static file served
+Latency: 10-20ms (CDN lookup and delivery)
+No server computation. No database query. Pure file serving.
+```
+
+This is the performance difference that makes SSG the correct default for content that does not require personalization: static files can be served from CDN edge nodes geographically close to the user. An SSG page in Mumbai is served from a Mumbai CDN node in 10ms. An SSR page must travel to the origin server, run the database query, and travel back, even if the result would be identical for every user.
+
+---
+
+### 6. Internals
+
+**What `next build` actually does for SSG pages.**
+
+When you run `next build`, Next.js performs three categories of work:
+
+```
+1. Compilation
+   TypeScript/JSX → JavaScript (via SWC or Webpack)
+   CSS → processed stylesheets
+   All route code → split into per-route JavaScript bundles
+
+2. Static generation
+   For each SSG route: Next.js runs a Node.js process that imports
+   your page component, calls getStaticProps/generateStaticParams,
+   renders the component tree to HTML using renderToPipeableStream,
+   and writes the output to .next/server/pages/*.html (Pages Router)
+   or .next/server/app/**/*.html (App Router)
+
+3. Manifest generation
+   Route manifest: maps URLs to bundles
+   Build manifest: maps chunk names to content hashes
+   Prerender manifest: lists all static routes and their revalidation config
+```
+
+The output of `next build` for a site with SSG pages:
+
+```
+.next/
+  server/
+    app/
+      products/
+        [id]/
+          page.html          ← pre-rendered HTML for each product
+          page.js            ← React component for client hydration
+    static/
+      chunks/
+        main-abc123.js       ← shared JavaScript bundles
+      css/
+        global-def456.css
+  BUILD_ID                   ← unique identifier for this build
+  prerender-manifest.json    ← maps SSG routes to revalidation config
+```
+
+Each `.html` file is the complete server-rendered output for that route. Each `.js` file is the client-side bundle for hydration.
+
+**How Next.js serves SSG pages from the filesystem.**
+
+In production, Next.js's request handler checks whether a route has a pre-rendered HTML file:
+
+```js
+// Simplified Next.js request handler
+async function handleRequest(req, res) {
+  const pathname = req.url;
+
+  // Check if this path has a pre-rendered static file
+  const staticHtmlPath = path.join(BUILD_DIR, 'server/app', pathname, 'page.html');
+
+  if (await fileExists(staticHtmlPath)) {
+    // Serve the static file: no rendering, no data fetching
+    const html = await fs.readFile(staticHtmlPath, 'utf8');
+    res.setHeader('Cache-Control', 's-maxage=31536000, stale-while-revalidate');
+    res.end(html);
+    return;
+  }
+
+  // No static file: render dynamically (SSR path)
+  await renderDynamically(req, res, pathname);
+}
+```
+
+The static file check is a filesystem lookup. It is orders of magnitude faster than running a React render and a database query. In deployment, these static files are typically uploaded to a CDN (Vercel's Edge Network, Cloudfront, Fastly), and the filesystem lookup becomes a CDN cache lookup at the edge node nearest the user.
+
+**The `__NEXT_DATA__` script for SSG pages.**
+
+Pre-rendered HTML files include the same `__NEXT_DATA__` script as SSR pages, but the data is baked in at build time:
+
+```html
+<!-- Generated at build time, embedded in the static HTML file -->
+<script id="__NEXT_DATA__" type="application/json">
+{
+  "props": {
+    "pageProps": {
+      "product": {
+        "id": 42,
+        "name": "Product A",
+        "price": 29.99,
+        "description": "..."
+      }
+    }
+  },
+  "page": "/products/[id]",
+  "query": { "id": "42" },
+  "buildId": "abc123"
+}
+</script>
+```
+
+The `buildId` is checked on the client. If the user navigates between pages using Next.js's client-side router and their build ID does not match the server's (they loaded the page with an old build), Next.js triggers a hard navigation to get fresh HTML rather than using potentially stale client-side data.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: What is the difference between `getServerSideProps` and `getStaticProps`? When would you use each?**
+
+<details>
+<summary>Answer</summary>
+
+`getServerSideProps` runs on every request. It has access to the full HTTP context: headers, cookies, query parameters. It is appropriate for pages that require authentication (reading session cookies), personalization (different content per user), or real-time data (stock prices, live scores, inventory that changes by the minute). The tradeoff is performance: every request pays the cost of running the function, which typically includes a database query or API call.
+
+`getStaticProps` runs once at build time (and optionally on a schedule via `revalidate`). It has no access to the HTTP request context, only to the route parameters. It is appropriate for content that is the same for all users and changes infrequently: marketing pages, blog posts, product catalogs, documentation. The benefit is performance: the HTML is a static file served from a CDN with no per-request computation.
+
+The deciding question: does the page content depend on who is requesting it or when they are requesting it? If yes, `getServerSideProps`. If no, `getStaticProps`.
+
+An important nuance: `getStaticProps` with `revalidate` is ISR (covered in Phase 1.4), which gives you a middle ground: static file performance with automatic background regeneration when the data changes.
+
+</details>
+
+---
+
+**Trap 2: A developer uses `getStaticPaths` with `fallback: false`. A new product is added to the database after the build. What happens when a user requests that product's page?**
+
+<details>
+<summary>Answer</summary>
+
+The user receives a 404 page. `fallback: false` tells Next.js that any route not pre-rendered at build time does not exist. There is no mechanism to generate it on demand. The pre-rendered paths list is exhaustive: anything not in it returns a 404.
+
+This is appropriate when the set of valid paths is known completely at build time and does not change between builds (a documentation site with a fixed set of pages, a blog where new posts require a new build). It is wrong for content where new items can be added without a build: an e-commerce catalog where products are added by a content team, a blog where posts are published continuously.
+
+For continuously growing content, `fallback: 'blocking'` or `fallback: true` is correct: new paths not covered by the initial build are generated on demand on the first request, then cached as static files. Subsequent requests to the new path are served the cached file. `fallback: 'blocking'` makes the first user wait for generation. `fallback: true` immediately shows a loading state (the component receives `router.isFallback === true`) while generation happens in the background, then the page is replaced with the generated content.
+
+</details>
+
+---
+
+**Trap 3: Can you use `getServerSideProps` and `getStaticProps` in the same page file?**
+
+<details>
+<summary>Answer</summary>
+
+No. A Next.js page can export only one of these at a time. They represent mutually exclusive rendering strategies. Exporting both from the same file will cause a build error.
+
+The rationale is that they represent fundamentally different contracts about when the page is rendered. `getServerSideProps` says "render at request time." `getStaticProps` says "render at build time." These cannot be simultaneously true for the same page.
+
+However, you can mix strategies across different pages in the same application. `/products/[id]` can use `getStaticProps` (pre-render product pages), while `/dashboard` uses `getServerSideProps` (authenticate and personalize), and `/about` exports neither (fully static, rendered at build time with no data). Next.js applies the rendering strategy per page, not per application.
+
+</details>
+
+---
+
+**Trap 4: In the App Router, how do you explicitly opt a Server Component into SSR (re-render on every request) vs. SSG (render at build time)?**
+
+<details>
+<summary>Answer</summary>
+
+The mechanism is the `cache` option on `fetch` calls within the Server Component.
+
+For SSR behavior (fresh data on every request): use `cache: 'no-store'` on the fetch call. This tells Next.js's extended `fetch` to bypass all caching and always make a fresh network request. The route will not be pre-rendered at build time and will be rendered dynamically on every request.
+
+```jsx
+const data = await fetch(url, { cache: 'no-store' });
+```
+
+For SSG behavior (rendered at build time, cached): use `cache: 'force-cache'` (the default) or omit the cache option. Next.js will pre-render the route at build time and serve the cached HTML.
+
+```jsx
+const data = await fetch(url); // default: force-cache
+const data = await fetch(url, { cache: 'force-cache' }); // explicit
+```
+
+Additionally, you can use `next: { revalidate: N }` for ISR behavior: cache the result and regenerate after N seconds. The `noStore()` function from `next/cache` is an alternative to `cache: 'no-store'` that opts the entire route out of static generation.
+
+There is also a route-level override: exporting `export const dynamic = 'force-dynamic'` from a route segment file forces the entire route to SSR regardless of individual fetch configurations. `export const dynamic = 'force-static'` forces SSG even if the route would otherwise be dynamic.
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** A page shows a user's personalized feed of posts. The feed is different for every logged-in user and updates when new posts are published. Should this be SSR or SSG? Justify using the deciding question.
+
+<details>
+<summary>Answer</summary>
+
+SSR. Applying the deciding question: "does every user who requests this page at the same time need a different HTML response?" Yes. The feed is personalized per user: user A and user B requesting the same URL at the same time need different HTML because their feeds contain different posts. SSG cannot produce different HTML per user because it generates one HTML file per route, shared by all users. SSR is required because the page content depends on who is requesting it (their session/identity determines their feed content).
+
+Additionally, the feed updates when new posts are published, meaning the correct response changes over time based on external events not controlled by the page request itself. This further confirms SSR: the data must be fetched fresh on each request to reflect the latest posts for that specific user.
+
+</details>
+
+---
+
+**Q2.** What does `getStaticPaths` return, and what happens at build time vs. request time for paths not included in its return value when `fallback: 'blocking'` is set?
+
+<details>
+<summary>Answer</summary>
+
+`getStaticPaths` returns an object with two fields: `paths` (an array of parameter objects representing the routes to pre-render at build time) and `fallback` (the behavior for routes not in the `paths` array).
+
+At build time: Next.js calls `getStaticPaths`, collects the returned paths, and calls `getStaticProps` for each one. Each call produces a pre-rendered HTML file stored on disk. These files are served instantly to users who request those routes.
+
+For routes not in the `paths` array with `fallback: 'blocking'`: at request time, the first user to request that route triggers on-demand generation. Next.js calls `getStaticProps` for the specific route parameters, renders the component, produces HTML, stores it on disk (the same as if it had been built at build time), and sends it to the user. The user waits for this generation, which is why it is called "blocking." All subsequent users who request the same route receive the cached static file immediately.
+
+The practical implication: with `fallback: 'blocking'`, you can pre-render your most important or most visited routes at build time (fast for users who matter most) while allowing the full catalog to be generated on demand (new routes generated once, then cached forever until the next build or revalidation).
+
+</details>
+
+---
+
+**Q3.** Why can SSG pages be served faster than SSR pages even when both produce the same HTML output?
+
+<details>
+<summary>Answer</summary>
+
+SSG pages are pre-built HTML files that can be stored on a CDN. When a user requests an SSG page, the request is handled by the nearest CDN edge node, which serves the file directly from its cache. There is no origin server round-trip, no Node.js process execution, no database query, no React rendering. The response is a file read and a network transmission: 10-30ms total.
+
+SSR pages cannot be stored on a CDN in this way because each request may produce different output (different user, different time). Even in cases where the output would be identical for all users at a given moment, the server cannot know this ahead of time without executing the data fetching. The request must travel to an origin server, which runs a Node.js process, executes `getServerSideProps`, queries a database or API, renders the React component tree to HTML, and then sends the response. This chain typically adds 50-200ms of latency compared to a CDN-cached file.
+
+The performance gap is structural, not implementation-specific. A static file served from a CDN edge is fundamentally faster than any server-rendered response because it eliminates compute, network round-trips to the origin, and data fetching from the critical path.
+
+</details>

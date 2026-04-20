@@ -551,5 +551,54 @@
     "slug": "how-hooks-are-stored-on-fiber-nodes",
     "category": "react",
     "subcategory": "react-internals"
+  },
+  {
+    "id": 84,
+    "title": "The problem React alone has: CSR and the blank screen",
+    "slug": "csr-and-the-blank-screen",
+    "category": "nextjs",
+    "subcategory": "rendering-strategies"
+  },
+  {
+    "id": 85,
+    "title": "SSR and SSG, when HTML is generated and why it matters",
+    "slug": "ssr-and-ssg-when-html-is-generated",
+    "category": "nextjs",
+    "subcategory": "rendering-strategies"
+  },
+  {
+    "id": 86,
+    "title": "ISR, Incremental Static Regeneration",
+    "slug": "incremental-static-regeneration",
+    "category": "nextjs",
+    "subcategory": "rendering-strategies"
+  },
+  {
+    "id": 88,
+    "title": "The rendering decision matrix",
+    "slug": "rendering-decision-matrix",
+    "category": "nextjs",
+    "subcategory": "rendering-strategies"
+  },
+  {
+    "id": 89,
+    "title": "File-based routing: pages, layouts, templates",
+    "slug": "file-based-routing",
+    "category": "nextjs",
+    "subcategory": "app-router"
+  },
+  {
+    "id": 90,
+    "title": "Server Components, Client Components, and data fetching",
+    "slug": "server-and-client-components-and-data-fetching",
+    "category": "nextjs",
+    "subcategory": "app-router"
+  },
+  {
+    "id": 93,
+    "title": "The four caching layers, opting out, and on-demand revalidation",
+    "slug": "caching-layers-opt-out-and-revalidation",
+    "category": "nextjs",
+    "subcategory": "caching"
   }
 ]
