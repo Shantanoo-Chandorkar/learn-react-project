@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import * as Accordion from '@radix-ui/react-accordion';
 import { CheckCircleIcon, ChevronDownIcon } from '@heroicons/react/24/solid';
 import useStore from '../../store/useStore';
-import useSidebarNavigation from '../../hooks/useSidebarNavigation';
+import useSidebarNavigation from '../../Hooks/useSidebarNavigation';
 
 /**
  * Presentational Sidebar Component
