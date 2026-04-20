@@ -247,10 +247,9 @@ Time-based ISR alone is insufficient for inventory data where correctness is bus
 Tag the product fetch:
 
 ```jsx
-const product = await fetch(
-  `https://api.example.com/products/${params.id}`,
-  { next: { revalidate: 3600, tags: [`product-${params.id}`] } }
-);
+const product = await fetch(`https://api.example.com/products/${params.id}`, {
+  next: { revalidate: 3600, tags: [`product-${params.id}`] },
+});
 ```
 
 When the inventory system marks the product as out of stock, it calls your revalidation endpoint:

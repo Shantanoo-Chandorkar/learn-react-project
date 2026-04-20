@@ -117,11 +117,7 @@ function ProductSection({ category }) {
 
   return (
     <div>
-      <ProductList
-        category={category}
-        selectedItem={selectedItem}
-        onSelect={setSelectedItem}
-      />
+      <ProductList category={category} selectedItem={selectedItem} onSelect={setSelectedItem} />
       <ProductDetail item={selectedItem} />
     </div>
   );
@@ -131,7 +127,7 @@ function ProductList({ category, selectedItem, onSelect }) {
   // ProductList legitimately cares about selection: it highlights selected items
   return (
     <ul>
-      {getProducts(category).map(p => (
+      {getProducts(category).map((p) => (
         <ProductItem
           key={p.id}
           product={p}
@@ -164,16 +160,9 @@ const ThemeContext = React.createContext('light');
 function ThemeProvider({ children }) {
   const [theme, setTheme] = React.useState('light');
 
-  const value = React.useMemo(
-    () => ({ theme, setTheme }),
-    [theme]
-  );
+  const value = React.useMemo(() => ({ theme, setTheme }), [theme]);
 
-  return (
-    <ThemeContext.Provider value={value}>
-      {children}
-    </ThemeContext.Provider>
-  );
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
 // Used throughout the app. Every consumer re-renders on theme change.
@@ -209,28 +198,35 @@ import { create } from 'zustand';
 
 const useCartStore = create((set, get) => ({
   items: [],
-  addItem: (item) => set(state => ({ items: [...state.items, item] })),
-  removeItem: (id) => set(state => ({
-    items: state.items.filter(i => i.id !== id)
-  })),
+  addItem: (item) => set((state) => ({ items: [...state.items, item] })),
+  removeItem: (id) =>
+    set((state) => ({
+      items: state.items.filter((i) => i.id !== id),
+    })),
   total: () => get().items.reduce((sum, i) => sum + i.price, 0),
 }));
 
 // Each component subscribes to only what it needs:
 function HeaderCartBadge() {
-  const itemCount = useCartStore(state => state.items.length);
+  const itemCount = useCartStore((state) => state.items.length);
   // Only re-renders when items.length changes, not on price changes
   return <span>{itemCount}</span>;
 }
 
 function CartDrawer() {
-  const items = useCartStore(state => state.items);
+  const items = useCartStore((state) => state.items);
   // Re-renders when items array changes
-  return <ul>{items.map(i => <li key={i.id}>{i.name}</li>)}</ul>;
+  return (
+    <ul>
+      {items.map((i) => (
+        <li key={i.id}>{i.name}</li>
+      ))}
+    </ul>
+  );
 }
 
 function CheckoutSummary() {
-  const total = useCartStore(state => state.total());
+  const total = useCartStore((state) => state.total());
   // Re-renders when total changes
   return <p>Total: ${total}</p>;
 }
@@ -302,18 +298,18 @@ const store = {
   setState(updater) {
     const newState = updater(this.state);
     this.state = newState;
-    this.listeners.forEach(listener => listener());
+    this.listeners.forEach((listener) => listener());
   },
 
   subscribe(listener) {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
-  }
+  },
 };
 
 // The hook:
 function useStore(selector) {
-  const [, forceRender] = React.useReducer(c => c + 1, 0);
+  const [, forceRender] = React.useReducer((c) => c + 1, 0);
   const selectorRef = React.useRef(selector);
   const selectedStateRef = React.useRef(selector(store.state));
 
@@ -341,7 +337,7 @@ function useStore(selector) {
   return React.useSyncExternalStore(
     store.subscribe,
     () => selector(store.getState()),
-    () => selector(store.getServerState()) // for SSR
+    () => selector(store.getServerState()), // for SSR
   );
 }
 ```

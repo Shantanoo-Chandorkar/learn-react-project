@@ -111,12 +111,9 @@ In the App Router, ISR is controlled per fetch call rather than per page:
 ```jsx
 // app/products/[id]/page.js
 async function ProductPage({ params }) {
-  const product = await fetch(
-    `https://api.example.com/products/${params.id}`,
-    {
-      next: { revalidate: 3600 } // ISR: cache for 1 hour
-    }
-  ).then(r => r.json());
+  const product = await fetch(`https://api.example.com/products/${params.id}`, {
+    next: { revalidate: 3600 }, // ISR: cache for 1 hour
+  }).then((r) => r.json());
 
   return (
     <div>
@@ -134,16 +131,14 @@ Multiple fetch calls in the same route can have different revalidation windows:
 ```jsx
 async function ArticlePage({ params }) {
   // Article content: revalidate every 24 hours
-  const article = await fetch(
-    `https://api.example.com/articles/${params.slug}`,
-    { next: { revalidate: 86400 } }
-  ).then(r => r.json());
+  const article = await fetch(`https://api.example.com/articles/${params.slug}`, {
+    next: { revalidate: 86400 },
+  }).then((r) => r.json());
 
   // Related articles: revalidate every hour
-  const related = await fetch(
-    `https://api.example.com/articles/related/${params.slug}`,
-    { next: { revalidate: 3600 } }
-  ).then(r => r.json());
+  const related = await fetch(`https://api.example.com/articles/related/${params.slug}`, {
+    next: { revalidate: 3600 },
+  }).then((r) => r.json());
 
   return <ArticleLayout article={article} related={related} />;
 }
@@ -163,10 +158,12 @@ export const revalidate = 3600;
 
 async function ProductPage({ params }) {
   // Both fetches inherit revalidate: 3600
-  const product = await fetch(`https://api.example.com/products/${params.id}`)
-    .then(r => r.json());
-  const inventory = await fetch(`https://api.example.com/inventory/${params.id}`)
-    .then(r => r.json());
+  const product = await fetch(`https://api.example.com/products/${params.id}`).then((r) =>
+    r.json(),
+  );
+  const inventory = await fetch(`https://api.example.com/inventory/${params.id}`).then((r) =>
+    r.json(),
+  );
 
   return <ProductLayout product={product} inventory={inventory} />;
 }
@@ -222,15 +219,12 @@ Next.js: revalidatePath('/blog/nextjs-isr-explained')
 ```jsx
 // Tag fetches with a data identifier
 async function ProductPage({ params }) {
-  const product = await fetch(
-    `https://api.example.com/products/${params.id}`,
-    {
-      next: {
-        revalidate: 3600,
-        tags: [`product-${params.id}`, 'products'] // multiple tags
-      }
-    }
-  ).then(r => r.json());
+  const product = await fetch(`https://api.example.com/products/${params.id}`, {
+    next: {
+      revalidate: 3600,
+      tags: [`product-${params.id}`, 'products'], // multiple tags
+    },
+  }).then((r) => r.json());
 
   return <ProductLayout product={product} />;
 }
@@ -269,7 +263,7 @@ On each request, Next.js computes whether the entry is stale:
 
 ```js
 function isStale(cacheEntry) {
-  const age = (Date.now() / 1000) - cacheEntry.lastModified;
+  const age = Date.now() / 1000 - cacheEntry.lastModified;
   return age > cacheEntry.revalidate;
 }
 ```

@@ -18,7 +18,7 @@ You want to break up a large render into chunks. First instinct: use `setTimeout
 
 ```js
 function renderChunk(fibers) {
-  fibers.slice(0, 10).forEach(fiber => processWork(fiber));
+  fibers.slice(0, 10).forEach((fiber) => processWork(fiber));
   const remaining = fibers.slice(10);
   if (remaining.length > 0) {
     setTimeout(() => renderChunk(remaining), 0);
@@ -78,11 +78,11 @@ The Scheduler has its own priority levels, separate from React's Lanes (though R
 
 ```js
 // scheduler/src/SchedulerPriorities.js
-const ImmediatePriority   = 1;  // synchronous, no deferral
+const ImmediatePriority = 1; // synchronous, no deferral
 const UserBlockingPriority = 2; // 250ms expiry (user interactions)
-const NormalPriority      = 3;  // 5000ms expiry (default)
-const LowPriority         = 4;  // 10000ms expiry
-const IdlePriority        = 5;  // never expires, runs when idle
+const NormalPriority = 3; // 5000ms expiry (default)
+const LowPriority = 4; // 10000ms expiry
+const IdlePriority = 5; // never expires, runs when idle
 ```
 
 The Scheduler maintains a min-heap of tasks ordered by expiration time (priority + enqueue time). The task with the nearest expiration time is always at the top:
@@ -245,7 +245,7 @@ The Scheduler's core data structure is a min-heap. Tasks are ordered by `sortInd
 function push(heap, node) {
   const index = heap.length;
   heap.push(node);
-  siftUp(heap, node, index);  // bubble up to maintain heap property
+  siftUp(heap, node, index); // bubble up to maintain heap property
 }
 
 function peek(heap) {
@@ -258,7 +258,7 @@ function pop(heap) {
   const last = heap.pop();
   if (last !== first) {
     heap[0] = last;
-    siftDown(heap, last, 0);  // bubble down
+    siftDown(heap, last, 0); // bubble down
   }
   return first;
 }

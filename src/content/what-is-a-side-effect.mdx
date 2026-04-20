@@ -6,7 +6,7 @@ You are writing a function. It takes some input and returns some output. Clean, 
 
 Now your function needs to do something else. Save data to localStorage. Start a timer. Subscribe to a WebSocket. Update the browser tab title. Fetch data from a server. Log something to the console.
 
-These things have something in common: they reach outside the function's own scope and change or read something in the world. The function is no longer self-contained. It has a *side effect*.
+These things have something in common: they reach outside the function's own scope and change or read something in the world. The function is no longer self-contained. It has a _side effect_.
 
 In plain JavaScript, this is not a problem you think about. You call `document.title = "New Title"` wherever you want. You set up a `setInterval` wherever it's convenient. There are no rules. There's also no system. You manage it all yourself, or you don't manage it at all, and things break in ways that are hard to trace.
 
@@ -43,11 +43,7 @@ function ClickCounter() {
   // instinct: just do it here
   document.title = `Clicked ${count} times`;
 
-  return (
-    <button onClick={() => setCount(c => c + 1)}>
-      Clicked {count} times
-    </button>
-  );
+  return <button onClick={() => setCount((c) => c + 1)}>Clicked {count} times</button>;
 }
 ```
 
@@ -61,7 +57,7 @@ But you have made a mistake you cannot see yet.
 
 React renders your component function more often than you think, for reasons that have nothing to do with your state changing. Strict Mode renders components twice in development on purpose. Concurrent Mode can render a component without committing it to the DOM at all — a speculative render that gets thrown away. A parent re-rendering causes every child to re-render by default.
 
-When you put a side effect directly in the render function body, you are saying: *every time React calls this function for any reason, execute this side effect.* That is almost never what you mean.
+When you put a side effect directly in the render function body, you are saying: _every time React calls this function for any reason, execute this side effect._ That is almost never what you mean.
 
 The specific failure modes:
 
@@ -100,7 +96,7 @@ Side effects (not safe in render):
   - setInterval(...)
   - addEventListener(...)
   - console.log(...)   ← technically a side effect, though benign
-  - new WebSocket(...) 
+  - new WebSocket(...)
 ```
 
 React's mental model for dealing with this is a clear separation of two phases:
@@ -129,11 +125,7 @@ function ClickCounter() {
     document.title = `Clicked ${count} times`;
   }, [count]); // only re-run when count changes
 
-  return (
-    <button onClick={() => setCount(c => c + 1)}>
-      Clicked {count} times
-    </button>
-  );
+  return <button onClick={() => setCount((c) => c + 1)}>Clicked {count} times</button>;
 }
 ```
 
@@ -180,8 +172,8 @@ React calls your component function. You return JSX. React converts that JSX int
 
 React takes the computed mutations and applies them to the actual DOM. This is the moment the user sees the update. React then moves into the post-commit phase:
 
-1. Calls cleanup functions from the *previous* render's effects
-2. Calls the effect functions from the *current* render's effects
+1. Calls cleanup functions from the _previous_ render's effects
+2. Calls the effect functions from the _current_ render's effects
 
 This ordering is deliberate. Your effect runs after the browser has painted the new UI. When your effect reads from the DOM (measuring a layout, for example), it reads the committed, current DOM — not a stale snapshot.
 
@@ -220,8 +212,8 @@ function UserProfile({ userId }) {
   const [user, setUser] = React.useState(null);
 
   fetch(`/api/users/${userId}`)
-    .then(r => r.json())
-    .then(data => setUser(data));
+    .then((r) => r.json())
+    .then((data) => setUser(data));
 
   return <div>{user?.name ?? 'Loading...'}</div>;
 }
@@ -243,7 +235,7 @@ The fix is `useEffect` with `userId` as a dependency, and an abort controller fo
 
 An event handler is not a side effect in the `useEffect` sense, even though it does impure work.
 
-Side effects in the `useEffect` sense are operations that need to happen *as a consequence of the component rendering* — they synchronize external systems with the current state of the component. They are triggered by React's render cycle, not by user interaction.
+Side effects in the `useEffect` sense are operations that need to happen _as a consequence of the component rendering_ — they synchronize external systems with the current state of the component. They are triggered by React's render cycle, not by user interaction.
 
 Event handlers are triggered by user interaction. React has a clear, synchronous moment to run them (the user clicked), they run to completion, and they're done. React controls their lifecycle through the event delegation system. They do not need the lifecycle management that `useEffect` provides.
 

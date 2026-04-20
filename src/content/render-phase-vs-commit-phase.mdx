@@ -17,14 +17,14 @@ Before Fiber, React's original reconciler (the Stack reconciler) processed the e
 ```js
 // Stack reconciler: one synchronous pass
 function performUpdate(component) {
-  const newOutput = component.render();         // call function
+  const newOutput = component.render(); // call function
   const changes = diff(component.output, newOutput); // diff output
-  applyChanges(changes);                        // write DOM
+  applyChanges(changes); // write DOM
   component.output = newOutput;
 
   // recurse into children
-  newOutput.children.forEach(child => {
-    performUpdate(child);                       // recursive call
+  newOutput.children.forEach((child) => {
+    performUpdate(child); // recursive call
   });
 }
 ```
@@ -294,7 +294,7 @@ function Modal({ isOpen, onMeasure }) {
   React.useLayoutEffect(() => {
     if (isOpen && ref.current) {
       const height = ref.current.getBoundingClientRect().height;
-      onMeasure(height);  // calls setState in parent
+      onMeasure(height); // calls setState in parent
     }
   }, [isOpen]);
 

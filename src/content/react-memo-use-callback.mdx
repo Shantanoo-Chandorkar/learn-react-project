@@ -41,9 +41,7 @@ function Dashboard() {
 
   return (
     <div>
-      <button onClick={() => setCount(c => c + 1)}>
-        Clicks: {count}
-      </button>
+      <button onClick={() => setCount((c) => c + 1)}>Clicks: {count}</button>
       <UserProfile user={user} onFollow={handleFollow} />
     </div>
   );
@@ -190,9 +188,12 @@ function Dashboard() {
   }, []);
 
   // Correct: userId in deps, function recreated when userId changes
-  const handleFollow = React.useCallback((id) => {
-    console.log('following from user', userId);
-  }, [userId]);
+  const handleFollow = React.useCallback(
+    (id) => {
+      console.log('following from user', userId);
+    },
+    [userId],
+  );
 
   // Also correct: use functional update form to avoid needing count in deps
   const handleReset = React.useCallback(() => {
@@ -211,14 +212,14 @@ Setter functions from `useState` and `useReducer` are stable by guarantee. React
 
 ```jsx
 // Wrong: new config object on every Dashboard render
-<UserProfile user={user} config={{ theme: 'dark', size: 'large' }} />
+<UserProfile user={user} config={{ theme: 'dark', size: 'large' }} />;
 
 // Correct: stable config reference
 const config = React.useMemo(
   () => ({ theme: 'dark', size: 'large' }),
-  [] // no deps: config never changes
+  [], // no deps: config never changes
 );
-<UserProfile user={user} config={config} />
+<UserProfile user={user} config={config} />;
 ```
 
 This is the secondary use case for `useMemo`: reference stability for objects passed to memoized children. We cover `useMemo`'s primary use case (expensive computation caching) in Module 7.3.
@@ -247,7 +248,7 @@ function Dashboard() {
 
   return (
     <div>
-      <button onClick={() => setCount(c => c + 1)}>Clicks: {count}</button>
+      <button onClick={() => setCount((c) => c + 1)}>Clicks: {count}</button>
       <UserProfile user={user} onFollow={handleFollow} />
     </div>
   );
@@ -281,9 +282,7 @@ function updateMemoComponent(current, workInProgress, Component, nextProps, rend
 
   // Props changed: call the wrapped component
   const type = Component.type;
-  const newChildren = renderWithHooks(
-    current, workInProgress, type, nextProps, renderLanes
-  );
+  const newChildren = renderWithHooks(current, workInProgress, type, nextProps, renderLanes);
   reconcileChildren(current, workInProgress, newChildren, renderLanes);
   return workInProgress.child;
 }
@@ -304,8 +303,7 @@ function shallowEqual(objA, objB) {
 
   for (let i = 0; i < keysA.length; i++) {
     const key = keysA[i];
-    if (!Object.prototype.hasOwnProperty.call(objB, key) ||
-        !Object.is(objA[key], objB[key])) {
+    if (!Object.prototype.hasOwnProperty.call(objB, key) || !Object.is(objA[key], objB[key])) {
       return false;
     }
   }
@@ -368,7 +366,7 @@ function Dashboard() {
 
   return (
     <>
-      <button onClick={() => setCount(c => c + 1)}>{count}</button>
+      <button onClick={() => setCount((c) => c + 1)}>{count}</button>
       <UserProfile user={user} onFollow={() => {}} />
     </>
   );
@@ -395,7 +393,7 @@ The fix requires stabilizing both props:
 const user = React.useMemo(() => ({ name: 'Shan', id: 1 }), []);
 const handleFollow = React.useCallback(() => {}, []);
 
-<UserProfile user={user} onFollow={handleFollow} />
+<UserProfile user={user} onFollow={handleFollow} />;
 ```
 
 Now `user` is the same object reference, `handleFollow` is the same function reference, both `Object.is` checks pass, and `UserProfile` bails out.
@@ -417,10 +415,7 @@ function ChatRoom({ roomId }) {
 
   return (
     <div>
-      <input
-        value={message}
-        onChange={e => setMessage(e.target.value)}
-      />
+      <input value={message} onChange={(e) => setMessage(e.target.value)} />
       <SendButton onSend={sendMessage} />
     </div>
   );
@@ -470,9 +465,7 @@ function App() {
   const [filter, setFilter] = React.useState('all');
   const items = useItems(filter); // returns stable array from cache
 
-  const renderItem = React.useCallback((item) => (
-    <li key={item.id}>{item.name}</li>
-  ), []); // no deps
+  const renderItem = React.useCallback((item) => <li key={item.id}>{item.name}</li>, []); // no deps
 
   return (
     <>

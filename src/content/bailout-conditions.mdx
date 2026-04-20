@@ -39,13 +39,13 @@ function DataTable({ rows, columns }) {
 
 This immediately hits a wall. Inside the component function, you don't have access to the previous render's output. You can't return it even if you wanted to. The component function doesn't receive "what you returned last time" as an argument. Every call starts fresh.
 
-The check needs to happen *before* React calls the component function. That's not something a component can do to itself from the inside.
+The check needs to happen _before_ React calls the component function. That's not something a component can do to itself from the inside.
 
 ---
 
 ### 3. Why That Breaks
 
-The component function is the wrong place for this check. By the time React calls it, work has already started. What you need is a gate that React checks *before* invoking the function — a signal that says "the output of this component is guaranteed to be identical to last time, so don't bother."
+The component function is the wrong place for this check. By the time React calls it, work has already started. What you need is a gate that React checks _before_ invoking the function — a signal that says "the output of this component is guaranteed to be identical to last time, so don't bother."
 
 React has several such gates, each applying at a different layer:
 
@@ -75,9 +75,11 @@ This is why referential stability matters. A new object `{}` created on every re
 const DataTable = React.memo(function DataTable({ rows, columns }) {
   return (
     <table>
-      {rows.map(row => (
+      {rows.map((row) => (
         <tr key={row.id}>
-          {columns.map(col => <td key={col}>{row[col]}</td>)}
+          {columns.map((col) => (
+            <td key={col}>{row[col]}</td>
+          ))}
         </tr>
       ))}
     </table>
@@ -91,14 +93,15 @@ The default comparison is shallow: every top-level prop is compared with `Object
 
 ```jsx
 const DataTable = React.memo(
-  function DataTable({ rows, columns }) { /* ... */ },
+  function DataTable({ rows, columns }) {
+    /* ... */
+  },
   function arePropsEqual(prevProps, nextProps) {
     // return true to skip re-render, false to allow it
     return (
-      prevProps.rows.length === nextProps.rows.length &&
-      prevProps.columns === nextProps.columns
+      prevProps.rows.length === nextProps.rows.length && prevProps.columns === nextProps.columns
     );
-  }
+  },
 );
 ```
 
@@ -114,7 +117,7 @@ function Parent() {
 
   return (
     <div>
-      <button onClick={() => setCount(c => c + 1)}>Increment</button>
+      <button onClick={() => setCount((c) => c + 1)}>Increment</button>
       {/* new array reference on every render — memo is defeated */}
       <DataTable rows={[...data]} columns={['name', 'age']} />
     </div>
@@ -136,7 +139,7 @@ function Parent() {
 
   return (
     <div>
-      <button onClick={() => setCount(c => c + 1)}>Increment</button>
+      <button onClick={() => setCount((c) => c + 1)}>Increment</button>
       <DataTable rows={rows} columns={columns} />
     </div>
   );
@@ -155,13 +158,15 @@ Now `rows` and `columns` have stable references. `React.memo` sees equal props o
 function ProductList({ products, filterText }) {
   // only recomputes when products or filterText changes
   const filtered = React.useMemo(
-    () => products.filter(p => p.name.includes(filterText)),
-    [products, filterText]
+    () => products.filter((p) => p.name.includes(filterText)),
+    [products, filterText],
   );
 
   return (
     <ul>
-      {filtered.map(p => <li key={p.id}>{p.name}</li>)}
+      {filtered.map((p) => (
+        <li key={p.id}>{p.name}</li>
+      ))}
     </ul>
   );
 }
@@ -178,7 +183,7 @@ const config = { theme: 'dark', density: 'compact' };
 // with useMemo: stable reference, memo can bail out
 const config = React.useMemo(
   () => ({ theme: 'dark', density: 'compact' }),
-  [] // no deps — config never changes
+  [], // no deps — config never changes
 );
 ```
 
@@ -206,7 +211,7 @@ function Parent() {
 ```jsx
 const handleSelect = React.useCallback(
   (id) => setSelectedId(id),
-  [] // setSelectedId from useState is stable — no deps needed
+  [], // setSelectedId from useState is stable — no deps needed
 );
 ```
 
@@ -259,7 +264,7 @@ function App() {
   const [color, setColor] = React.useState('red');
   return (
     <div style={{ color }}>
-      <input value={color} onChange={e => setColor(e.target.value)} />
+      <input value={color} onChange={(e) => setColor(e.target.value)} />
       <ExpensiveTree /> {/* re-renders every time color changes */}
     </div>
   );
@@ -278,7 +283,7 @@ function ColorPicker({ children }) {
   const [color, setColor] = React.useState('red');
   return (
     <div style={{ color }}>
-      <input value={color} onChange={e => setColor(e.target.value)} />
+      <input value={color} onChange={(e) => setColor(e.target.value)} />
       {children} {/* same JSX element reference — React bails out */}
     </div>
   );
@@ -410,10 +415,7 @@ The practical difference: if you wrote `useMemo(() => (data) => submitForm(data)
 function Parent() {
   const [count, setCount] = React.useState(0);
 
-  const childProps = React.useMemo(
-    () => ({ label: 'Submit', variant: 'primary' }),
-    []
-  );
+  const childProps = React.useMemo(() => ({ label: 'Submit', variant: 'primary' }), []);
 
   return <MemoizedButton {...childProps} />;
 }
@@ -495,7 +497,7 @@ function App() {
   const [color, setColor] = React.useState('red');
   return (
     <div style={{ color }}>
-      <input value={color} onChange={e => setColor(e.target.value)} />
+      <input value={color} onChange={(e) => setColor(e.target.value)} />
       <ExpensiveTree />
     </div>
   );
@@ -514,7 +516,7 @@ function ColorPicker({ children }) {
   const [color, setColor] = React.useState('red');
   return (
     <div style={{ color }}>
-      <input value={color} onChange={e => setColor(e.target.value)} />
+      <input value={color} onChange={(e) => setColor(e.target.value)} />
       {children}
     </div>
   );

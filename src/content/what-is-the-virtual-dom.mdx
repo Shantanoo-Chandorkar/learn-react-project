@@ -89,7 +89,11 @@ The Virtual DOM is that lightweight JS copy. It is not a performance layer bolte
 When you write JSX, you are not writing HTML. You are calling a function that returns a plain JavaScript object.
 
 ```jsx
-const element = <div className="container"><p>Hello</p></div>;
+const element = (
+  <div className="container">
+    <p>Hello</p>
+  </div>
+);
 ```
 
 After the JSX transform, this is:
@@ -98,7 +102,7 @@ After the JSX transform, this is:
 const element = React.createElement(
   'div',
   { className: 'container' },
-  React.createElement('p', null, 'Hello')
+  React.createElement('p', null, 'Hello'),
 );
 ```
 

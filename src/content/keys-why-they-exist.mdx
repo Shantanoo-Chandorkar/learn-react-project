@@ -76,9 +76,9 @@ function TaskItem({ text }) {
 }
 
 // rendered as:
-{tasks.map((task) => (
-  <TaskItem text={task.text} />
-))}
+{
+  tasks.map((task) => <TaskItem text={task.text} />);
+}
 ```
 
 User checks "Write tests" as done. State: index 0 Fiber has `done: true`.
@@ -97,7 +97,7 @@ A Fiber is not just a virtual DOM descriptor. It is a stateful object. Its `memo
 
 This is correct behavior for stable lists (items never move). It is wrong behavior when list identity diverges from list position.
 
-React has no way to know that the `TaskItem` at index 0 after the prepend is a *different* task than the `TaskItem` at index 0 before it. From React's position-only perspective, the same component type is at the same index. Reuse the Fiber. Update the props. Done.
+React has no way to know that the `TaskItem` at index 0 after the prepend is a _different_ task than the `TaskItem` at index 0 before it. From React's position-only perspective, the same component type is at the same index. Reuse the Fiber. Update the props. Done.
 
 The `key` prop is the signal that breaks the position assumption.
 
@@ -120,9 +120,9 @@ One sentence: **`key` tells React "this element represents this piece of data, n
 Add the stable, unique data identity as the `key`:
 
 ```jsx
-{tasks.map((task) => (
-  <TaskItem key={task.id} text={task.text} />
-))}
+{
+  tasks.map((task) => <TaskItem key={task.id} text={task.text} />);
+}
 ```
 
 Now reconcile the prepend:
@@ -168,16 +168,24 @@ With `key={task.id}`, React sees `key="2"` is gone: unmount that Fiber, run its 
 
 ```jsx
 // ✅ Stable, unique data ID — correct
-{items.map((item) => <Row key={item.id} data={item} />)}
+{
+  items.map((item) => <Row key={item.id} data={item} />);
+}
 
 // ✅ Stable string that uniquely identifies the item — correct
-{tabs.map((tab) => <Tab key={tab.slug} tab={tab} />)}
+{
+  tabs.map((tab) => <Tab key={tab.slug} tab={tab} />);
+}
 
 // ❌ Array index — wrong for any list that can reorder, filter, or prepend
-{items.map((item, index) => <Row key={index} data={item} />)}
+{
+  items.map((item, index) => <Row key={index} data={item} />);
+}
 
 // ❌ Random value — remounts every item on every render
-{items.map((item) => <Row key={Math.random()} data={item} />)}
+{
+  items.map((item) => <Row key={Math.random()} data={item} />);
+}
 ```
 
 Index-as-key is the most common mistake. For an append-only list that never reorders, it happens to be harmless. For any other list, it produces exactly the state migration bug described above. It also suppresses the missing-key warning, hiding the problem.
@@ -229,7 +237,7 @@ With index keys, `existingFiberMap` maps `0 → FiberA`, `1 → FiberB`, `2 → 
 
 **The cost of missing keys:**
 
-When keys are absent on a list, React falls back to index matching *and* logs a warning. The behavior is identical to index keys. The warning exists because React cannot guarantee this is what you intended. If you explicitly pass `key={index}`, React assumes you know what you're doing and suppresses the warning. This is why index keys are more dangerous than missing keys: they silence the diagnostic.
+When keys are absent on a list, React falls back to index matching _and_ logs a warning. The behavior is identical to index keys. The warning exists because React cannot guarantee this is what you intended. If you explicitly pass `key={index}`, React assumes you know what you're doing and suppresses the warning. This is why index keys are more dangerous than missing keys: they silence the diagnostic.
 
 ---
 
@@ -238,9 +246,9 @@ When keys are absent on a list, React falls back to index matching *and* logs a 
 **Trap 1: A developer has a list of comment components. Each has a text input inside it for editing. They use `key={index}`. They delete the second comment. The input value in the third comment disappears. Why?**
 
 ```jsx
-{comments.map((comment, index) => (
-  <Comment key={index} comment={comment} />
-))}
+{
+  comments.map((comment, index) => <Comment key={index} comment={comment} />);
+}
 
 function Comment({ comment }) {
   const [editText, setEditText] = React.useState(comment.text);
@@ -309,9 +317,9 @@ The claim is wrong. `key={index}` affects correctness, not just performance, whe
 Counterexample: a to-do list where each item has an internal text input for inline editing. The list supports deleting items.
 
 ```jsx
-{todos.map((todo, index) => (
-  <TodoItem key={index} todo={todo} />
-))}
+{
+  todos.map((todo, index) => <TodoItem key={index} todo={todo} />);
+}
 
 function TodoItem({ todo }) {
   const [draft, setDraft] = React.useState(todo.text);
@@ -321,7 +329,7 @@ function TodoItem({ todo }) {
 
 The user edits the input in the second item (index 1) to say `"Updated text"`. The `draft` state in the `key=1` Fiber is now `"Updated text"`.
 
-The user then deletes the *first* item (index 0). The list shifts: what was index 1 is now index 0, what was index 2 is now index 1.
+The user then deletes the _first_ item (index 0). The list shifts: what was index 1 is now index 0, what was index 2 is now index 1.
 
 React reconciles. Index 0 in the new list: looks up `key=0` Fiber (the old first item's Fiber, which had `draft: "First item's original text"`). Reuses it. Updates the `todo` prop to the second item's data. Now the input shows `"First item's original text"` inside the second item's row. The user's edit is gone.
 
@@ -349,7 +357,7 @@ This is a correctness bug. The wrong value is displayed in the wrong row. `key={
 <details>
 <summary>Answer</summary>
 
-React matches keys to existing Fibers. `key="B"` Fiber exists. `key="A"` Fiber exists. `key="C"` Fiber exists. All three match. React updates no props (the items themselves are unchanged). 
+React matches keys to existing Fibers. `key="B"` Fiber exists. `key="A"` Fiber exists. `key="C"` Fiber exists. All three match. React updates no props (the items themselves are unchanged).
 
 However, one DOM operation occurs: React moves B's DOM node to the front. The real DOM must reflect the new order, and since B physically needs to precede A, React issues a DOM `insertBefore` to reposition it. Props are unchanged so no attribute updates happen, but the structural reordering requires one DOM move operation.
 
@@ -380,9 +388,9 @@ This is significantly cheaper than the no-key case, where React would update two
 If the component needs the identity value — for example, to include the item's ID in a callback or a data-fetch — pass it as a separate explicit prop:
 
 ```jsx
-{items.map((item) => (
-  <ItemRow key={item.id} id={item.id} data={item} />
-))}
+{
+  items.map((item) => <ItemRow key={item.id} id={item.id} data={item} />);
+}
 
 function ItemRow({ id, data }) {
   function handleDelete() {

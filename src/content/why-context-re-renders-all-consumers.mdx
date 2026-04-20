@@ -34,23 +34,25 @@ function UserProvider({ children }) {
   }
 
   function updatePreference(key, value) {
-    setPreferences(prev => ({ ...prev, [key]: value }));
+    setPreferences((prev) => ({ ...prev, [key]: value }));
   }
 
   function addToCart(item) {
-    setCart(prev => [...prev, item]);
+    setCart((prev) => [...prev, item]);
   }
 
   return (
-    <UserContext.Provider value={{
-      user,
-      preferences,
-      cart,
-      login,
-      logout,
-      updatePreference,
-      addToCart,
-    }}>
+    <UserContext.Provider
+      value={{
+        user,
+        preferences,
+        cart,
+        login,
+        logout,
+        updatePreference,
+        addToCart,
+      }}
+    >
       {children}
     </UserContext.Provider>
   );
@@ -68,9 +70,9 @@ function Header() {
 function ThemeToggle() {
   const { preferences, updatePreference } = useUser(); // reads preferences.theme
   return (
-    <button onClick={() => updatePreference('theme',
-      preferences.theme === 'light' ? 'dark' : 'light'
-    )}>
+    <button
+      onClick={() => updatePreference('theme', preferences.theme === 'light' ? 'dark' : 'light')}
+    >
       Toggle theme
     </button>
   );
@@ -83,11 +85,7 @@ function CartBadge() {
 
 function CheckoutButton({ product }) {
   const { user, addToCart } = useUser(); // reads user and addToCart
-  return (
-    <button onClick={() => addToCart(product)}>
-      {user ? 'Add to cart' : 'Log in'}
-    </button>
-  );
+  return <button onClick={() => addToCart(product)}>{user ? 'Add to cart' : 'Log in'}</button>;
 }
 ```
 
@@ -160,23 +158,19 @@ function UserProvider({ children }) {
   }, []);
 
   const updatePreference = React.useCallback((key, value) => {
-    setPreferences(prev => ({ ...prev, [key]: value }));
+    setPreferences((prev) => ({ ...prev, [key]: value }));
   }, []);
 
   const addToCart = React.useCallback((item) => {
-    setCart(prev => [...prev, item]);
+    setCart((prev) => [...prev, item]);
   }, []);
 
   const value = React.useMemo(
     () => ({ user, preferences, cart, login, logout, updatePreference, addToCart }),
-    [user, preferences, cart, login, logout, updatePreference, addToCart]
+    [user, preferences, cart, login, logout, updatePreference, addToCart],
   );
 
-  return (
-    <UserContext.Provider value={value}>
-      {children}
-    </UserContext.Provider>
-  );
+  return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
 }
 ```
 
@@ -201,21 +195,13 @@ function AppProvider({ children }) {
   const [cart, setCart] = React.useState([]);
 
   const userValue = React.useMemo(() => ({ user, login, logout }), [user]);
-  const prefsValue = React.useMemo(
-    () => ({ preferences, updatePreference }),
-    [preferences]
-  );
-  const cartValue = React.useMemo(
-    () => ({ cart, addToCart }),
-    [cart]
-  );
+  const prefsValue = React.useMemo(() => ({ preferences, updatePreference }), [preferences]);
+  const cartValue = React.useMemo(() => ({ cart, addToCart }), [cart]);
 
   return (
     <UserContext.Provider value={userValue}>
       <PreferencesContext.Provider value={prefsValue}>
-        <CartContext.Provider value={cartValue}>
-          {children}
-        </CartContext.Provider>
+        <CartContext.Provider value={cartValue}>{children}</CartContext.Provider>
       </PreferencesContext.Provider>
     </UserContext.Provider>
   );
@@ -242,6 +228,7 @@ function CartBadge() {
 ```
 
 When `addToCart` updates `cart`:
+
 - `CartContext`'s value changes → `CartBadge` and `CheckoutButton` re-render. Correct.
 - `UserContext`'s value is unchanged → `Header` does not re-render due to context trigger.
 - `PreferencesContext`'s value is unchanged → `ThemeToggle` does not re-render due to context trigger.
@@ -266,9 +253,7 @@ function CartProvider({ children }) {
 
   return (
     <CartDispatchContext.Provider value={dispatch}>
-      <CartStateContext.Provider value={cart}>
-        {children}
-      </CartStateContext.Provider>
+      <CartStateContext.Provider value={cart}>{children}</CartStateContext.Provider>
     </CartDispatchContext.Provider>
   );
 }
@@ -280,11 +265,7 @@ function AddToCartButton({ product }) {
   // because it only subscribes to CartDispatchContext
   // and dispatch never changes
 
-  return (
-    <button onClick={() => dispatch({ type: 'ADD', item: product })}>
-      Add to cart
-    </button>
-  );
+  return <button onClick={() => dispatch({ type: 'ADD', item: product })}>Add to cart</button>;
 }
 
 // Component that only reads state
@@ -340,11 +321,11 @@ Every Fiber that consumes a Context has a `dependencies` field:
 fiber.dependencies = {
   lanes: NoLanes,
   firstContext: {
-    context: SomeContext,       // which context
+    context: SomeContext, // which context
     memoizedValue: currentValue, // value when last rendered
-    next: nextDependency,        // next context this fiber consumes
-  }
-}
+    next: nextDependency, // next context this fiber consumes
+  },
+};
 ```
 
 A component that calls `useContext` multiple times has a linked list of dependencies. `propagateContextChange` walks this list for each Fiber it visits. If any dependency matches the changed context, the Fiber is marked.
@@ -392,16 +373,9 @@ function AppProvider({ children }) {
   const [user, setUser] = React.useState({ name: 'Shan' });
   const [count, setCount] = React.useState(0);
 
-  const value = React.useMemo(
-    () => ({ user, count, setUser, setCount }),
-    [user, count]
-  );
+  const value = React.useMemo(() => ({ user, count, setUser, setCount }), [user, count]);
 
-  return (
-    <AppContext.Provider value={value}>
-      {children}
-    </AppContext.Provider>
-  );
+  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
 
 const UserDisplay = React.memo(function UserDisplay() {
@@ -411,7 +385,7 @@ const UserDisplay = React.memo(function UserDisplay() {
 
 const Counter = React.memo(function Counter() {
   const { count, setCount } = React.useContext(AppContext);
-  return <button onClick={() => setCount(c => c + 1)}>{count}</button>;
+  return <button onClick={() => setCount((c) => c + 1)}>{count}</button>;
 });
 ```
 
@@ -462,9 +436,7 @@ function CartProvider({ children }) {
   // dispatch is stable: never changes
   return (
     <CartDispatchContext.Provider value={dispatch}>
-      <CartStateContext.Provider value={cart}>
-        {children}
-      </CartStateContext.Provider>
+      <CartStateContext.Provider value={cart}>{children}</CartStateContext.Provider>
     </CartDispatchContext.Provider>
   );
 }
@@ -472,9 +444,7 @@ function CartProvider({ children }) {
 function ActionButton() {
   const dispatch = React.useContext(CartDispatchContext);
   // Never re-renders due to cart state changes
-  return (
-    <button onClick={() => dispatch({ type: 'ADD', item })}>Add</button>
-  );
+  return <button onClick={() => dispatch({ type: 'ADD', item })}>Add</button>;
 }
 ```
 

@@ -19,14 +19,16 @@ function UserPosts({ userId }) {
 
   useEffect(() => {
     fetch(`/api/posts/${userId}`)
-      .then(r => r.json())
+      .then((r) => r.json())
       .then(setPosts);
   }, [refreshCount]); // "re-run when refresh is clicked"
 
   return (
     <div>
-      <button onClick={() => setRefreshCount(c => c + 1)}>Refresh</button>
-      {posts.map(p => <div key={p.id}>{p.title}</div>)}
+      <button onClick={() => setRefreshCount((c) => c + 1)}>Refresh</button>
+      {posts.map((p) => (
+        <div key={p.id}>{p.title}</div>
+      ))}
     </div>
   );
 }
@@ -70,21 +72,23 @@ function UserPosts({ userId }) {
 
   useEffect(() => {
     fetch(`/api/users/${userId}/posts`)
-      .then(r => r.json())
+      .then((r) => r.json())
       .then(setPosts);
   }, [userId]); // userId is what this effect syncs with
 
   // refresh is an event, not a dep — handle it differently
   function handleRefresh() {
     fetch(`/api/users/${userId}/posts`)
-      .then(r => r.json())
+      .then((r) => r.json())
       .then(setPosts);
   }
 
   return (
     <div>
       <button onClick={handleRefresh}>Refresh</button>
-      {posts.map(p => <div key={p.id}>{p.title}</div>)}
+      {posts.map((p) => (
+        <div key={p.id}>{p.title}</div>
+      ))}
     </div>
   );
 }

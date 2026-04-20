@@ -20,10 +20,7 @@ A developer building a product catalog in Next.js (Pages Router) reaches for `ge
 // pages/products/[id].js
 
 export async function getServerSideProps({ params }) {
-  const product = await db.query(
-    'SELECT * FROM products WHERE id = $1',
-    [params.id]
-  );
+  const product = await db.query('SELECT * FROM products WHERE id = $1', [params.id]);
   return { props: { product } };
 }
 
@@ -97,7 +94,7 @@ export async function getServerSideProps(context) {
   const session = await getSession(req);
   if (!session) {
     return {
-      redirect: { destination: '/login', permanent: false }
+      redirect: { destination: '/login', permanent: false },
     };
   }
 
@@ -131,7 +128,7 @@ async function DashboardPage() {
 
   const userData = await fetch(
     `https://api.example.com/users/${session.userId}/dashboard`,
-    { cache: 'no-store' } // ← opt out of caching: fresh on every request
+    { cache: 'no-store' }, // ← opt out of caching: fresh on every request
   );
   const data = await userData.json();
 
@@ -150,10 +147,7 @@ In the Pages Router, SSG is the default behavior. If you export a page without `
 ```jsx
 // pages/products/[id].js
 export async function getStaticProps({ params }) {
-  const product = await db.query(
-    'SELECT * FROM products WHERE id = $1',
-    [params.id]
-  );
+  const product = await db.query('SELECT * FROM products WHERE id = $1', [params.id]);
 
   return {
     props: { product },
@@ -166,7 +160,7 @@ export async function getStaticPaths() {
   const products = await db.query('SELECT id FROM products');
 
   return {
-    paths: products.map(p => ({ params: { id: String(p.id) } })),
+    paths: products.map((p) => ({ params: { id: String(p.id) } })),
     fallback: 'blocking', // for IDs not pre-rendered: generate on demand
   };
 }
@@ -191,7 +185,7 @@ In the App Router, SSG is the default behavior for any Server Component whose `f
 // app/products/[id]/page.js
 async function ProductPage({ params }) {
   const response = await fetch(
-    `https://api.example.com/products/${params.id}`
+    `https://api.example.com/products/${params.id}`,
     // default: cache: 'force-cache' → builds static HTML at build time
   );
   const product = await response.json();
@@ -206,8 +200,8 @@ async function ProductPage({ params }) {
 
 // Tell Next.js which product IDs to pre-render
 export async function generateStaticParams() {
-  const products = await fetch('https://api.example.com/products').then(r => r.json());
-  return products.map(p => ({ id: String(p.id) }));
+  const products = await fetch('https://api.example.com/products').then((r) => r.json());
+  return products.map((p) => ({ id: String(p.id) }));
 }
 ```
 
@@ -223,9 +217,9 @@ return {
   paths: top1000ProductPaths,
   fallback: 'blocking', // generate on demand, user waits
   // OR
-  fallback: true,       // show fallback component while generating
+  fallback: true, // show fallback component while generating
   // OR
-  fallback: false,      // return 404 for unbuilt pages
+  fallback: false, // return 404 for unbuilt pages
 };
 ```
 
@@ -329,21 +323,21 @@ Pre-rendered HTML files include the same `__NEXT_DATA__` script as SSR pages, bu
 ```html
 <!-- Generated at build time, embedded in the static HTML file -->
 <script id="__NEXT_DATA__" type="application/json">
-{
-  "props": {
-    "pageProps": {
-      "product": {
-        "id": 42,
-        "name": "Product A",
-        "price": 29.99,
-        "description": "..."
+  {
+    "props": {
+      "pageProps": {
+        "product": {
+          "id": 42,
+          "name": "Product A",
+          "price": 29.99,
+          "description": "..."
+        }
       }
-    }
-  },
-  "page": "/products/[id]",
-  "query": { "id": "42" },
-  "buildId": "abc123"
-}
+    },
+    "page": "/products/[id]",
+    "query": { "id": "42" },
+    "buildId": "abc123"
+  }
 </script>
 ```
 

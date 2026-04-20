@@ -19,7 +19,7 @@ A developer understands that Server Components run on the server and builds a da
 ```jsx
 // app/dashboard/page.js
 import { db } from '@/lib/database';
-import { useState } from 'react';  // imported but...
+import { useState } from 'react'; // imported but...
 
 export default async function DashboardPage() {
   const metrics = await db.query('SELECT * FROM metrics WHERE date = TODAY()');
@@ -28,7 +28,7 @@ export default async function DashboardPage() {
 
   return (
     <div>
-      {metrics.map(m => (
+      {metrics.map((m) => (
         <MetricCard
           key={m.id}
           metric={m}
@@ -90,7 +90,7 @@ import { useState } from 'react';
 
 export default function Counter() {
   const [count, setCount] = useState(0);
-  return <button onClick={() => setCount(c => c + 1)}>{count}</button>;
+  return <button onClick={() => setCount((c) => c + 1)}>{count}</button>;
 }
 ```
 
@@ -130,7 +130,7 @@ The most significant change from the Pages Router: data fetching is co-located w
 async function ProductPage({ params }) {
   // Direct database query, no API round-trip
   const product = await db.products.findUnique({
-    where: { id: parseInt(params.id) }
+    where: { id: parseInt(params.id) },
   });
 
   if (!product) notFound();
@@ -160,7 +160,9 @@ async function ReviewSection({ productId }) {
   return (
     <section>
       <h2>Reviews</h2>
-      {reviews.map(r => <ReviewCard key={r.id} review={r} />)}
+      {reviews.map((r) => (
+        <ReviewCard key={r.id} review={r} />
+      ))}
     </section>
   );
 }
@@ -177,12 +179,12 @@ If multiple Server Components in the same render pass call `fetch` with the same
 // Only one actual HTTP request is made per render pass
 
 async function Header() {
-  const user = await fetch('/api/current-user').then(r => r.json());
+  const user = await fetch('/api/current-user').then((r) => r.json());
   return <nav>Hello, {user.name}</nav>;
 }
 
 async function ProfileSidebar() {
-  const user = await fetch('/api/current-user').then(r => r.json());
+  const user = await fetch('/api/current-user').then((r) => r.json());
   return <aside>{user.bio}</aside>;
 }
 ```
@@ -224,11 +226,7 @@ export default function AddToCartButton({ product }) {
     setAdded(true);
   }
 
-  return (
-    <button onClick={handleAddToCart}>
-      {added ? '✓ Added' : 'Add to cart'}
-    </button>
-  );
+  return <button onClick={handleAddToCart}>{added ? '✓ Added' : 'Add to cart'}</button>;
 }
 ```
 
@@ -270,7 +268,9 @@ export default async function DashboardLayout({ children }) {
     <div>
       <SidebarToggle /> {/* Client Component rendered inside Server Component */}
       <nav>
-        {navItems.map(item => <NavLink key={item.id} item={item} />)}
+        {navItems.map((item) => (
+          <NavLink key={item.id} item={item} />
+        ))}
       </nav>
       <main>{children}</main>
     </div>
@@ -320,7 +320,7 @@ export default function ClientWrapper({ children }) {
   const [open, setOpen] = useState(false);
   return (
     <div>
-      <button onClick={() => setOpen(o => !o)}>Toggle</button>
+      <button onClick={() => setOpen((o) => !o)}>Toggle</button>
       {open && children} {/* children is ServerContent, runs on server */}
     </div>
   );
@@ -450,8 +450,8 @@ export default function ProfileEditor({ initialData }) {
 
   return (
     <form>
-      <input value={name} onChange={e => setName(e.target.value)} />
-      <textarea value={bio} onChange={e => setBio(e.target.value)} />
+      <input value={name} onChange={(e) => setName(e.target.value)} />
+      <textarea value={bio} onChange={(e) => setBio(e.target.value)} />
       <button onClick={handleSave}>Save</button>
     </form>
   );

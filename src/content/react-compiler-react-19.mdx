@@ -18,19 +18,20 @@ Before the compiler, the recommended approach to a performance-sensitive compone
 // React 18: developer is responsible for all of this
 const ExpensiveList = React.memo(function ExpensiveList({ items, onSelect }) {
   const processed = React.useMemo(
-    () => items
-      .filter(i => i.active)
-      .sort((a, b) => a.name.localeCompare(b.name)),
-    [items]
+    () => items.filter((i) => i.active).sort((a, b) => a.name.localeCompare(b.name)),
+    [items],
   );
 
-  const handleSelect = React.useCallback((id) => {
-    onSelect(id);
-  }, [onSelect]);
+  const handleSelect = React.useCallback(
+    (id) => {
+      onSelect(id);
+    },
+    [onSelect],
+  );
 
   return (
     <ul>
-      {processed.map(item => (
+      {processed.map((item) => (
         <ListItem key={item.id} item={item} onSelect={handleSelect} />
       ))}
     </ul>
@@ -39,6 +40,7 @@ const ExpensiveList = React.memo(function ExpensiveList({ items, onSelect }) {
 ```
 
 This is the pattern from Module 7.1 through 7.4. It works if:
+
 - `items` reference is stable when contents are unchanged
 - `onSelect` is wrapped in `useCallback` at the call site
 - `handleSelect`'s deps are complete
@@ -84,7 +86,7 @@ The output is not literally `useMemo` and `useCallback` calls. The compiler gene
 ```jsx
 // What you write:
 function TodoList({ todos, filter }) {
-  const filtered = todos.filter(t => t.status === filter);
+  const filtered = todos.filter((t) => t.status === filter);
 
   function handleClick(id) {
     markDone(id);
@@ -92,7 +94,7 @@ function TodoList({ todos, filter }) {
 
   return (
     <ul>
-      {filtered.map(t => (
+      {filtered.map((t) => (
         <TodoItem key={t.id} todo={t} onClick={handleClick} />
       ))}
     </ul>
@@ -105,17 +107,16 @@ function TodoList({ todos, filter }) {
 function TodoList({ todos, filter }) {
   // compiler determined: filtered depends on todos and filter
   // cache it: only recompute when todos or filter change
-  const filtered = _cache(
-    () => todos.filter(t => t.status === filter),
-    [todos, filter]
-  );
+  const filtered = _cache(() => todos.filter((t) => t.status === filter), [todos, filter]);
 
   // compiler determined: handleClick has no dependencies on
   // changing values, markDone is a stable import
   // cache the function reference: always the same object
   const handleClick = _cache(
-    () => (id) => { markDone(id); },
-    []
+    () => (id) => {
+      markDone(id);
+    },
+    [],
   );
 
   // compiler determined: the JSX output depends on filtered and handleClick
@@ -124,12 +125,12 @@ function TodoList({ todos, filter }) {
   return _cache(
     () => (
       <ul>
-        {filtered.map(t => (
+        {filtered.map((t) => (
           <TodoItem key={t.id} todo={t} onClick={handleClick} />
         ))}
       </ul>
     ),
-    [filtered, handleClick]
+    [filtered, handleClick],
   );
 }
 ```
@@ -150,10 +151,7 @@ function ProductCard({ product, onAddToCart }) {
     <div className="card">
       <h3>{product.name}</h3>
       <p>${discountedPrice.toFixed(2)}</p>
-      <button
-        onClick={() => onAddToCart(product.id)}
-        disabled={!product.inStock}
-      >
+      <button onClick={() => onAddToCart(product.id)} disabled={!product.inStock}>
         {label}
       </button>
     </div>
@@ -162,6 +160,7 @@ function ProductCard({ product, onAddToCart }) {
 ```
 
 The compiler automatically:
+
 - Caches `discountedPrice` when `product.price` and `product.discount` are stable
 - Caches `label` when `product.inStock` is stable
 - Caches the inline `() => onAddToCart(product.id)` when `onAddToCart` and `product.id` are stable
@@ -177,7 +176,13 @@ The compiler requires components to follow React's rules (pure functions, no mut
 // Compiler cannot optimize this: mutation of a value
 function BadComponent({ items }) {
   items.sort(); // mutates the prop directly
-  return <ul>{items.map(i => <li key={i.id}>{i.name}</li>)}</ul>;
+  return (
+    <ul>
+      {items.map((i) => (
+        <li key={i.id}>{i.name}</li>
+      ))}
+    </ul>
+  );
 }
 
 // ESLint rule: "React Hook rules violation" or "mutation of prop"
@@ -268,12 +273,12 @@ function TodoList(props) {
   let filtered;
   if ($[0] !== props.todos || $[1] !== props.filter) {
     // deps changed: recompute
-    filtered = props.todos.filter(t => t.status === props.filter);
-    $[0] = props.todos;  // store new deps
+    filtered = props.todos.filter((t) => t.status === props.filter);
+    $[0] = props.todos; // store new deps
     $[1] = props.filter;
-    $[2] = filtered;     // store new value
+    $[2] = filtered; // store new value
   } else {
-    filtered = $[2];     // use cached value
+    filtered = $[2]; // use cached value
   }
 
   // similar pattern for handleClick, JSX, etc.

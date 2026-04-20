@@ -123,6 +123,7 @@ The stack reconciler stored work in the JavaScript call stack. Fiber stores work
 Here's what that architectural difference means concretely:
 
 **Stack reconciler — work lives in the call stack:**
+
 ```
 JS Call Stack (browser-managed, uninterruptible):
 │ reconcileChildren()
@@ -133,6 +134,7 @@ JS Call Stack (browser-managed, uninterruptible):
 ```
 
 **Fiber — work lives in the heap:**
+
 ```
 Heap (React-managed, interruptible):
 App Fiber → List Fiber → Row1 Fiber → Row2 Fiber → ...
@@ -177,11 +179,11 @@ The practical result: React 16 can split rendering work across multiple frames, 
 <details>
 <summary>Answer</summary>
 
-Fiber makes rendering *interruptible*, not necessarily asynchronous. Most renders in React 18 still complete synchronously within the current event handler — React batches updates and commits them before yielding control. The key change is that React now *can* interrupt and spread work across frames when it needs to, not that it always does.
+Fiber makes rendering _interruptible_, not necessarily asynchronous. Most renders in React 18 still complete synchronously within the current event handler — React batches updates and commits them before yielding control. The key change is that React now _can_ interrupt and spread work across frames when it needs to, not that it always does.
 
 Concurrent features like `startTransition` explicitly opt updates into async interruptible rendering. Without `startTransition`, even in React 18, a state update in a click handler will typically render synchronously within that event. The interruptibility is available; it's engaged selectively based on priority.
 
-Saying "Fiber makes React asynchronous" is an oversimplification that will get caught in an interview. The accurate statement is: Fiber gave React the *infrastructure* to do async rendering, and React 18 exposes that infrastructure through the concurrent API.
+Saying "Fiber makes React asynchronous" is an oversimplification that will get caught in an interview. The accurate statement is: Fiber gave React the _infrastructure_ to do async rendering, and React 18 exposes that infrastructure through the concurrent API.
 
 </details>
 
@@ -253,7 +255,7 @@ The current tree reflects what is presently displayed in the DOM. The work-in-pr
 <details>
 <summary>Answer</summary>
 
-This is incorrect, and importantly it's the kind of misunderstanding that causes real bugs. Fiber provides the *infrastructure* for interruptible rendering, but it does not make all updates asynchronous by default. In React 18, most state updates triggered by user events still render synchronously within the same event — React batches them and commits the result before returning control. The browser is not involved between the `setState` call and the DOM update in these cases.
+This is incorrect, and importantly it's the kind of misunderstanding that causes real bugs. Fiber provides the _infrastructure_ for interruptible rendering, but it does not make all updates asynchronous by default. In React 18, most state updates triggered by user events still render synchronously within the same event — React batches them and commits the result before returning control. The browser is not involved between the `setState` call and the DOM update in these cases.
 
 Async, interruptible rendering is a mode React enters for updates explicitly marked as non-urgent via `startTransition`, or for Suspense-based data loading scenarios. For ordinary `useState` calls in click handlers, the rendering is synchronous. Telling a developer "setState never blocks" would lead them to write code expecting the DOM to update on the next frame, which is not guaranteed and would produce incorrect behavior when updates are actually synchronous.
 

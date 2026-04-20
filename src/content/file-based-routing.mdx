@@ -187,7 +187,7 @@ export default function DashboardLayout({ children }) {
 
   return (
     <div>
-      <Sidebar isOpen={sidebarOpen} onToggle={() => setSidebarOpen(s => !s)} />
+      <Sidebar isOpen={sidebarOpen} onToggle={() => setSidebarOpen((s) => !s)} />
       <main>{children}</main>
     </div>
   );
@@ -333,9 +333,7 @@ Templates achieve re-mounting by using a different React key for each navigation
 
 ```jsx
 // Conceptually, what Next.js does for templates:
-<DashboardTemplate key={currentPath}>
-  {children}
-</DashboardTemplate>
+<DashboardTemplate key={currentPath}>{children}</DashboardTemplate>
 // key changes on navigation → React unmounts old, mounts new
 // Fresh state, fresh useEffect, fresh everything
 ```

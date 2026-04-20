@@ -19,9 +19,9 @@ A developer builds a product page. They update a product in the database and exp
 ```jsx
 // app/products/[id]/page.js
 async function ProductPage({ params }) {
-  const product = await fetch(
-    `https://api.example.com/products/${params.id}`
-  ).then(r => r.json());
+  const product = await fetch(`https://api.example.com/products/${params.id}`).then((r) =>
+    r.json(),
+  );
 
   return <ProductDetail product={product} />;
 }
@@ -32,10 +32,9 @@ They update the product name from "Widget A" to "Widget B" in the database. They
 They add `cache: 'no-store'`:
 
 ```jsx
-const product = await fetch(
-  `https://api.example.com/products/${params.id}`,
-  { cache: 'no-store' }
-).then(r => r.json());
+const product = await fetch(`https://api.example.com/products/${params.id}`, {
+  cache: 'no-store',
+}).then((r) => r.json());
 ```
 
 They refresh. They still see "Widget A."
@@ -97,12 +96,12 @@ The innermost layer. During a single server render pass, identical `fetch` calls
 // fetch('/api/user') is called twice but only one HTTP request is made.
 
 async function Header() {
-  const user = await fetch('/api/user').then(r => r.json());
+  const user = await fetch('/api/user').then((r) => r.json());
   return <nav>Hello, {user.name}</nav>;
 }
 
 async function ProfileCard() {
-  const user = await fetch('/api/user').then(r => r.json());
+  const user = await fetch('/api/user').then((r) => r.json());
   return <aside>{user.bio}</aside>;
 }
 ```
@@ -128,17 +127,17 @@ The persistent server-side cache for individual `fetch` results. This is what Ne
 ```jsx
 // Cached forever (or until invalidated):
 fetch('https://api.example.com/products', {
-  cache: 'force-cache'  // default behavior
+  cache: 'force-cache', // default behavior
 });
 
 // Cached for 3600 seconds, then stale:
 fetch('https://api.example.com/products', {
-  next: { revalidate: 3600 }
+  next: { revalidate: 3600 },
 });
 
 // Never cached:
 fetch('https://api.example.com/products', {
-  cache: 'no-store'
+  cache: 'no-store',
 });
 ```
 
@@ -156,13 +155,13 @@ async function DashboardPage() {
 
   // This fetch is NOT cached (user-specific data):
   const userData = await fetch(`/api/users/${session.value}`, {
-    cache: 'no-store'
-  }).then(r => r.json());
+    cache: 'no-store',
+  }).then((r) => r.json());
 
   // This fetch IS cached (same for all users, rarely changes):
   const config = await fetch('https://api.example.com/app-config', {
-    next: { revalidate: 86400 }
-  }).then(r => r.json());
+    next: { revalidate: 86400 },
+  }).then((r) => r.json());
 
   return <Dashboard user={userData} config={config} />;
 }
@@ -187,6 +186,7 @@ Dynamic route (SSR):
 ```
 
 The Full Route Cache is invalidated by:
+
 - Running `next build` (clears and rebuilds all static routes)
 - ISR revalidation (the route is re-rendered in the background and the cache is updated)
 - `revalidatePath()` or `revalidateTag()` (marks specific routes as stale)
@@ -204,6 +204,7 @@ User navigates back to /products → Router Cache hit → no server request
 ```
 
 The Router Cache duration:
+
 - Statically rendered routes: cached for 5 minutes
 - Dynamically rendered routes: cached for 30 seconds
 
@@ -220,11 +221,7 @@ import { useRouter } from 'next/navigation';
 function RefreshButton() {
   const router = useRouter();
 
-  return (
-    <button onClick={() => router.refresh()}>
-      Refresh data
-    </button>
-  );
+  return <button onClick={() => router.refresh()}>Refresh data</button>;
 }
 ```
 
@@ -247,7 +244,7 @@ import { unstable_noStore as noStore } from 'next/cache';
 
 async function Component() {
   noStore(); // opts the entire component's fetches out of caching
-  const data = await fetch(url).then(r => r.json());
+  const data = await fetch(url).then((r) => r.json());
   return <div>{data.value}</div>;
 }
 ```
@@ -353,9 +350,9 @@ Invalidates all fetch entries tagged with a specific string, across all routes t
 const product = await fetch(`https://api.example.com/products/${id}`, {
   next: {
     revalidate: 3600,
-    tags: [`product-${id}`, 'products']
-  }
-}).then(r => r.json());
+    tags: [`product-${id}`, 'products'],
+  },
+}).then((r) => r.json());
 
 // Later, when the product is updated:
 import { revalidateTag } from 'next/cache';
@@ -432,7 +429,7 @@ Next.js extends the native `fetch` function in the Node.js runtime used for Serv
 ```js
 // Simplified: Next.js's extended fetch
 const originalFetch = globalThis.fetch;
-globalThis.fetch = async function(url, options) {
+globalThis.fetch = async function (url, options) {
   const cacheKey = getCacheKey(url, options);
   const cacheConfig = options?.next;
 

@@ -22,13 +22,9 @@ const container = document.getElementById('list');
 const input = document.getElementById('filter');
 
 function render(filter) {
-  const filtered = items.filter(item =>
-    item.toLowerCase().includes(filter.toLowerCase())
-  );
+  const filtered = items.filter((item) => item.toLowerCase().includes(filter.toLowerCase()));
 
-  container.innerHTML = filtered
-    .map(item => `<li>${item}</li>`)
-    .join('');
+  container.innerHTML = filtered.map((item) => `<li>${item}</li>`).join('');
 }
 
 input.addEventListener('input', (e) => render(e.target.value));
@@ -43,25 +39,25 @@ Now make each list item interactive. A checkbox. A nested expand/collapse. A too
 
 ```js
 function render(filter) {
-  const filtered = items.filter(item =>
-    item.toLowerCase().includes(filter.toLowerCase())
-  );
+  const filtered = items.filter((item) => item.toLowerCase().includes(filter.toLowerCase()));
 
   // all event listeners attached to old nodes are gone
   // any focused element loses focus
   // any open tooltip is closed
   // scroll position may shift
   container.innerHTML = filtered
-    .map(item => `
+    .map(
+      (item) => `
       <li>
         <input type="checkbox" data-id="${item}" />
         <span>${item}</span>
       </li>
-    `)
+    `,
+    )
     .join('');
 
   // must re-attach all listeners
-  container.querySelectorAll('input[type=checkbox]').forEach(cb => {
+  container.querySelectorAll('input[type=checkbox]').forEach((cb) => {
     cb.addEventListener('change', handleCheckboxChange);
   });
 }
@@ -121,15 +117,15 @@ The practical consequence:
 function FilterableList({ items }) {
   const [filter, setFilter] = React.useState('');
 
-  const filtered = items.filter(item =>
-    item.toLowerCase().includes(filter.toLowerCase())
-  );
+  const filtered = items.filter((item) => item.toLowerCase().includes(filter.toLowerCase()));
 
   return (
     <div>
       <input value={filter} onChange={(e) => setFilter(e.target.value)} />
       <ul>
-        {filtered.map(item => <li key={item}>{item}</li>)}
+        {filtered.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
       </ul>
     </div>
   );
@@ -166,7 +162,7 @@ The most dangerous DOM performance pattern is forced synchronous layout: reading
 
 ```js
 // SLOW: forced synchronous layout
-elements.forEach(el => {
+elements.forEach((el) => {
   const width = el.offsetWidth; // READ: forces layout to flush
   el.style.width = width + 10 + 'px'; // WRITE: invalidates layout
 });
@@ -180,6 +176,7 @@ React's commit phase avoids this entirely. It does all DOM writes in a single pa
 **Why `innerHTML` is particularly expensive.**
 
 Setting `innerHTML` does more than create nodes. The browser must:
+
 1. Parse the HTML string into a new DOM tree (HTML parsing is not free).
 2. Destroy every existing child node and its associated browser context (layout boxes, style data, event listener registrations, accessibility tree entries).
 3. Insert the new nodes into the document and attach them to the render tree.
@@ -272,8 +269,8 @@ Causing it:
 
 ```js
 // forces layout recalculation on every iteration
-boxes.forEach(box => {
-  const w = box.offsetWidth;       // READ: flushes dirty layout
+boxes.forEach((box) => {
+  const w = box.offsetWidth; // READ: flushes dirty layout
   box.style.width = w * 2 + 'px'; // WRITE: invalidates layout
 });
 ```
@@ -284,7 +281,7 @@ Corrected:
 
 ```js
 // batch all reads first
-const widths = boxes.map(box => box.offsetWidth); // all READs
+const widths = boxes.map((box) => box.offsetWidth); // all READs
 
 // then all writes
 boxes.forEach((box, i) => {

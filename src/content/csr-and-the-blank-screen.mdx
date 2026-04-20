@@ -207,15 +207,12 @@ async function handleRequest(req, res) {
   const Component = getComponentForRoute(url);
   const data = await fetchDataForRoute(url);
 
-  const { pipe } = renderToPipeableStream(
-    <Component data={data} />,
-    {
-      onShellReady() {
-        res.setHeader('Content-Type', 'text/html');
-        pipe(res); // stream HTML to the client as it is generated
-      }
-    }
-  );
+  const { pipe } = renderToPipeableStream(<Component data={data} />, {
+    onShellReady() {
+      res.setHeader('Content-Type', 'text/html');
+      pipe(res); // stream HTML to the client as it is generated
+    },
+  });
 }
 ```
 
@@ -227,16 +224,16 @@ Along with the HTML, Next.js sends a small JSON payload embedded in the page tha
 
 ```html
 <script id="__NEXT_DATA__" type="application/json">
-{
-  "props": {
-    "pageProps": {
-      "products": [
-        { "id": 1, "name": "Product A", "price": 29.99 },
-        { "id": 2, "name": "Product B", "price": 49.99 }
-      ]
+  {
+    "props": {
+      "pageProps": {
+        "products": [
+          { "id": 1, "name": "Product A", "price": 29.99 },
+          { "id": 2, "name": "Product B", "price": 49.99 }
+        ]
+      }
     }
   }
-}
 </script>
 ```
 
@@ -278,7 +275,9 @@ async function ProductList() {
   const products = await db.query('SELECT * FROM products');
   return (
     <ul>
-      {products.map(p => <li key={p.id}>{p.name}</li>)}
+      {products.map((p) => (
+        <li key={p.id}>{p.name}</li>
+      ))}
     </ul>
   );
 }
@@ -286,14 +285,10 @@ async function ProductList() {
 // This runs in the browser (and also on the server for SSR).
 // Can use useState, useEffect, onClick.
 // Cannot directly access databases or file system.
-'use client';
+('use client');
 function AddToCartButton({ productId }) {
   const [added, setAdded] = React.useState(false);
-  return (
-    <button onClick={() => setAdded(true)}>
-      {added ? 'Added' : 'Add to cart'}
-    </button>
-  );
+  return <button onClick={() => setAdded(true)}>{added ? 'Added' : 'Add to cart'}</button>;
 }
 ```
 
