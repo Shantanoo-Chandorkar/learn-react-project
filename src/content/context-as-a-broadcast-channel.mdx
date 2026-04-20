@@ -39,16 +39,12 @@ function CheckoutButton({ product }) {
     else addToCart(product.id, user.id);
   }
 
-  return (
-    <button onClick={handleClick}>
-      {user ? 'Add to cart' : 'Log in to buy'}
-    </button>
-  );
+  return <button onClick={handleClick}>{user ? 'Add to cart' : 'Log in to buy'}</button>;
 }
 
 function LoginButton() {
   function handleLogin() {
-    authenticateUser().then(user => {
+    authenticateUser().then((user) => {
       setUser(user);
       // now what? CheckoutButton still shows "Log in to buy"
       // nothing told React to re-render
@@ -104,7 +100,7 @@ function App() {
   return (
     <ThemeContext.Provider value={theme}>
       <Layout />
-      <button onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')}>
+      <button onClick={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}>
         Toggle theme
       </button>
     </ThemeContext.Provider>
@@ -123,10 +119,7 @@ function ThemedButton({ children, onClick }) {
   const theme = React.useContext(ThemeContext);
 
   return (
-    <button
-      className={`btn btn-${theme}`}
-      onClick={onClick}
-    >
+    <button className={`btn btn-${theme}`} onClick={onClick}>
       {children}
     </button>
   );
@@ -154,7 +147,7 @@ function UserProvider({ children }) {
   const [user, setUser] = React.useState(null);
 
   function login(credentials) {
-    return authenticate(credentials).then(userData => {
+    return authenticate(credentials).then((userData) => {
       setUser(userData);
     });
   }
@@ -166,11 +159,7 @@ function UserProvider({ children }) {
   // The value is an object containing both state and updaters
   const value = { user, login, logout };
 
-  return (
-    <UserContext.Provider value={value}>
-      {children}
-    </UserContext.Provider>
-  );
+  return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
 }
 
 // Usage in App
@@ -193,21 +182,13 @@ function CheckoutButton({ product }) {
     else addToCart(product.id, user.id);
   }
 
-  return (
-    <button onClick={handleClick}>
-      {user ? 'Add to cart' : 'Log in to buy'}
-    </button>
-  );
+  return <button onClick={handleClick}>{user ? 'Add to cart' : 'Log in to buy'}</button>;
 }
 
 function LoginButton() {
   const { login } = useUser();
 
-  return (
-    <button onClick={() => login({ email, password })}>
-      Log in
-    </button>
-  );
+  return <button onClick={() => login({ email, password })}>Log in</button>;
 }
 ```
 
@@ -261,9 +242,9 @@ function App() {
 }
 
 function DeepComponent() {
-  const { user } = useUser();         // reads from UserProvider
-  const theme = useTheme();           // reads from ThemeProvider
-  const locale = useLocale();         // reads from LocaleProvider
+  const { user } = useUser(); // reads from UserProvider
+  const theme = useTheme(); // reads from ThemeProvider
+  const locale = useLocale(); // reads from LocaleProvider
   // no props needed for any of these
 }
 ```
@@ -279,11 +260,7 @@ A critical detail: the value passed to the Provider must be stable to avoid unne
 function UserProvider({ children }) {
   const [user, setUser] = React.useState(null);
 
-  return (
-    <UserContext.Provider value={{ user, login, logout }}>
-      {children}
-    </UserContext.Provider>
-  );
+  return <UserContext.Provider value={{ user, login, logout }}>{children}</UserContext.Provider>;
 }
 // Every time UserProvider re-renders for any reason,
 // { user, login, logout } is a new object.
@@ -302,16 +279,9 @@ function UserProvider({ children }) {
     setUser(null);
   }, []);
 
-  const value = React.useMemo(
-    () => ({ user, login, logout }),
-    [user, login, logout]
-  );
+  const value = React.useMemo(() => ({ user, login, logout }), [user, login, logout]);
 
-  return (
-    <UserContext.Provider value={value}>
-      {children}
-    </UserContext.Provider>
-  );
+  return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
 }
 ```
 
@@ -486,7 +456,7 @@ function App() {
       <CountContext.Provider value={count}>
         <Display />
       </CountContext.Provider>
-      <button onClick={() => setCount(c => c + 1)}>+</button>
+      <button onClick={() => setCount((c) => c + 1)}>+</button>
     </div>
   );
 }
@@ -550,14 +520,12 @@ function App() {
 
   const config = React.useMemo(
     () => ({ timeout: 5000, retries: 3 }),
-    [] // stable: never changes
+    [], // stable: never changes
   );
 
   return (
     <ConfigContext.Provider value={config}>
-      <button onClick={() => setUnrelated(u => u + 1)}>
-        Unrelated: {unrelated}
-      </button>
+      <button onClick={() => setUnrelated((u) => u + 1)}>Unrelated: {unrelated}</button>
       <ConfigConsumer />
     </ConfigContext.Provider>
   );

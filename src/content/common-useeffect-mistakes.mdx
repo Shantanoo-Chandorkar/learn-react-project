@@ -21,7 +21,7 @@ function UserProfile({ userId }) {
 
   // Fetch user
   React.useEffect(() => {
-    fetchUser(userId).then(data => {
+    fetchUser(userId).then((data) => {
       setUser(data);
       setFormData({ bio: data.bio }); // also update form
     });
@@ -31,7 +31,7 @@ function UserProfile({ userId }) {
   React.useEffect(() => {
     if (user) {
       document.title = user.name;
-      setUser(prev => ({ ...prev, lastViewed: Date.now() })); // update state in effect
+      setUser((prev) => ({ ...prev, lastViewed: Date.now() })); // update state in effect
     }
   }, [user]);
 
@@ -48,10 +48,7 @@ function UserProfile({ userId }) {
   return (
     <div>
       <h1>{user?.name}</h1>
-      <textarea
-        value={formData.bio}
-        onChange={e => setFormData({ bio: e.target.value })}
-      />
+      <textarea value={formData.bio} onChange={(e) => setFormData({ bio: e.target.value })} />
     </div>
   );
 }
@@ -122,7 +119,7 @@ The mental model check: "sync the user data fetch with `userId`." The input is `
 React.useEffect(() => {
   if (user) {
     document.title = user.name;
-    setUser(prev => ({ ...prev, lastViewed: Date.now() }));
+    setUser((prev) => ({ ...prev, lastViewed: Date.now() }));
   }
 }, [user]);
 
@@ -188,7 +185,7 @@ The second example tracks a profile view whenever `user` changes. But "user chan
 // Correct: track at the event, not in an effect
 React.useEffect(() => {
   if (userId) {
-    fetchUser(userId).then(data => {
+    fetchUser(userId).then((data) => {
       setUser(data);
       analytics.track('profile_viewed', { userId }); // at the data load event
     });
@@ -203,7 +200,7 @@ Or even better: track in the event handler for the navigation action that brough
 ```jsx
 // Pattern 1: no deps array + state setter
 React.useEffect(() => {
-  setCount(c => c + 1); // triggers re-render, effect runs again, forever
+  setCount((c) => c + 1); // triggers re-render, effect runs again, forever
 });
 
 // Pattern 2: object/array in deps that is recreated every render
@@ -307,6 +304,7 @@ Mount: `prevDeps === null`. `areHookInputsEqual` returns `false` immediately. Th
 Update: `prevDeps` is the previous dep array. `areHookInputsEqual` compares element by element.
 
 The cleanup function (the function returned by the effect) runs:
+
 - Before the effect runs again (to clean up the previous effect's work)
 - When the component unmounts
 
@@ -335,7 +333,7 @@ function App() {
   const [user, setUser] = React.useState(null);
 
   React.useEffect(() => {
-    fetchCurrentUser().then(data => setUser(data));
+    fetchCurrentUser().then((data) => setUser(data));
   }, [user]);
 
   return <div>{user?.name}</div>;
@@ -375,7 +373,13 @@ function SearchResults({ query, userId }) {
     fetchResults(query, userId).then(setResults);
   }, [query]); // userId missing
 
-  return <ul>{results.map(r => <li key={r.id}>{r.name}</li>)}</ul>;
+  return (
+    <ul>
+      {results.map((r) => (
+        <li key={r.id}>{r.name}</li>
+      ))}
+    </ul>
+  );
 }
 ```
 
@@ -416,7 +420,7 @@ Syntactically correct: `onTick` is in the deps, the cleanup clears the interval.
 
 ```jsx
 // Parent:
-<Timer onTick={() => setCount(c => c + 1)} />
+<Timer onTick={() => setCount((c) => c + 1)} />
 // inline function: new reference every parent render
 ```
 

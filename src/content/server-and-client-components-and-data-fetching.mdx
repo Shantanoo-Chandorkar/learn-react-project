@@ -1,0 +1,527 @@
+# Server Components, Client Components, and Data Fetching
+
+### 1. The Problem
+
+Every React component before the App Router ran in two places: on the server during SSR (to produce the initial HTML) and in the browser (to hydrate and handle interactions). This double execution was a fundamental constraint. You could not write code in a component that should only ever run on the server, like a direct database query, because the same code would also be bundled and shipped to the browser where `require('pg')` would fail.
+
+The workaround was `getServerSideProps` and `getStaticProps`: data fetching functions that ran only on the server, passed their results as props to the component, and the component itself remained browser-safe. This created an artificial separation: the data fetching logic was forced out of the component and into special page-level functions, making co-location of a component with its data impossible.
+
+React Server Components change this. A Server Component is a component that runs only on the server. Always. It never runs in the browser. Never gets bundled. Never ships to the client. It can import `pg`, read from the filesystem, query a database directly, and do anything a Node.js process can do. The browser never sees the component code, only its rendered HTML output.
+
+This is not SSR. SSR runs component code on the server for the initial render and then runs the same code again in the browser for hydration. RSC runs component code only on the server and sends a serialized representation of the output to the client, not the component code itself.
+
+---
+
+### 2. The Naive Attempt
+
+A developer understands that Server Components run on the server and builds a dashboard using them:
+
+```jsx
+// app/dashboard/page.js
+import { db } from '@/lib/database';
+import { useState } from 'react'; // imported but...
+
+export default async function DashboardPage() {
+  const metrics = await db.query('SELECT * FROM metrics WHERE date = TODAY()');
+
+  const [selectedMetric, setSelectedMetric] = useState(null); // ERROR
+
+  return (
+    <div>
+      {metrics.map((m) => (
+        <MetricCard
+          key={m.id}
+          metric={m}
+          onClick={() => setSelectedMetric(m)} // ERROR: no event handlers
+        />
+      ))}
+      {selectedMetric && <MetricDetail metric={selectedMetric} />}
+    </div>
+  );
+}
+```
+
+This fails immediately with an error: "useState is not supported in Server Components." The developer tries adding `'use client'` to the file, which makes the component a Client Component. Now the database import breaks because `import { db } from '@/lib/database'` imports a Node.js database driver that references `process`, `net`, and Node.js core modules that do not exist in the browser.
+
+The problem is trying to put server logic and client interactivity in the same component. These are fundamentally different concerns that cannot coexist in a single file. The architecture requires separating them at a meaningful boundary.
+
+---
+
+### 3. Why That Breaks
+
+Two precise failure modes operating in opposite directions.
+
+**Failure mode 1: Using hooks or browser APIs in a Server Component.**
+
+Server Components have no concept of state, effects, or interactivity. They run once on the server, produce output, and are done. `useState`, `useEffect`, `useRef`, event handlers, and browser APIs (`window`, `document`, `localStorage`) do not exist in the server environment. Using any of these in a Server Component produces a build error or runtime error.
+
+**Failure mode 2: Using server-only code in a Client Component.**
+
+When a file contains `'use client'`, Next.js includes it in the browser JavaScript bundle. Any import in that file is also bundled. Importing a database driver, a file system utility, or any Node.js-specific module into a Client Component causes the bundler to attempt to include Node.js built-in modules in a browser bundle. The build either fails or produces broken browser code.
+
+The architectural solution: split the work. Server Components handle data access. Client Components handle interactivity. They compose through the component tree.
+
+---
+
+### 4. Next.js's Mental Model
+
+Every component in the App Router is either a Server Component (the default) or a Client Component (opted in with `'use client'`). This is not a rendering optimization. It is a fundamental architectural boundary about where code runs and what it has access to.
+
+Server Components run only on the server. They can access server resources directly. They cannot be interactive. They never hydrate.
+
+Client Components run in the browser and also on the server for SSR. They can be interactive. They cannot directly access server resources.
+
+The boundary between them is a one-way door: Server Components can render Client Components (passing them as children or props). Client Components cannot render Server Components directly (though they can receive Server Components as children props from a Server Component parent).
+
+One sentence: the `'use client'` directive marks the boundary between the server-only world and the browser world, and composing Server Components above Client Components lets you co-locate data fetching with the components that display it while keeping interactivity where it belongs.
+
+---
+
+### 5. Next.js's Solution
+
+**The `'use client'` directive.**
+
+By default, every component in the `app` directory is a Server Component. No configuration needed. To make a component a Client Component, add `'use client'` as the very first line:
+
+```jsx
+'use client';
+
+import { useState } from 'react';
+
+export default function Counter() {
+  const [count, setCount] = useState(0);
+  return <button onClick={() => setCount((c) => c + 1)}>{count}</button>;
+}
+```
+
+`'use client'` marks a boundary in the module graph. The file and everything it imports becomes part of the client bundle. It does not need to be repeated in every file: once a file declares `'use client'`, all components imported by that file are also Client Components by extension.
+
+There is no `'use server'` directive for components. Server Components are the default. `'use server'` is used for Server Actions (functions, not components), covered in Phase 4.
+
+**What each type can do.**
+
+```
+                        Server Component    Client Component
+──────────────────────────────────────────────────────────────
+Runs on server              ✓                   ✓ (SSR only)
+Runs in browser             ✗                   ✓
+Direct DB access            ✓                   ✗
+Read filesystem             ✓                   ✗
+Access env variables        ✓                   ✗ (only NEXT_PUBLIC_*)
+useState / useReducer       ✗                   ✓
+useEffect                   ✗                   ✓
+Event handlers              ✗                   ✓
+Browser APIs                ✗                   ✓
+Fetch data (async/await)    ✓                   ✓ (with useEffect)
+Import server-only libs     ✓                   ✗
+Render Client Components    ✓                   ✓
+Render Server Components    ✓                   ✗ (only via children)
+Included in JS bundle       ✗                   ✓
+```
+
+**Data fetching in Server Components.**
+
+The most significant change from the Pages Router: data fetching is co-located with the component that uses it. No `getStaticProps`. No `getServerSideProps`. No prop drilling from page-level data functions to deeply nested components.
+
+```jsx
+// app/products/[id]/page.js
+// This component fetches its own data. No special export needed.
+
+async function ProductPage({ params }) {
+  // Direct database query, no API round-trip
+  const product = await db.products.findUnique({
+    where: { id: parseInt(params.id) },
+  });
+
+  if (!product) notFound();
+
+  return (
+    <div>
+      <h1>{product.name}</h1>
+      <p>${product.price}</p>
+      <ProductDescription description={product.description} />
+      <ReviewSection productId={product.id} /> {/* fetches its own reviews */}
+    </div>
+  );
+}
+```
+
+```jsx
+// app/products/[id]/ReviewSection.js
+// A Server Component that fetches its own data
+
+async function ReviewSection({ productId }) {
+  const reviews = await db.reviews.findMany({
+    where: { productId },
+    orderBy: { createdAt: 'desc' },
+    take: 10,
+  });
+
+  return (
+    <section>
+      <h2>Reviews</h2>
+      {reviews.map((r) => (
+        <ReviewCard key={r.id} review={r} />
+      ))}
+    </section>
+  );
+}
+```
+
+`ReviewSection` fetches its own reviews. `ProductPage` fetches its own product. Neither needs to know about the other's data fetching. This is what co-location means: the component that displays the data is the component that fetches it.
+
+**Fetch deduplication.**
+
+If multiple Server Components in the same render pass call `fetch` with the same URL and options, Next.js (via React's extended `fetch`) deduplicates them: the actual HTTP request is made only once, and the result is shared across all components that requested it:
+
+```jsx
+// Both components call the same endpoint
+// Only one actual HTTP request is made per render pass
+
+async function Header() {
+  const user = await fetch('/api/current-user').then((r) => r.json());
+  return <nav>Hello, {user.name}</nav>;
+}
+
+async function ProfileSidebar() {
+  const user = await fetch('/api/current-user').then((r) => r.json());
+  return <aside>{user.bio}</aside>;
+}
+```
+
+This deduplication is request-scoped (not cross-request caching). Within a single render of the page, the second `fetch('/api/current-user')` reuses the result of the first without making a second network request. Across requests, the Data Cache handles caching (covered in Phase 3).
+
+**Composing Server and Client Components.**
+
+The key pattern: Server Components do the data fetching, Client Components handle the interactivity. They compose through the component tree.
+
+```jsx
+// app/products/[id]/page.js  ← Server Component (default)
+
+async function ProductPage({ params }) {
+  const product = await db.products.findUnique({ where: { id: params.id } });
+
+  return (
+    <div>
+      <h1>{product.name}</h1>
+      <p>${product.price}</p>
+      {/* Pass server-fetched data to a Client Component */}
+      <AddToCartButton product={product} />
+    </div>
+  );
+}
+```
+
+```jsx
+// app/products/[id]/AddToCartButton.js  ← Client Component
+'use client';
+
+import { useState } from 'react';
+
+export default function AddToCartButton({ product }) {
+  const [added, setAdded] = useState(false);
+
+  async function handleAddToCart() {
+    await addToCart(product.id);
+    setAdded(true);
+  }
+
+  return <button onClick={handleAddToCart}>{added ? '✓ Added' : 'Add to cart'}</button>;
+}
+```
+
+The Server Component fetches the product and passes it to the Client Component as a prop. The Client Component handles the interactive behavior. The database code (`db.products.findUnique`) never reaches the browser. The interactive code (`useState`, `onClick`) never runs on the server during the initial data fetch.
+
+**The Client Component boundary is a module boundary.**
+
+`'use client'` does not make just one component a Client Component. It marks the entire module and everything it imports as client code. This is why you put `'use client'` in a file that is a leaf in the component tree or as high as necessary but no higher:
+
+```jsx
+// WRONG: DashboardLayout imports a database module
+// If DashboardLayout is 'use client', the database import is bundled
+'use client';
+import { db } from '@/lib/database'; // bundled to browser: BREAKS
+
+export default function DashboardLayout({ children }) {
+  // ...
+}
+```
+
+```jsx
+// CORRECT: Keep 'use client' in the components that need it
+// The interactive button only
+'use client';
+
+export default function SidebarToggle({ isOpen, onToggle }) {
+  return <button onClick={onToggle}>{isOpen ? 'Close' : 'Open'}</button>;
+}
+```
+
+```jsx
+// app/dashboard/layout.js  ← Server Component (no 'use client')
+import { SidebarToggle } from './SidebarToggle';
+
+export default async function DashboardLayout({ children }) {
+  const navItems = await db.navigation.findMany(); // server-only, safe
+
+  return (
+    <div>
+      <SidebarToggle /> {/* Client Component rendered inside Server Component */}
+      <nav>
+        {navItems.map((item) => (
+          <NavLink key={item.id} item={item} />
+        ))}
+      </nav>
+      <main>{children}</main>
+    </div>
+  );
+}
+```
+
+**Passing Server Components as children to Client Components.**
+
+Client Components cannot import and render Server Components directly. But they can receive Server Components as the `children` prop, passed from a Server Component parent:
+
+```jsx
+// WRONG: Client Component importing a Server Component
+'use client';
+import ServerComponent from './ServerComponent'; // won't work as expected
+
+export default function ClientWrapper() {
+  return (
+    <div>
+      <ServerComponent /> {/* treated as Client Component: loses server benefits */}
+    </div>
+  );
+}
+```
+
+```jsx
+// CORRECT: Server Component passes Server Component as children
+
+// app/some-page/page.js  ← Server Component
+import ClientWrapper from './ClientWrapper';
+import ServerContent from './ServerContent'; // also a Server Component
+
+export default function Page() {
+  return (
+    <ClientWrapper>
+      <ServerContent /> {/* passed as children, not imported by ClientWrapper */}
+    </ClientWrapper>
+  );
+}
+```
+
+```jsx
+// ClientWrapper.js  ← Client Component
+'use client';
+
+export default function ClientWrapper({ children }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button onClick={() => setOpen((o) => !o)}>Toggle</button>
+      {open && children} {/* children is ServerContent, runs on server */}
+    </div>
+  );
+}
+```
+
+`ServerContent` was created (rendered) by the Server Component parent `Page`. `ClientWrapper` just receives it as a prop and decides whether to display it. The `ServerContent` code never reaches the browser bundle. Its output (HTML) does.
+
+**The `server-only` package.**
+
+A utility for preventing server-only modules from being accidentally imported in Client Components:
+
+```js
+// lib/database.js
+import 'server-only'; // throws at build time if imported in a Client Component
+
+import { Pool } from 'pg';
+export const db = new Pool({ connectionString: process.env.DATABASE_URL });
+```
+
+If any Client Component (or a module imported by a Client Component) imports `lib/database.js`, the build fails with a clear error: "This module is server-only and cannot be imported in client components." This is a defense-in-depth measure for sensitive server code.
+
+---
+
+### 6. Internals
+
+**The RSC payload: what the server sends instead of component code.**
+
+When a Server Component renders, it does not send JavaScript code to the client. It sends a serialized description of the rendered output in React's flight format, a JSON-like protocol that describes the component tree as a series of React elements without the component logic.
+
+For a Server Component that renders a product:
+
+```
+Server executes:
+  ProductPage({ params: { id: '42' } })
+  → fetches product from DB
+  → returns JSX tree
+
+Server serializes the output as RSC payload (simplified):
+  0: ["$", "div", null, { "children": [
+       ["$", "h1", null, { "children": "Product A" }],
+       ["$", "p",  null, { "children": "$29.99" }],
+       ["$", "@1", null, {}]   ← reference to a Client Component
+     ]}]
+  1: { ... client component definition for AddToCartButton ... }
+```
+
+The `@1` reference points to the Client Component, which is included in the client bundle separately. The Server Component's own code (the `db.products.findUnique` call, the async logic) is not in the payload. Only the output.
+
+The client receives this payload and uses it to either hydrate the SSR HTML (on initial load) or update the component tree (on navigation). Client Components referenced in the payload are hydrated normally. Server Component output is treated as static HTML that React inserts into the tree.
+
+**Why Server Components do not hydrate.**
+
+Hydration attaches JavaScript behavior to existing DOM nodes. Server Components have no JavaScript behavior to attach: no state, no effects, no event handlers. Their output is pure HTML. React marks Server Component output as "already rendered" and skips it during hydration. The client bundle does not include Server Component code because there is nothing to hydrate.
+
+This is the bundle size benefit of Server Components: large dependencies used only for rendering (markdown parsers, syntax highlighters, date formatting libraries) can live in Server Components and never ship to the browser. The browser receives their rendered output, not their code.
+
+**Serialization constraints on props passed to Client Components.**
+
+Props passed from Server Components to Client Components must be serializable. The values cross the server-client boundary and are included in the RSC payload. Serializable types: strings, numbers, booleans, null, arrays, plain objects, Dates, and some special React types. Non-serializable: functions, class instances, Symbols, and non-plain objects (Maps, Sets, Promises in props).
+
+```jsx
+// OK: plain data
+<ClientComponent name="Shan" count={42} items={[1, 2, 3]} />
+
+// NOT OK: function prop from Server Component to Client Component
+<ClientComponent onClick={() => console.log('click')} />
+// Functions cannot be serialized across the RSC boundary
+// onClick must be defined inside the Client Component, not passed from server
+```
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: "Server Components are just SSR." What is wrong with this statement?**
+
+<details>
+<summary>Answer</summary>
+
+SSR and Server Components are different concepts that solve different problems.
+
+SSR is a rendering strategy: component code runs on the server to produce the initial HTML, then the same code runs in the browser for hydration. The key word is "same": in SSR, your component code exists in both environments and runs in both.
+
+Server Components are a component type: they run only on the server, their code never reaches the browser, and they never hydrate. The browser receives their rendered output (HTML and RSC payload), not their source code.
+
+The practical differences: with SSR, a component that imports a 500KB markdown parser ships that 500KB to the browser even if the markdown is only rendered on the server. With Server Components, the same import stays on the server permanently, contributing zero bytes to the client bundle. With SSR, every component is eventually hydrated in the browser. With Server Components, only Client Components hydrate.
+
+SSR and Server Components can coexist: Server Components can SSR (they produce HTML on the server for the initial page load), but SSR-rendered Server Components still never run in the browser. The initial HTML is generated on the server. The client receives that HTML plus the RSC payload to complete hydration of Client Components, but Server Components are not hydrated.
+
+</details>
+
+---
+
+**Trap 2: A Client Component needs to display user-specific data fetched from the database. The developer cannot make the component a Server Component because it needs `useState` for interactivity. How do you structure this?**
+
+<details>
+<summary>Answer</summary>
+
+Separate the data fetching from the interactivity by splitting the component into a Server Component parent and a Client Component child.
+
+The Server Component parent handles data fetching:
+
+```jsx
+// app/profile/page.js  ← Server Component
+import ProfileEditor from './ProfileEditor';
+
+async function ProfilePage() {
+  const user = await db.users.findUnique({ where: { id: getCurrentUserId() } });
+  return <ProfileEditor initialData={user} />;
+}
+```
+
+The Client Component child receives the data as props and handles interactivity:
+
+```jsx
+// ProfileEditor.js  ← Client Component
+'use client';
+
+export default function ProfileEditor({ initialData }) {
+  const [name, setName] = useState(initialData.name);
+  const [bio, setBio] = useState(initialData.bio);
+
+  async function handleSave() {
+    await updateProfile({ name, bio });
+  }
+
+  return (
+    <form>
+      <input value={name} onChange={(e) => setName(e.target.value)} />
+      <textarea value={bio} onChange={(e) => setBio(e.target.value)} />
+      <button onClick={handleSave}>Save</button>
+    </form>
+  );
+}
+```
+
+The Server Component fetches the data (server-only capability) and passes it to the Client Component as `initialData`. The Client Component manages the interactive editing state (client-only capability). Neither component crosses into the other's domain. The database import stays on the server. The `useState` stays on the client.
+
+</details>
+
+---
+
+**Trap 3: What happens when you add `'use client'` to a layout file that imports a database module?**
+
+<details>
+<summary>Answer</summary>
+
+Adding `'use client'` to a layout file marks the entire module and its imports as client code. The bundler includes the layout file and everything it imports in the browser JavaScript bundle. If the layout imports a database module (like `pg`, `mongoose`, or `prisma/client`), the bundler attempts to include that module in the browser bundle.
+
+Database modules typically depend on Node.js built-ins (`net`, `tls`, `fs`, `child_process`) that do not exist in browsers. The build will either fail with a module resolution error, or the bundler will produce broken browser code that throws at runtime when the missing Node.js APIs are accessed.
+
+Beyond the build failure, making a layout a Client Component loses all the benefits of server-side data fetching in the layout: the layout can no longer be `async`, cannot directly await database queries, and cannot access server-only environment variables.
+
+The correct architecture: keep layout files as Server Components (default, no directive needed). Extract the interactive portions of the layout (sidebar toggle button, navigation dropdowns, theme switcher) into separate Client Component files. The layout renders these Client Components as leaves in its tree, keeping data fetching server-side while enabling interactivity where needed.
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** What is the serialization constraint on props passed from Server Components to Client Components? Why does this constraint exist?
+
+<details>
+<summary>Answer</summary>
+
+Props passed from Server Components to Client Components must be serializable to JSON-compatible values: strings, numbers, booleans, null, arrays, and plain objects. Dates, certain React types, and some other types are also supported by the RSC serialization format. Non-serializable values include functions, class instances, Symbols, Maps, Sets, and WeakRefs.
+
+The constraint exists because Server Component props cross the server-client boundary. The RSC payload that the server sends to the client is a serialized description of the rendered component tree. Every prop value passed to a Client Component is embedded in this payload. Values that cannot be serialized (functions, class instances) cannot be embedded in the payload and therefore cannot cross the boundary.
+
+This is why event handlers like `onClick` cannot be passed from a Server Component to a Client Component as props: functions are not serializable. Event handlers must be defined within the Client Component itself. This is also why class instances from ORMs or other server libraries cannot be passed directly: they must be converted to plain objects (serialized data) before being passed as props.
+
+</details>
+
+---
+
+**Q2.** A Server Component and a Client Component both call `fetch('/api/current-user')` within the same request. How many actual HTTP requests are made, and what Next.js feature enables this?
+
+<details>
+<summary>Answer</summary>
+
+One actual HTTP request is made. React's extended `fetch` implementation, used by Next.js in Server Components, includes request memoization: within a single render pass (a single server request), identical `fetch` calls (same URL, same options) are deduplicated. The first call makes the actual HTTP request. The second call receives the cached result of the first without making a new network request.
+
+This is specifically called Request Memoization in Next.js's caching documentation. It is scoped to a single server render pass: once the request is complete, the in-memory cache is cleared. This is different from the Data Cache (which persists across requests for ISR/SSG), the Full Route Cache (which caches the rendered HTML), or the Router Cache (which caches RSC payloads on the client). Request Memoization is specifically for eliminating redundant fetches within the same server-side render.
+
+The practical implication: components can fetch their own data independently without the developer needing to manually deduplicate or coordinate data fetching between sibling components. Each component declares what it needs, and Next.js ensures the underlying request is only made once per render pass.
+
+</details>
+
+---
+
+**Q3.** Why can a Client Component receive a Server Component as `children` but not import and render a Server Component directly?
+
+<details>
+<summary>Answer</summary>
+
+When a Client Component imports a Server Component directly and renders it, the import is a module dependency. The bundler processes the Client Component's imports to include them in the browser bundle. The Server Component is then treated as client code: it is bundled, shipped to the browser, and runs in the browser. It loses all server-only capabilities and becomes effectively a Client Component without the `'use client'` declaration.
+
+When a Server Component passes another Server Component as the `children` prop to a Client Component, no import exists in the Client Component for the Server Component. The Server Component is rendered (executed) by the Server Component parent before the Client Component is ever involved. Its output (the rendered HTML and RSC payload) is passed to the Client Component as the `children` prop value, which is a serializable React element tree, not component code. The Client Component receives already-rendered output, not a component to execute. The Server Component's code never enters the client bundle.
+
+This asymmetry is intentional: the `children` pattern preserves the server execution of Server Components while allowing Client Components to control their layout and visibility. The import pattern destroys server execution by bringing the code into the client module graph.
+
+</details>

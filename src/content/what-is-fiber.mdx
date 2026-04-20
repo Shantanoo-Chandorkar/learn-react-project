@@ -27,21 +27,21 @@ const tree = {
   children: [
     {
       type: Nav,
-      children: []
+      children: [],
     },
     {
       type: Main,
       children: [
         { type: Hero, children: [] },
         { type: List, children: [] },
-      ]
-    }
-  ]
+      ],
+    },
+  ],
 };
 
 function reconcile(node) {
   processNode(node);
-  node.children.forEach(child => reconcile(child)); // recursive
+  node.children.forEach((child) => reconcile(child)); // recursive
 }
 ```
 
@@ -72,6 +72,7 @@ A tree can be encoded as a linked list. Every node stores three pointers: `child
 This is the core insight of Fiber. A Fiber node is not just a description of a component — it is a node in a linked list that encodes the tree structure. The work loop walks this list one node at a time. At any node, it can stop, save a pointer to `nextUnitOfWork`, return control to the browser, and resume from exactly that node on the next frame. The browser knows nothing. The list remains intact on the heap.
 
 Think of it like a choose-your-own-path structure:
+
 - To go deeper: follow `child`
 - To go right: follow `sibling`
 - To go up: follow `return`
@@ -88,26 +89,26 @@ Each component instance corresponds to one Fiber node — a plain JavaScript obj
 ```js
 const fiber = {
   // Identity
-  tag: FunctionComponent,   // the kind of component (0-24 enum values)
-  type: MyComponent,        // the function or class itself
-  key: null,                // the JSX key prop, used in reconciliation
-  stateNode: domNode,       // the actual DOM node, or class instance, or null
+  tag: FunctionComponent, // the kind of component (0-24 enum values)
+  type: MyComponent, // the function or class itself
+  key: null, // the JSX key prop, used in reconciliation
+  stateNode: domNode, // the actual DOM node, or class instance, or null
 
   // Tree pointers — the linked list
-  child: FiberNode | null,    // first child
-  sibling: FiberNode | null,  // next sibling at the same level
-  return: FiberNode | null,   // parent (named "return" because work returns there)
+  child: FiberNode | null, // first child
+  sibling: FiberNode | null, // next sibling at the same level
+  return: FiberNode | null, // parent (named "return" because work returns there)
 
   // Work
-  pendingProps: {},          // props for the in-progress render
-  memoizedProps: {},         // props from the last completed render
-  memoizedState: HookNode,  // head of the hook linked list (useState, useEffect, etc.)
-  updateQueue: UpdateQueue,  // pending state updates for this component
+  pendingProps: {}, // props for the in-progress render
+  memoizedProps: {}, // props from the last completed render
+  memoizedState: HookNode, // head of the hook linked list (useState, useEffect, etc.)
+  updateQueue: UpdateQueue, // pending state updates for this component
 
   // Scheduling
-  lanes: Lanes,              // bitmask of priority lanes (covered in 8.5)
-  childLanes: Lanes,         // union of all descendant lanes (for fast bailout)
-  flags: Flags,              // what DOM mutations are needed (Placement, Update, Deletion...)
+  lanes: Lanes, // bitmask of priority lanes (covered in 8.5)
+  childLanes: Lanes, // union of all descendant lanes (for fast bailout)
+  flags: Flags, // what DOM mutations are needed (Placement, Update, Deletion...)
 
   // Double-buffering
   alternate: FiberNode | null, // the mirror node in the other tree
@@ -123,25 +124,25 @@ function performUnitOfWork(fiber) {
 
   // 2. Determine next unit of work
   if (fiber.child) {
-    return fiber.child;       // go deeper
+    return fiber.child; // go deeper
   }
 
   let node = fiber;
   while (node) {
-    completeWork(node);       // finish this node's work
+    completeWork(node); // finish this node's work
     if (node.sibling) {
-      return node.sibling;    // go to next sibling
+      return node.sibling; // go to next sibling
     }
-    node = node.return;       // go up to parent and complete it
+    node = node.return; // go up to parent and complete it
   }
 
-  return null;                // traversal complete
+  return null; // traversal complete
 }
 ```
 
 Notice: no recursion. No call stack growth. `performUnitOfWork` returns the next node as a value — the work loop stores it in `nextUnitOfWork` and can call it next frame, or next millisecond, or after a higher-priority update finishes.
 
-The `return` pointer is named "return" rather than "parent" for a precise reason: it points to the node that work *returns to* after a subtree is finished. It mirrors the conceptual direction of a function return, even though no actual function return is involved.
+The `return` pointer is named "return" rather than "parent" for a precise reason: it points to the node that work _returns to_ after a subtree is finished. It mirrors the conceptual direction of a function return, even though no actual function return is involved.
 
 ---
 
@@ -205,7 +206,7 @@ The `memoizedState` field deserves special attention. For function components, i
 <details>
 <summary>Answer</summary>
 
-The name reflects what the pointer is used for, not what it represents structurally. In the old stack reconciler, when a recursive `reconcile(child)` call finished, execution literally *returned* to the parent frame on the call stack. In Fiber, there is no call stack, but the concept is preserved: when `performUnitOfWork` finishes a node and there are no more siblings, it follows the `return` pointer to continue work at the parent. The pointer is named after the *operation* (returning work to the parent) rather than the *relationship* (this is my parent). It is a semantic choice, not an accident. Interviewers sometimes ask this to check whether you understand that Fiber's linked list is a deliberate encoding of a traversal algorithm, not just a tree with edges renamed.
+The name reflects what the pointer is used for, not what it represents structurally. In the old stack reconciler, when a recursive `reconcile(child)` call finished, execution literally _returned_ to the parent frame on the call stack. In Fiber, there is no call stack, but the concept is preserved: when `performUnitOfWork` finishes a node and there are no more siblings, it follows the `return` pointer to continue work at the parent. The pointer is named after the _operation_ (returning work to the parent) rather than the _relationship_ (this is my parent). It is a semantic choice, not an accident. Interviewers sometimes ask this to check whether you understand that Fiber's linked list is a deliberate encoding of a traversal algorithm, not just a tree with edges renamed.
 
 </details>
 
@@ -255,7 +256,7 @@ The full pointer sequence: `Hero.sibling` → `List.return` → `Main.return` �
 <details>
 <summary>Answer</summary>
 
-`pendingProps` holds the props that the component is being rendered *with* in the current, in-progress render. They are set at the start of `beginWork` and represent the "next" state of the component. `memoizedProps` holds the props from the last *completed, committed* render. They represent the last known good state — what the component was rendered with the last time a commit reached the DOM.
+`pendingProps` holds the props that the component is being rendered _with_ in the current, in-progress render. They are set at the start of `beginWork` and represent the "next" state of the component. `memoizedProps` holds the props from the last _completed, committed_ render. They represent the last known good state — what the component was rendered with the last time a commit reached the DOM.
 
 During the render phase, both fields exist: `pendingProps` has the new proposed props, `memoizedProps` has the old committed props. React uses the comparison `pendingProps === memoizedProps` as the first fast bailout check — if they are referentially equal, the component likely doesn't need to re-render. After a commit, `pendingProps` is copied into `memoizedProps`, recording the rendered props as the new baseline. If a render is interrupted and discarded, `memoizedProps` retains the last committed value — it is never updated by an incomplete render.
 
@@ -292,6 +293,6 @@ Because a function component can call multiple hooks, each with independent stat
 
 The value `1` is wrapped in an update object `{ action: 1, lane: SyncLane, next: null }` and enqueued onto the hook's `queue.pending` field — a circular linked list of pending updates on the relevant hook state node in the Fiber's `memoizedState` list. `memoizedState` is not mutated immediately.
 
-React then schedules a re-render. During that re-render, `beginWork` processes the Fiber node. For each hook, React reads `queue.pending`, processes all enqueued updates in order (applying each `action` to the previous state), and computes a new state value. That new value is written into `memoizedState` on the hook node — but this is the *work-in-progress* Fiber, not the current one. The current Fiber's `memoizedState` still holds `0` (the previous committed value). Only after the commit phase completes does the WIP Fiber become `current`, and its `memoizedState` containing `1` becomes the stable, committed state that the next render will read.
+React then schedules a re-render. During that re-render, `beginWork` processes the Fiber node. For each hook, React reads `queue.pending`, processes all enqueued updates in order (applying each `action` to the previous state), and computes a new state value. That new value is written into `memoizedState` on the hook node — but this is the _work-in-progress_ Fiber, not the current one. The current Fiber's `memoizedState` still holds `0` (the previous committed value). Only after the commit phase completes does the WIP Fiber become `current`, and its `memoizedState` containing `1` becomes the stable, committed state that the next render will read.
 
 </details>

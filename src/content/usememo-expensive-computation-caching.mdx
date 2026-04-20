@@ -20,9 +20,9 @@ function AnalyticsTable({ dataset }) {
 
   // This runs on every render, including every column highlight toggle
   const processed = dataset
-    .filter(row => row.value > 0)
+    .filter((row) => row.value > 0)
     .sort((a, b) => b.value - a.value)
-    .map(row => ({
+    .map((row) => ({
       ...row,
       percentile: calculatePercentile(row.value, dataset),
     }));
@@ -31,7 +31,7 @@ function AnalyticsTable({ dataset }) {
     <table>
       <thead>
         <tr>
-          {columns.map(col => (
+          {columns.map((col) => (
             <th
               key={col}
               className={highlightedCol === col ? 'highlighted' : ''}
@@ -43,9 +43,11 @@ function AnalyticsTable({ dataset }) {
         </tr>
       </thead>
       <tbody>
-        {processed.map(row => (
+        {processed.map((row) => (
           <tr key={row.id}>
-            {columns.map(col => <td key={col}>{row[col]}</td>)}
+            {columns.map((col) => (
+              <td key={col}>{row[col]}</td>
+            ))}
           </tr>
         ))}
       </tbody>
@@ -97,9 +99,9 @@ function AnalyticsTable({ dataset }) {
 
   const processed = React.useMemo(() => {
     return dataset
-      .filter(row => row.value > 0)
+      .filter((row) => row.value > 0)
       .sort((a, b) => b.value - a.value)
-      .map(row => ({
+      .map((row) => ({
         ...row,
         percentile: calculatePercentile(row.value, dataset),
       }));
@@ -109,7 +111,7 @@ function AnalyticsTable({ dataset }) {
     <table>
       <thead>
         <tr>
-          {columns.map(col => (
+          {columns.map((col) => (
             <th
               key={col}
               className={highlightedCol === col ? 'highlighted' : ''}
@@ -121,9 +123,11 @@ function AnalyticsTable({ dataset }) {
         </tr>
       </thead>
       <tbody>
-        {processed.map(row => (
+        {processed.map((row) => (
           <tr key={row.id}>
-            {columns.map(col => <td key={col}>{row[col]}</td>)}
+            {columns.map((col) => (
+              <td key={col}>{row[col]}</td>
+            ))}
           </tr>
         ))}
       </tbody>
@@ -161,17 +165,14 @@ Three conditions should all be true before reaching for `useMemo`:
 
 ```jsx
 // Wrong: trivial computation
-const fullName = React.useMemo(
-  () => `${firstName} ${lastName}`,
-  [firstName, lastName]
-);
+const fullName = React.useMemo(() => `${firstName} ${lastName}`, [firstName, lastName]);
 // String concatenation takes nanoseconds. useMemo overhead exceeds the savings.
 // Just write: const fullName = `${firstName} ${lastName}`;
 
 // Wrong: computation that always needs to run
 const filtered = React.useMemo(
-  () => items.filter(i => i.active),
-  [items] // items is recreated on every render (new array from API)
+  () => items.filter((i) => i.active),
+  [items], // items is recreated on every render (new array from API)
 );
 // items reference changes every render. Object.is always fails.
 // useMemo runs the filter every render AND adds the dep comparison cost.
@@ -179,10 +180,7 @@ const filtered = React.useMemo(
 
 // Wrong: non-expensive computation, component rarely re-renders
 function Badge({ count }) {
-  const label = React.useMemo(
-    () => count === 1 ? '1 item' : `${count} items`,
-    [count]
-  );
+  const label = React.useMemo(() => (count === 1 ? '1 item' : `${count} items`), [count]);
   return <span>{label}</span>;
 }
 // Badge only re-renders when count changes anyway.
@@ -196,10 +194,7 @@ When an object is passed as a prop to a `React.memo` child, its reference must b
 
 ```jsx
 function Parent({ userId, theme }) {
-  const config = React.useMemo(
-    () => ({ userId, theme, timestamp: Date.now() }),
-    [userId, theme]
-  );
+  const config = React.useMemo(() => ({ userId, theme, timestamp: Date.now() }), [userId, theme]);
 
   return <MemoizedChild config={config} />;
 }
@@ -281,12 +276,15 @@ React reserves the right to discard `useMemo` caches in the future (for features
 function FilteredList({ category }) {
   const items = fetchItemsSync(category); // returns new array every call
 
-  const filtered = React.useMemo(
-    () => items.filter(i => i.active),
-    [items]
-  );
+  const filtered = React.useMemo(() => items.filter((i) => i.active), [items]);
 
-  return <ul>{filtered.map(i => <li key={i.id}>{i.name}</li>)}</ul>;
+  return (
+    <ul>
+      {filtered.map((i) => (
+        <li key={i.id}>{i.name}</li>
+      ))}
+    </ul>
+  );
 }
 ```
 
@@ -310,10 +308,7 @@ function UserCard({ userId }) {
   const [name, setName] = React.useState('Shan');
   const [age, setAge] = React.useState(28);
 
-  const userObject = React.useMemo(
-    () => ({ userId, name, age }),
-    [userId, name, age]
-  );
+  const userObject = React.useMemo(() => ({ userId, name, age }), [userId, name, age]);
 
   return (
     <div>
@@ -345,16 +340,23 @@ If referential stability is the goal (for a memoized child), `useMemo` here is a
 ```jsx
 function SortedList({ items, userId }) {
   const sorted = React.useMemo(
-    () => [...items].sort((a, b) => {
-      // put current user's items first
-      if (a.ownerId === userId) return -1;
-      if (b.ownerId === userId) return 1;
-      return a.name.localeCompare(b.name);
-    }),
-    [items] // userId missing from deps
+    () =>
+      [...items].sort((a, b) => {
+        // put current user's items first
+        if (a.ownerId === userId) return -1;
+        if (b.ownerId === userId) return 1;
+        return a.name.localeCompare(b.name);
+      }),
+    [items], // userId missing from deps
   );
 
-  return <ul>{sorted.map(i => <li key={i.id}>{i.name}</li>)}</ul>;
+  return (
+    <ul>
+      {sorted.map((i) => (
+        <li key={i.id}>{i.name}</li>
+      ))}
+    </ul>
+  );
 }
 ```
 
@@ -369,12 +371,13 @@ Fix: add `userId` to deps.
 
 ```jsx
 const sorted = React.useMemo(
-  () => [...items].sort((a, b) => {
-    if (a.ownerId === userId) return -1;
-    if (b.ownerId === userId) return 1;
-    return a.name.localeCompare(b.name);
-  }),
-  [items, userId] // both deps present
+  () =>
+    [...items].sort((a, b) => {
+      if (a.ownerId === userId) return -1;
+      if (b.ownerId === userId) return 1;
+      return a.name.localeCompare(b.name);
+    }),
+  [items, userId], // both deps present
 );
 ```
 

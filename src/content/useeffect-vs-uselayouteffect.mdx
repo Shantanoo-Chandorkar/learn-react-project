@@ -286,15 +286,15 @@ This is why `useLayoutEffect` prevents flicker: the state update, re-render, and
 Effects are distinguished by their flags on the hook node's `memoizedState.tag`:
 
 ```js
-const HookLayout  = 0b100; // useLayoutEffect
+const HookLayout = 0b100; // useLayoutEffect
 const HookPassive = 0b010; // useEffect
 const HookHasEffect = 0b001; // needs to run this commit
 
 // useLayoutEffect with changed deps:
-effect.tag = HookLayout | HookHasEffect
+effect.tag = HookLayout | HookHasEffect;
 
 // useEffect with changed deps:
-effect.tag = HookPassive | HookHasEffect
+effect.tag = HookPassive | HookHasEffect;
 ```
 
 The commit phase checks these flags to route each effect to the correct sub-phase. Layout effects go through the layout sub-phase. Passive effects are collected and scheduled for the passive effects phase via `scheduleCallback`.
@@ -336,7 +336,9 @@ function Dropdown({ items }) {
   return (
     <div>
       <div ref={menuRef} style={{ maxHeight: menuHeight }}>
-        {items.map(i => <div key={i.id}>{i.label}</div>)}
+        {items.map((i) => (
+          <div key={i.id}>{i.label}</div>
+        ))}
       </div>
     </div>
   );
@@ -354,9 +356,7 @@ The fix is `useIsomorphicLayoutEffect`:
 
 ```jsx
 const useIsomorphicLayoutEffect =
-  typeof window !== 'undefined'
-    ? React.useLayoutEffect
-    : React.useEffect;
+  typeof window !== 'undefined' ? React.useLayoutEffect : React.useEffect;
 
 function Dropdown({ items }) {
   const [menuHeight, setMenuHeight] = React.useState(0);

@@ -39,22 +39,19 @@ function Header({ user }) {
 function Navigation({ user }) {
   return (
     <ul>
-      <li><a href="/">Home</a></li>
-      <li><a href="/shop">Shop</a></li>
+      <li>
+        <a href="/">Home</a>
+      </li>
+      <li>
+        <a href="/shop">Shop</a>
+      </li>
       <UserMenu user={user} />
     </ul>
   );
 }
 
 function UserMenu({ user }) {
-  return (
-    <li>
-      {user
-        ? <span>Hello, {user.name}</span>
-        : <a href="/login">Log in</a>
-      }
-    </li>
-  );
+  return <li>{user ? <span>Hello, {user.name}</span> : <a href="/login">Log in</a>}</li>;
 }
 
 function Main({ user }) {
@@ -68,7 +65,7 @@ function Main({ user }) {
 function ProductGrid({ user }) {
   return (
     <div className="grid">
-      {products.map(p => (
+      {products.map((p) => (
         <ProductCard key={p.id} product={p} user={user} />
       ))}
     </div>
@@ -95,11 +92,7 @@ function CheckoutButton({ product, user }) {
     }
   }
 
-  return (
-    <button onClick={handleClick}>
-      {user ? 'Add to cart' : 'Log in to buy'}
-    </button>
-  );
+  return <button onClick={handleClick}>{user ? 'Add to cart' : 'Log in to buy'}</button>;
 }
 ```
 
@@ -178,9 +171,7 @@ function App() {
         <ProductCard
           key={product.id}
           product={product}
-          action={
-            <CheckoutButton product={product} user={user} />
-          }
+          action={<CheckoutButton product={product} user={user} />}
         />
       )}
     />
@@ -196,11 +187,7 @@ function Main({ renderProduct }) {
 }
 
 function ProductGrid({ renderProduct }) {
-  return (
-    <div className="grid">
-      {products.map(renderProduct)}
-    </div>
-  );
+  return <div className="grid">{products.map(renderProduct)}</div>;
 }
 
 function ProductCard({ product, action }) {
@@ -332,13 +319,7 @@ Context is the correct solution: it is React-aware, triggers re-renders when the
 function App() {
   const [user, setUser] = React.useState(null);
 
-  return (
-    <Main
-      renderProduct={(product) => (
-        <CheckoutButton product={product} user={user} />
-      )}
-    />
-  );
+  return <Main renderProduct={(product) => <CheckoutButton product={product} user={user} />} />;
 }
 
 function Main({ renderProduct }) {
@@ -346,9 +327,7 @@ function Main({ renderProduct }) {
 }
 
 function ProductGrid({ renderProduct }) {
-  return (
-    <div>{products.map(renderProduct)}</div>
-  );
+  return <div>{products.map(renderProduct)}</div>;
 }
 ```
 
@@ -368,7 +347,7 @@ The fix for the re-renders is `useCallback` on `renderProduct`:
 ```jsx
 const renderProduct = React.useCallback(
   (product) => <CheckoutButton product={product} user={user} />,
-  [user]
+  [user],
 );
 ```
 

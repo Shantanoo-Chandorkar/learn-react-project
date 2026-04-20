@@ -22,13 +22,10 @@ const Avatar = React.memo(function Avatar({ url, size }) {
 const UserCard = React.memo(function UserCard({ user, onFollow, onMessage }) {
   const displayName = React.useMemo(
     () => `${user.firstName} ${user.lastName}`,
-    [user.firstName, user.lastName]
+    [user.firstName, user.lastName],
   );
 
-  const cardStyle = React.useMemo(
-    () => ({ border: '1px solid', padding: 16, margin: 8 }),
-    []
-  );
+  const cardStyle = React.useMemo(() => ({ border: '1px solid', padding: 16, margin: 8 }), []);
 
   const handleFollowClick = React.useCallback(() => {
     onFollow(user.id);
@@ -62,13 +59,8 @@ function Feed({ users }) {
   return (
     <div>
       <FilterBar onChange={setFilter} />
-      {users.map(user => (
-        <UserCard
-          key={user.id}
-          user={user}
-          onFollow={handleFollow}
-          onMessage={handleMessage}
-        />
+      {users.map((user) => (
+        <UserCard key={user.id} user={user} onFollow={handleFollow} onMessage={handleMessage} />
       ))}
     </div>
   );
@@ -256,8 +248,8 @@ function Dashboard() {
   const [count, setCount] = React.useState(0);
   return (
     <div>
-      <button onClick={() => setCount(c => c + 1)}>{count}</button>
-      <ExpensivePanel />  {/* re-renders on every count change */}
+      <button onClick={() => setCount((c) => c + 1)}>{count}</button>
+      <ExpensivePanel /> {/* re-renders on every count change */}
     </div>
   );
 }
@@ -265,14 +257,14 @@ function Dashboard() {
 // Structural fix: colocate count in Counter, ExpensivePanel never re-renders
 function Counter() {
   const [count, setCount] = React.useState(0);
-  return <button onClick={() => setCount(c => c + 1)}>{count}</button>;
+  return <button onClick={() => setCount((c) => c + 1)}>{count}</button>;
 }
 
 function Dashboard() {
   return (
     <div>
       <Counter />
-      <ExpensivePanel />  {/* Dashboard never re-renders, neither does this */}
+      <ExpensivePanel /> {/* Dashboard never re-renders, neither does this */}
     </div>
   );
 }
@@ -374,13 +366,13 @@ function ProductPage({ productId }) {
   // A
   const product = React.useMemo(
     () => getProductById(productId), // O(1) map lookup
-    [productId]
+    [productId],
   );
 
   // B
   const averageRating = React.useMemo(
     () => reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length,
-    [reviews]
+    [reviews],
   );
 
   // C
@@ -390,8 +382,8 @@ function ProductPage({ productId }) {
 
   // D
   const buttonLabel = React.useMemo(
-    () => quantity === 1 ? 'Add to cart' : `Add ${quantity} to cart`,
-    [quantity]
+    () => (quantity === 1 ? 'Add to cart' : `Add ${quantity} to cart`),
+    [quantity],
   );
 
   return (

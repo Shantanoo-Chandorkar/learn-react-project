@@ -1,0 +1,486 @@
+# File-Based Routing, Pages, Layouts, and Templates
+
+### 1. The Problem
+
+React has no opinion on routing. You install React Router, configure routes manually, define path patterns as strings, and wire components to those patterns. The route configuration is a separate artifact from the components themselves, a mapping that must be maintained in sync with the component tree. As applications grow, this configuration grows alongside it, and the relationship between URLs and components becomes something you have to trace rather than something obvious from the file structure.
+
+Next.js takes a different position: the file system is the route configuration. The directory structure of your `app` folder is the URL structure of your application. There is nothing to configure and nothing to keep in sync. Where a file lives determines what URL renders it.
+
+But file-based routing is only the starting point. The real architectural value of the App Router is what happens with layouts: shared UI that wraps routes, persists across navigations, and does not re-render when the user navigates between child routes. Understanding how layouts, pages, and templates differ from each other, and what Next.js is doing under the hood to make layouts persistent, is what separates a developer who uses the file conventions from one who designs with them.
+
+---
+
+### 2. The Naive Attempt
+
+A developer coming from React Router builds a dashboard application in Next.js. They know about layouts but reach for the same pattern they used in React Router: a shared wrapper component that each page imports.
+
+```jsx
+// components/DashboardLayout.js
+function DashboardLayout({ children }) {
+  const [sidebarOpen, setSidebarOpen] = React.useState(true);
+
+  return (
+    <div>
+      <Sidebar isOpen={sidebarOpen} onToggle={() => setSidebarOpen(s => !s)} />
+      <main>{children}</main>
+    </div>
+  );
+}
+
+// app/dashboard/analytics/page.js
+import DashboardLayout from '@/components/DashboardLayout';
+
+export default function AnalyticsPage() {
+  return (
+    <DashboardLayout>
+      <AnalyticsContent />
+    </DashboardLayout>
+  );
+}
+
+// app/dashboard/settings/page.js
+import DashboardLayout from '@/components/DashboardLayout';
+
+export default function SettingsPage() {
+  return (
+    <DashboardLayout>
+      <SettingsContent />
+    </DashboardLayout>
+  );
+}
+```
+
+This works visually. But there is a hidden problem. When the user navigates from `/dashboard/analytics` to `/dashboard/settings`, Next.js unmounts the `AnalyticsPage` component and mounts the `SettingsPage` component. `DashboardLayout` is inside both page components. It is destroyed and recreated on every navigation. The sidebar's `sidebarOpen` state resets to `true` on every navigation. Any data fetched by the layout is re-fetched. Any scroll position in the sidebar is lost.
+
+The developer has replicated React Router's layout-per-page pattern. They are not using Next.js layouts.
+
+---
+
+### 3. Why That Breaks
+
+The precise failure mode: **importing a layout component inside each page component means the layout is part of the page component tree. When the page unmounts, the layout unmounts with it. State in the layout is destroyed on every navigation.**
+
+The problem is conceptual. A layout is not something a page renders. A layout is the persistent shell that the Next.js router renders, inside of which pages are swapped. The layout is above the page in the component hierarchy, owned by the router, not by the page.
+
+To get persistent layout state (sidebar open/closed, fetched data, scroll position), the layout must exist outside the page component tree, in a scope that the Next.js router owns and preserves across navigations.
+
+---
+
+### 4. Next.js's Mental Model
+
+The App Router's file system conventions map directly to a component hierarchy. Special filenames (`layout.js`, `page.js`, `loading.js`, `error.js`) represent specific roles in that hierarchy. The router assembles them automatically based on the URL.
+
+For a URL like `/dashboard/analytics`:
+
+```
+app/
+  layout.js           ← root layout, wraps everything
+  dashboard/
+    layout.js         ← dashboard layout, wraps all /dashboard/* routes
+    analytics/
+      page.js         ← the actual page content for /dashboard/analytics
+```
+
+Next.js assembles this into:
+
+```jsx
+<RootLayout>
+  <DashboardLayout>
+    <AnalyticsPage />
+  </DashboardLayout>
+</RootLayout>
+```
+
+When the user navigates to `/dashboard/settings`, Next.js swaps only `<AnalyticsPage />` for `<SettingsPage />`. `<RootLayout>` and `<DashboardLayout>` are not re-mounted. Their state persists. Their data is not re-fetched. This is what the file system conventions enable: a persistent layout hierarchy that the router maintains automatically.
+
+One sentence: the file system defines a component hierarchy where layouts are persistent shells above pages, and the router swaps only the page while preserving all layouts.
+
+---
+
+### 5. Next.js's Solution
+
+**The special file conventions.**
+
+Inside the `app` directory, specific filenames have specific roles. Any other filename is a regular module, not a route:
+
+```
+page.js       → The UI for the route. Required for a route to be publicly accessible.
+layout.js     → Persistent wrapper. Not re-mounted on child route navigation.
+template.js   → Like layout but re-mounted on every navigation.
+loading.js    → Automatic Suspense boundary for the route segment.
+error.js      → Automatic error boundary for the route segment.
+not-found.js  → Rendered when notFound() is thrown in a segment.
+```
+
+**Pages.**
+
+A `page.js` file makes a route publicly accessible. Without a `page.js`, the route segment exists (it can have a layout) but navigating to it returns 404.
+
+```jsx
+// app/dashboard/analytics/page.js
+// This file makes /dashboard/analytics a valid URL
+
+export default function AnalyticsPage() {
+  return <div>Analytics content</div>;
+}
+```
+
+Pages receive `params` (dynamic route segments) and `searchParams` (query string) as props:
+
+```jsx
+// app/products/[id]/page.js
+export default function ProductPage({ params, searchParams }) {
+  // params.id = '42' for /products/42
+  // searchParams.tab = 'reviews' for /products/42?tab=reviews
+  return <ProductDetail id={params.id} tab={searchParams.tab} />;
+}
+```
+
+**Layouts.**
+
+A `layout.js` file wraps all routes in its directory and all descendant directories. It receives `children` as a prop, which is the next level of the hierarchy (another layout, or a page).
+
+```jsx
+// app/dashboard/layout.js
+// Wraps all /dashboard/* routes
+
+export default function DashboardLayout({ children }) {
+  return (
+    <div className="dashboard">
+      <DashboardSidebar />
+      <main>{children}</main>
+    </div>
+  );
+}
+```
+
+```jsx
+// app/layout.js
+// Root layout: mandatory, wraps every route in the application
+// Must contain <html> and <body> tags
+
+export default function RootLayout({ children }) {
+  return (
+    <html lang="en">
+      <body>
+        <SiteHeader />
+        {children}
+        <SiteFooter />
+      </body>
+    </html>
+  );
+}
+```
+
+The root layout is mandatory. It replaces `_app.js` and `_document.js` from the Pages Router. Every application must have `app/layout.js`.
+
+When navigating between routes that share a layout, the layout component is not re-mounted. Its state persists:
+
+```jsx
+// app/dashboard/layout.js
+'use client'; // needs useState
+
+export default function DashboardLayout({ children }) {
+  const [sidebarOpen, setSidebarOpen] = React.useState(true);
+  // sidebarOpen persists when navigating between /dashboard/* routes
+  // It only resets if the user navigates away from /dashboard entirely
+
+  return (
+    <div>
+      <Sidebar isOpen={sidebarOpen} onToggle={() => setSidebarOpen((s) => !s)} />
+      <main>{children}</main>
+    </div>
+  );
+}
+```
+
+**Templates.**
+
+Templates look identical to layouts in their file convention and props. The difference is one behavioral property: a template is re-mounted on every navigation, even between routes that share the same template.
+
+```jsx
+// app/dashboard/template.js
+// Re-mounts (and resets state) on every navigation within /dashboard/*
+
+export default function DashboardTemplate({ children }) {
+  return <div className="page-transition-wrapper">{children}</div>;
+}
+```
+
+Use cases for templates over layouts:
+
+```
+1. Page transition animations: you want CSS enter/exit animations triggered
+   by component mount/unmount. Layouts never unmount, so you cannot trigger
+   mount animations. Templates unmount and remount, giving you clean
+   mount/unmount lifecycle hooks per navigation.
+
+2. useEffect tied to route change: if you need an effect to run on every
+   navigation to a route segment (logging, resetting a form, initializing
+   a third-party library per-page), templates give you componentDidMount
+   semantics on each navigation.
+
+3. Per-navigation state reset: if the shared UI genuinely should reset
+   its state on every navigation (a multi-step wizard where each route
+   is one step, and you want the wizard to restart from step 1 on every
+   entry), templates give you this behavior automatically.
+```
+
+If both `layout.js` and `template.js` exist in the same directory, the layout wraps the template:
+
+```
+Layout (persists) → Template (remounts) → Page (swapped)
+```
+
+**The component hierarchy in full.**
+
+For a URL `/dashboard/analytics`:
+
+```
+app/layout.js           (RootLayout, always mounted)
+  app/dashboard/layout.js   (DashboardLayout, mounted for /dashboard/*)
+    app/dashboard/template.js   (DashboardTemplate, if present, remounts per nav)
+      app/dashboard/loading.js   (Suspense boundary, if present)
+        app/dashboard/error.js   (Error boundary, if present)
+          app/dashboard/analytics/page.js  (AnalyticsPage, swapped per route)
+```
+
+**Route groups.**
+
+Parenthesized directories `(name)` create organizational groupings without affecting the URL. They allow applying a layout to some routes without including the group name in the URL:
+
+```
+app/
+  (marketing)/
+    layout.js     ← layout for marketing pages only
+    page.js       → /
+    about/
+      page.js     → /about
+    pricing/
+      page.js     → /pricing
+  (auth)/
+    layout.js     ← layout for auth pages only
+    login/
+      page.js     → /login
+    signup/
+      page.js     → /signup
+  (dashboard)/
+    layout.js     ← layout for dashboard pages only
+    dashboard/
+      page.js     → /dashboard
+```
+
+`/about` and `/login` have completely different layouts but neither has the group name in its URL. Route groups solve the problem of applying different root-level layouts to different sections of the application without creating URL segments for organizational purposes.
+
+**Nested layouts.**
+
+Layouts compose. A deeply nested route inherits all layouts in its ancestor directories:
+
+```
+app/
+  layout.js              ← RootLayout (html, body, site header)
+  (dashboard)/
+    layout.js            ← AuthLayout (session check, redirect if not authed)
+    dashboard/
+      layout.js          ← DashboardLayout (sidebar, navigation)
+      settings/
+        layout.js        ← SettingsLayout (settings sidebar, tabs)
+        profile/
+          page.js        → /dashboard/settings/profile
+```
+
+Navigating to `/dashboard/settings/profile` renders:
+
+```jsx
+<RootLayout>
+  <AuthLayout>
+    <DashboardLayout>
+      <SettingsLayout>
+        <ProfilePage />
+      </SettingsLayout>
+    </DashboardLayout>
+  </AuthLayout>
+</RootLayout>
+```
+
+Every ancestor layout is mounted. Navigating from `/dashboard/settings/profile` to `/dashboard/settings/account` preserves `RootLayout`, `AuthLayout`, `DashboardLayout`, and `SettingsLayout` state. Only `ProfilePage` is replaced by `AccountPage`.
+
+---
+
+### 6. Internals
+
+**How the App Router preserves layout state.**
+
+The App Router uses React's component tree identity to preserve layout state. When you navigate between routes that share a layout, the router renders the same layout component instance with new `children`. From React's perspective, the layout Fiber node is the same component at the same position in the tree. React reuses it, passing new children. The layout's state (from `useState`, `useReducer`, refs) is preserved because the Fiber node was not unmounted.
+
+This is different from the Pages Router, where `_app.js` was the only persistent component and everything else unmounted on navigation. The App Router enables persistent state at any level of the layout hierarchy.
+
+**The `children` prop and how Next.js fills it.**
+
+The `children` prop in a layout is a React slot. The App Router fills it at render time with the correct component for the current URL segment. The layout component itself does not know or care what `children` contains. It just renders `{children}` at the appropriate place in its JSX.
+
+When the URL changes, the App Router issues a re-render of the layout with new `children`. The layout re-renders (its function is called), but because the layout's own state and the layout Fiber node are preserved, this is a React update, not a mount/unmount cycle.
+
+**Partial rendering in the App Router.**
+
+The App Router optimizes navigation by only re-rendering the parts of the component tree that changed. When navigating from `/dashboard/analytics` to `/dashboard/settings`, the App Router determines which layout is the common ancestor of both routes. In this case it is `app/dashboard/layout.js`. The router only sends new RSC (React Server Component) payload for segments below that common ancestor. The `RootLayout` and `DashboardLayout` are not re-rendered at all. Only the page segment changes.
+
+This is more efficient than traditional SSR navigation: instead of re-rendering the entire page on the server and shipping new HTML for every element, the App Router ships a minimal RSC payload representing only the changed segments. The client merges this into the existing component tree.
+
+**Template re-mounting: the component key.**
+
+Templates achieve re-mounting by using a different React key for each navigation. When a component's key changes, React unmounts the old instance and mounts a new one. The App Router assigns each template a key based on the current URL, so every navigation to a new URL gives the template a new key, causing it to remount.
+
+```jsx
+// Conceptually, what Next.js does for templates:
+<DashboardTemplate key={currentPath}>{children}</DashboardTemplate>
+// key changes on navigation → React unmounts old, mounts new
+// Fresh state, fresh useEffect, fresh everything
+```
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: What is the difference between a layout and a template? When would you specifically reach for `template.js` over `layout.js`?**
+
+<details>
+<summary>Answer</summary>
+
+A layout persists across navigations between its child routes. It is mounted once and its state, effects, and DOM nodes are preserved when the user navigates between routes that share it. A template is re-mounted on every navigation to a route under it, even if the template itself did not change. Each navigation creates a fresh instance with fresh state and runs effects from scratch.
+
+The specific cases where template is the correct choice:
+
+Page transition animations: CSS enter/exit animations require a component to mount (enter) and unmount (exit). A layout never unmounts during child route navigation, so you cannot trigger mount-based animations. A template remounts on every navigation, giving you a fresh mount lifecycle on each route change.
+
+`useEffect` per navigation: if you need an effect to fire every time the user navigates to any route in a segment (tracking a page view, initializing a per-page third-party widget, resetting a scroll position), place it in a `useEffect` in a template. In a layout, the effect would only fire on the initial mount and on changes to its dependencies, not on every navigation.
+
+Intentional state reset: if the shared UI should start fresh on every navigation rather than preserving state, a template gives you this automatically without needing to manually reset state in a layout.
+
+Layouts are the correct default for almost everything: persistent navigation, shared header, sidebar, authentication wrappers. Templates are a specialized tool for the cases where persistence is actively unwanted.
+
+</details>
+
+---
+
+**Trap 2: Can a layout in the App Router be an async Server Component? What would you use this for?**
+
+<details>
+<summary>Answer</summary>
+
+Yes. A layout can be an async Server Component, and this is one of the most powerful features of the App Router. Because layouts run on the server, they can directly await database queries, API calls, or any async operation without a loading state:
+
+```jsx
+// app/dashboard/layout.js
+import { getSession } from '@/lib/auth';
+import { getUserPermissions } from '@/lib/permissions';
+
+export default async function DashboardLayout({ children }) {
+  const session = await getSession();
+  if (!session) redirect('/login');
+
+  const permissions = await getUserPermissions(session.userId);
+
+  return (
+    <div>
+      <DashboardSidebar permissions={permissions} />
+      <main>{children}</main>
+    </div>
+  );
+}
+```
+
+This pattern is used for: authentication and authorization checks (redirect to login if no session, 403 if insufficient permissions), fetching shared data needed by the layout UI (user's role, navigation items from a CMS, feature flags), and any data that is needed across all routes in a segment but would be wasteful to fetch in every individual page.
+
+The data fetched in the layout is available to the layout's UI but not directly to child pages. Pages fetch their own data. However, because Next.js deduplicates identical fetch requests (the same URL with the same cache options within the same render pass is only fetched once), a layout and a page fetching the same user data will result in only one actual network request.
+
+</details>
+
+---
+
+**Trap 3: A developer creates `app/dashboard/page.js` but navigating to `/dashboard` shows a blank page from the root layout without the dashboard content. What is the most likely cause?**
+
+<details>
+<summary>Answer</summary>
+
+The most common cause is that `app/dashboard/layout.js` exists and renders `{children}` in a location that is not visible, or does not render `{children}` at all.
+
+In the App Router, `page.js` becomes the `children` prop of the nearest parent `layout.js`. If `app/dashboard/layout.js` forgets to render `{children}`, the page content is silently swallowed:
+
+```jsx
+// app/dashboard/layout.js - WRONG: missing {children}
+export default function DashboardLayout() {
+  return (
+    <div>
+      <DashboardSidebar />
+      {/* children not rendered: page content disappears */}
+    </div>
+  );
+}
+```
+
+The fix is always to render `{children}` somewhere in the layout:
+
+```jsx
+export default function DashboardLayout({ children }) {
+  return (
+    <div>
+      <DashboardSidebar />
+      <main>{children}</main>
+    </div>
+  );
+}
+```
+
+A secondary cause: the developer created the file at `app/dashboard/page.js` but the `dashboard` directory is nested inside a route group whose layout is not rendering children, or the file is in a `(group)` directory but they are navigating to `/dashboard` and the actual path in the file system resolves to a different URL than expected. Route groups `(name)` are excluded from the URL, which can cause confusion about which file corresponds to which URL.
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** Explain precisely why importing a layout component inside each page component does not give you persistent layout state across navigation.
+
+<details>
+<summary>Answer</summary>
+
+When a layout component is imported and rendered inside a page component, it is part of that page component's render tree. It is a child of the page from React's perspective, rendered by the page, destroyed when the page is destroyed.
+
+When the user navigates to a new route in the Next.js App Router, the current page component is unmounted and the new page component is mounted. The layout component that was rendered by the old page is unmounted as part of that process. Its Fiber node is destroyed. Its state is lost. When the new page renders the same layout component, React mounts a fresh instance with fresh state. The layout never actually persisted: it was created and destroyed with each page.
+
+The App Router's `layout.js` convention solves this by inverting the relationship. The layout is not rendered by the page. The App Router renders the layout and passes the page as `children`. The layout's Fiber node is owned by the router, not by the page. When the page changes, the router re-renders the layout with new `children`, which is a React update on the existing layout Fiber, not a mount/unmount cycle. The layout's state is preserved because its Fiber node was never unmounted.
+
+</details>
+
+---
+
+**Q2.** A route group `(marketing)` contains a `layout.js`. What URLs does this layout apply to, and does `(marketing)` appear in any URL?
+
+<details>
+<summary>Answer</summary>
+
+The `(marketing)` route group's `layout.js` applies to all routes inside the `(marketing)` directory: any `page.js` directly inside it and any `page.js` inside subdirectories of it. The layout does not apply to routes outside the `(marketing)` directory, even if they are siblings at the same directory level.
+
+`(marketing)` does not appear in any URL. The parentheses convention tells Next.js that this directory is for organizational purposes only and should not create a URL segment. A `page.js` at `app/(marketing)/about/page.js` is accessible at `/about`, not `/marketing/about`. A `page.js` at `app/(marketing)/page.js` is accessible at `/`.
+
+This means route groups solve a specific architectural problem: applying different layouts to different sections of the application at the same URL depth without creating URL segments for the organizational grouping. `/about` and `/pricing` can use a marketing layout while `/login` and `/signup` use an auth layout, all at the root URL depth, by placing them in `(marketing)` and `(auth)` route groups respectively.
+
+</details>
+
+---
+
+**Q3.** What does Next.js send over the network when the user navigates from `/dashboard/analytics` to `/dashboard/settings` using the client-side router?
+
+<details>
+<summary>Answer</summary>
+
+Next.js sends only the RSC (React Server Component) payload for the segments that changed, not a full HTML page. The App Router's partial rendering optimization identifies the common ancestor layout between the source and destination routes. In this case, `app/dashboard/layout.js` is the common ancestor of both routes.
+
+The router sends a minimal RSC payload representing only the new page segment: `app/dashboard/settings/page.js` and any layouts specific to `settings` that are not shared with `analytics`. The `RootLayout` and `DashboardLayout` are not included in the response because they are shared and already rendered on the client.
+
+The client merges this new payload into the existing component tree. The existing `RootLayout` and `DashboardLayout` component instances are preserved with all their state intact. React receives the new page content as new `children` for `DashboardLayout` and performs a React update (not a remount) of `DashboardLayout`, swapping the rendered page content from `AnalyticsPage` to `SettingsPage`.
+
+This is fundamentally different from traditional MPA (Multi-Page Application) navigation where the entire page HTML is fetched and re-parsed, and different from the Pages Router where the entire page component (including `_app.js` wrapper) was re-rendered.
+
+</details>

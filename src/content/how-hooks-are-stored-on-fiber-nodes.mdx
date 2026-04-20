@@ -211,11 +211,7 @@ function mountState(initialState) {
   hook.queue = queue;
 
   // Bind dispatch to this specific fiber and queue
-  const dispatch = (queue.dispatch = dispatchSetState.bind(
-    null,
-    currentlyRenderingFiber,
-    queue,
-  ));
+  const dispatch = (queue.dispatch = dispatchSetState.bind(null, currentlyRenderingFiber, queue));
 
   return [hook.memoizedState, dispatch];
 }
@@ -331,10 +327,10 @@ This is why hook state survives renders: it is not in the function's scope. It i
 The `tag` field uses bitmasks:
 
 ```js
-const HookNoFlags   = 0b000;
+const HookNoFlags = 0b000;
 const HookHasEffect = 0b001; // this effect needs to run
-const HookPassive   = 0b010; // useEffect (passive = after paint)
-const HookLayout    = 0b100; // useLayoutEffect (layout = before paint)
+const HookPassive = 0b010; // useEffect (passive = after paint)
+const HookLayout = 0b100; // useLayoutEffect (layout = before paint)
 ```
 
 During the render phase, React compares the new deps array to the previous one using `Object.is` for each element. If any dep changed, the effect is tagged with `HookHasEffect`. If deps are the same, `HookHasEffect` is not set. During the commit phase, React walks the effect list and only runs effects that have `HookHasEffect` set. This is how `useEffect`'s dependency array prevents re-runs.
@@ -361,12 +357,7 @@ function updateEffectImpl(fiberFlags, hookFlags, create, deps) {
 
   // deps changed or no prev effect: set HookHasEffect
   currentlyRenderingFiber.flags |= fiberFlags;
-  hook.memoizedState = pushEffect(
-    HookHasEffect | hookFlags,
-    create,
-    destroy,
-    nextDeps,
-  );
+  hook.memoizedState = pushEffect(HookHasEffect | hookFlags, create, destroy, nextDeps);
 }
 
 function areHookInputsEqual(nextDeps, prevDeps) {
@@ -552,7 +543,7 @@ function useConditionalEffect(condition) {
 function App({ show }) {
   useConditionalEffect(show);
   const [count, setCount] = React.useState(0);
-  return <button onClick={() => setCount(c => c + 1)}>{count}</button>;
+  return <button onClick={() => setCount((c) => c + 1)}>{count}</button>;
 }
 ```
 
@@ -587,14 +578,14 @@ The internal check that catches it in development is the `_debugHookTypes` array
 ```jsx
 function Counter() {
   const [count, setCount] = React.useState(0);
-  return <button onClick={() => setCount(c => c + 1)}>{count}</button>;
+  return <button onClick={() => setCount((c) => c + 1)}>{count}</button>;
 }
 
 function App() {
   return (
     <>
-      <Counter />  {/* instance A */}
-      <Counter />  {/* instance B */}
+      <Counter /> {/* instance A */}
+      <Counter /> {/* instance B */}
     </>
   );
 }
@@ -624,10 +615,12 @@ function useAsyncData(url) {
   const [data, setData] = React.useState(null);
 
   // call inside a promise callback
-  fetch(url).then(res => res.json()).then(json => {
-    React.useState(null); // trying to "re-initialize" state
-    setData(json);
-  });
+  fetch(url)
+    .then((res) => res.json())
+    .then((json) => {
+      React.useState(null); // trying to "re-initialize" state
+      setData(json);
+    });
 
   return data;
 }
@@ -652,8 +645,8 @@ function useAsyncData(url) {
 
   React.useEffect(() => {
     fetch(url)
-      .then(res => res.json())
-      .then(json => setData(json)); // correct: uses setter, not hook call
+      .then((res) => res.json())
+      .then((json) => setData(json)); // correct: uses setter, not hook call
   }, [url]);
 
   return data;
@@ -740,6 +733,7 @@ This defeats the purpose of the dependency array entirely. The effect is suppose
 Three fixes in order of correctness.
 
 First, move `config` outside the component if it is a constant:
+
 ```js
 const CONFIG = { timeout: 5000 }; // module-level, stable reference
 function Component() {
@@ -748,12 +742,14 @@ function Component() {
 ```
 
 Second, memoize `config` if it depends on props or state:
+
 ```js
 const config = React.useMemo(() => ({ timeout }), [timeout]);
 useEffect(() => { ... }, [config]);
 ```
 
 Third, depend on the primitive values instead of the object:
+
 ```js
 useEffect(() => { ... }, [config.timeout, config.retries]);
 ```

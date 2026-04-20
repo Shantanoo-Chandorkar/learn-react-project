@@ -27,7 +27,11 @@ function PriceFeed({ symbol }) {
     };
   }, [symbol]);
 
-  return <div>{symbol}: {price ?? 'Loading...'}</div>;
+  return (
+    <div>
+      {symbol}: {price ?? 'Loading...'}
+    </div>
+  );
 }
 ```
 
@@ -92,7 +96,11 @@ function PriceFeed({ symbol }) {
     };
   }, [symbol]);
 
-  return <div>{symbol}: {price ?? 'Loading...'}</div>;
+  return (
+    <div>
+      {symbol}: {price ?? 'Loading...'}
+    </div>
+  );
 }
 ```
 
@@ -110,7 +118,7 @@ Other cleanup patterns:
 ```jsx
 // Timer cleanup
 useEffect(() => {
-  const id = setInterval(() => setCount(c => c + 1), 1000);
+  const id = setInterval(() => setCount((c) => c + 1), 1000);
   return () => clearInterval(id);
 }, []);
 
@@ -125,9 +133,9 @@ useEffect(() => {
   const controller = new AbortController();
 
   fetch(`/api/data/${id}`, { signal: controller.signal })
-    .then(r => r.json())
+    .then((r) => r.json())
     .then(setData)
-    .catch(err => {
+    .catch((err) => {
       if (err.name !== 'AbortError') throw err;
     });
 

@@ -20,8 +20,8 @@ function UserGreeting({ userId }) {
 
   // instinct: I need the data when I render, so fetch here
   fetch(`/api/users/${userId}`)
-    .then(r => r.json())
-    .then(data => setName(data.name));
+    .then((r) => r.json())
+    .then((data) => setName(data.name));
 
   return <h1>Hello, {name}</h1>;
 }
@@ -103,8 +103,8 @@ function UserGreeting({ userId }) {
     let cancelled = false;
 
     fetch(`/api/users/${userId}`)
-      .then(r => r.json())
-      .then(data => {
+      .then((r) => r.json())
+      .then((data) => {
         if (!cancelled) setName(data.name);
       });
 
@@ -129,9 +129,9 @@ The infinite loop is gone because the effect does not run every render — it ru
 
 React's rendering pipeline is split into two phases for exactly this reason.
 
-**Render phase:** React calls your component functions and builds a new Fiber tree. This phase is *interruptible* in Concurrent Mode. React may abandon work in progress if a higher-priority update arrives. Because this phase can be interrupted and restarted, it must be side-effect-free. React does not provide any guarantee about how many times it will call your component function during a single visible update.
+**Render phase:** React calls your component functions and builds a new Fiber tree. This phase is _interruptible_ in Concurrent Mode. React may abandon work in progress if a higher-priority update arrives. Because this phase can be interrupted and restarted, it must be side-effect-free. React does not provide any guarantee about how many times it will call your component function during a single visible update.
 
-**Commit phase:** React takes the computed Fiber tree and applies it to the DOM. This phase is *synchronous and uninterruptible*. React guarantees it runs to completion. After the DOM is updated, React runs effects in a controlled, sequential manner. Because the commit phase is guaranteed to complete, effects are safe here. React can manage their order, their cleanup, and their re-execution.
+**Commit phase:** React takes the computed Fiber tree and applies it to the DOM. This phase is _synchronous and uninterruptible_. React guarantees it runs to completion. After the DOM is updated, React runs effects in a controlled, sequential manner. Because the commit phase is guaranteed to complete, effects are safe here. React can manage their order, their cleanup, and their re-execution.
 
 The Fiber architecture stores each component's render output and effect list separately. A Fiber node has:
 

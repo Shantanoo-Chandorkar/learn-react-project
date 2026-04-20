@@ -2,7 +2,7 @@
 
 ### 1. The Problem
 
-You have a Virtual DOM tree from the last render. You have a new one from this render. You need to figure out the *minimum* set of real DOM operations to go from one to the other.
+You have a Virtual DOM tree from the last render. You have a new one from this render. You need to figure out the _minimum_ set of real DOM operations to go from one to the other.
 
 What do you do?
 
@@ -99,7 +99,7 @@ This is why wrapping a component in a different container tag is a full remount,
 React sees same type, same `type` prop, different `className`. It issues exactly one DOM operation:
 
 ```js
-node.setAttribute('className', 'new')
+node.setAttribute('className', 'new');
 ```
 
 Everything else is untouched.
@@ -189,7 +189,7 @@ No. React diffs the Virtual DOM — two JS object trees. The real DOM is only to
 
 **Trap 2: "The Virtual DOM makes React fast."**
 
-This is backwards. The VDOM isn't a performance optimization — it's an abstraction layer. The diffing *on top of it* enables batched, minimal DOM updates. The VDOM itself has overhead. React is fast because of *how it uses* the VDOM, not the VDOM itself.
+This is backwards. The VDOM isn't a performance optimization — it's an abstraction layer. The diffing _on top of it_ enables batched, minimal DOM updates. The VDOM itself has overhead. React is fast because of _how it uses_ the VDOM, not the VDOM itself.
 
 ---
 
@@ -199,7 +199,7 @@ No — different type means **full unmount and remount**. State is destroyed. Ef
 
 ```jsx
 // This destroys and recreates <Input /> every time isLoggedIn flips
-return isLoggedIn ? <AdminInput /> : <UserInput />
+return isLoggedIn ? <AdminInput /> : <UserInput />;
 
 // If both are structurally the same component, consider using the same
 // type and passing props instead
@@ -310,12 +310,12 @@ The commit phase takes the flagged fiber tree and applies all mutations to the r
 ```jsx
 // Current approach — causes flash
 function App({ role }) {
-  return role === 'admin' ? <AdminDashboard /> : <UserDashboard />
+  return role === 'admin' ? <AdminDashboard /> : <UserDashboard />;
 }
 
 // Proposed fix
 function App({ role }) {
-  return <Dashboard role={role} />
+  return <Dashboard role={role} />;
 }
 ```
 
