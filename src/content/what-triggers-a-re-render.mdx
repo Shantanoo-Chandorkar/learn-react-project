@@ -197,7 +197,7 @@ const MemoizedNavItem = React.memo(NavItem);
 // if ThemeContext value changes, MemoizedNavItem still re-renders
 ```
 
-This is the context performance trap. A single context value changing re-renders every consumer in the entire subtree, no matter how deep or how many layers of `React.memo` are in between. We cover this precisely in Phase 6.
+This is the context performance trap. A single context value changing re-renders every consumer in the entire subtree, no matter how deep or how many layers of `React.memo` are in between.
 
 ---
 
@@ -477,7 +477,7 @@ const UserCard = React.memo(function UserCard({ userId }) {
 
 `React.memo` is not a general memoization shield. It shields against one specific trigger (parent re-render without prop changes). Components that consume frequently-changing contexts will re-render on those changes with or without `React.memo`.
 
-The solution for preventing unnecessary context re-renders is not `React.memo` but context splitting (separate `ThemeContext` from `NotificationContext` so they change independently), or selectors via `useMemo` to derive a stable value from the context, or a state library that supports granular subscriptions. We cover this in Phase 6.
+The solution for preventing unnecessary context re-renders is not `React.memo` but context splitting (separate `ThemeContext` from `NotificationContext` so they change independently), or selectors via `useMemo` to derive a stable value from the context, or a state library that supports granular subscriptions.
 
 </details>
 

@@ -1,1 +1,260 @@
-﻿# Why React needed to rewrite its core (pre-Fiber)
+﻿# Why React Needed to Rewrite Its Core (Pre-Fiber)
+
+### 1. The Problem
+
+You have a React app. The user types into a search field. The list below has 500 items. Every keystroke triggers a reconciliation pass — React compares the previous virtual DOM against the new one and figures out what changed.
+
+In 2013–2016, that reconciliation pass was synchronous and uninterruptible. Once React started walking the component tree, it could not stop. It ran to completion or not at all.
+
+Here's why that's catastrophic. Browsers have one main thread. JavaScript runs on it. Layout, painting, and user input handling also run on it. For an animation or interaction to feel smooth, the browser needs to do its work at 60fps — which means every frame costs 16.67ms. If JavaScript consumes 80ms of that thread without yielding, the browser misses 4–5 frames. Input events queue up. The UI appears frozen. The user perceives the application as broken.
+
+The larger the component tree, the worse the problem. And there's no escape hatch. You cannot tell the old React "pause here and let the browser breathe." The architecture doesn't allow it.
+
+This isn't a fixable edge case. It's a structural property of the original design. React was built on a recursive function call model — the stack reconciler — and that model is fundamentally incompatible with cooperative scheduling.
+
+---
+
+### 2. The Naive Attempt
+
+The stack reconciler works by recursion. When it processes a component, it immediately recurses into its children, and their children, until it hits the leaves. The call stack represents the work in progress.
+
+A simplified mental model:
+
+```js
+function reconcile(element, domNode) {
+  // compare element to domNode, update if needed
+  updateDOM(domNode, element.props);
+
+  // recurse into children — IMMEDIATELY, synchronously
+  element.children.forEach((child, i) => {
+    reconcile(child, domNode.childNodes[i]);
+  });
+}
+```
+
+This looks harmless on small trees. But consider what it means for a tree 1000 nodes deep. The JavaScript call stack grows 1000 frames deep. The browser cannot paint. It cannot handle the user's mouse click. It cannot run a `requestAnimationFrame` callback. Everything waits for `reconcile` to bottom out.
+
+The only way to "pause" this work would be to throw an exception and resume later — which is not a real solution. The call stack doesn't support yielding. Once you're in a recursive function, you're committed until it returns.
+
+---
+
+### 3. Why That Breaks
+
+Two specific failure modes, one root cause.
+
+**Failure mode 1: Dropped input frames.** The user types a character. The `onChange` fires. React begins reconciling a 500-item list. 80ms later, React finishes, the browser paints, and the DOM updates. But the user typed three more characters during those 80ms. Each one queued another reconciliation. The browser processes them in sequence, all at full cost. The input field lags. Users feel this as sluggishness or freezing. No amount of component optimization solves it — even if each component is cheap, the aggregate cost of walking a large tree is paid in one uninterruptible block.
+
+**Failure mode 2: No concept of priority.** All work is equal. A tooltip animation and a data fetch completion are processed with identical urgency. A background sync completing triggers the same blocking reconcile as a user keystroke. There is no mechanism to say "this work is urgent, do it first" or "this work can wait, defer it." The scheduler is FIFO with no lanes, no priority, no preemption.
+
+Both failures share one root: **the unit of work is the entire tree, and it cannot be subdivided.**
+
+---
+
+### 4. React's Mental Model
+
+To fix this, React needed to change what a "unit of work" is.
+
+Instead of one monolithic recursive function call, each component becomes its own discrete unit — something that can be scheduled, paused, and resumed independently. The work for rendering a component should be separable from the work of rendering its children. If the browser needs the thread back, React should be able to stop after any single component, let the browser do its work, and then resume exactly where it left off.
+
+This requires moving work tracking off the call stack and into a data structure React controls. The call stack is implicit and browser-managed — you cannot pause it. A heap-allocated linked list is explicit and React-managed — you can pause it, reprioritize it, discard it, restart it.
+
+The central insight is this: **reconciliation work should be data, not a call stack frame.** If the description of "what to process next" lives in a JavaScript object on the heap, React can decide when to process it, in what order, and whether to interrupt it.
+
+This is what Fiber is. Not a new reconciliation algorithm — a new data representation for the work to be done.
+
+---
+
+### 5. React's Solution
+
+React 16 (2017) rewrote the reconciler from scratch. The new architecture is called Fiber.
+
+Each component instance corresponds to one Fiber node — a plain JavaScript object on the heap. The nodes form a linked list (actually a tree expressed as a linked list, using `child`, `sibling`, and `return` pointers). The reconciler walks this list iteratively, not recursively.
+
+```js
+// A simplified Fiber node (the real one has ~25 fields)
+{
+  type: MyComponent,        // the component function or class
+  stateNode: domNode,       // the corresponding DOM node, if any
+  child: FiberNode,         // first child
+  sibling: FiberNode,       // next sibling
+  return: FiberNode,        // parent (called "return" because it's where work returns after)
+  pendingProps: {},         // props for this render
+  memoizedProps: {},        // props from the last completed render
+  memoizedState: {},        // state from the last completed render
+  effectTag: 0,             // what kind of DOM mutation is needed (insert, update, delete)
+  lanes: 0,                 // priority lanes (covered in 8.5)
+}
+```
+
+The work loop iterates this list:
+
+```js
+function workLoop(deadline) {
+  while (nextUnitOfWork && deadline.timeRemaining() > 0) {
+    nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
+  }
+
+  if (nextUnitOfWork) {
+    // still work left — yield to browser, reschedule
+    requestIdleCallback(workLoop);
+  } else {
+    // all work done — commit changes to the DOM
+    commitRoot();
+  }
+}
+```
+
+`deadline.timeRemaining()` is the key. React checks whether the browser has time left in the current frame before processing each Fiber node. If there's no time left, it stops, schedules the remaining work via `requestIdleCallback` (or React's own scheduler), and yields the thread. The browser paints, handles input, runs animations. Then React resumes from exactly the Fiber node where it paused.
+
+This makes two things possible that were impossible before:
+
+1. **Interruptible rendering.** A higher-priority update (a user keypress) can preempt lower-priority work (a background data fetch rendering). React discards the in-progress work-in-progress tree and starts fresh on the urgent update.
+
+2. **Prioritized scheduling.** Not all updates are equal. React can assign different priorities to different updates and process urgent ones before deferred ones. This is Lanes, covered in 8.5.
+
+The commit phase remains synchronous and uninterruptible by design — once React decides what DOM mutations to make, it executes them atomically. A half-applied DOM update would leave the UI in an inconsistent state. More on the two phases in 8.3.
+
+---
+
+### 6. Internals
+
+The stack reconciler stored work in the JavaScript call stack. Fiber stores work in a linked list of heap-allocated objects.
+
+Here's what that architectural difference means concretely:
+
+**Stack reconciler — work lives in the call stack:**
+```
+JS Call Stack (browser-managed, uninterruptible):
+│ reconcileChildren()
+│   reconcileComponent(List)
+│     reconcileComponent(Row 1)
+│       reconcileComponent(Cell)   ← can't stop here
+│         ...
+```
+
+**Fiber — work lives in the heap:**
+```
+Heap (React-managed, interruptible):
+App Fiber → List Fiber → Row1 Fiber → Row2 Fiber → ...
+                                   ↑
+                        nextUnitOfWork pointer: "resume here"
+```
+
+The `nextUnitOfWork` variable is a pointer into the Fiber linked list. It persists across frames. When React yields, the pointer is saved. When React resumes, it reads the pointer and picks up exactly where it left off. The browser has no idea any of this is happening — it just sees JavaScript that regularly returns control.
+
+React maintains two Fiber trees simultaneously:
+
+- **current tree** — the tree reflecting what is currently displayed in the DOM
+- **work-in-progress tree** — the tree being built for the next render
+
+Every Fiber node in the work-in-progress tree has a `alternate` pointer back to its counterpart in the current tree. When a render is complete and committed, the work-in-progress tree becomes the current tree. The old current tree's nodes become the new work-in-progress pool, reused to avoid allocation churn. This double-buffering is why Fiber can be safely interrupted — the current tree (and therefore the DOM) is never mutated during the render phase.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: What's the difference between the stack reconciler and Fiber?**
+
+```text
+Interviewer: "What's the difference between React 15 and React 16's reconciler?"
+```
+
+<details>
+<summary>Answer</summary>
+
+The stack reconciler (React 15) used recursive function calls to walk the component tree. The work was stored on the JavaScript call stack, which the browser controls — once started, it ran to completion with no way to yield. On large trees this blocked the main thread long enough to drop frames and delay user input.
+
+Fiber (React 16) replaced the recursive call stack with an iterative work loop over a heap-allocated linked list of Fiber nodes. Because the work queue is a data structure React controls, React can check after every single node whether the browser needs the thread back. If it does, React pauses by saving a `nextUnitOfWork` pointer and yielding via `requestIdleCallback` or its own scheduler. The browser paints, handles input, runs animations, then React resumes from exactly where it paused.
+
+The practical result: React 16 can split rendering work across multiple frames, prioritize urgent updates over deferred ones, and interrupt low-priority work when something more important arrives. None of this was possible under the stack reconciler.
+
+</details>
+
+---
+
+**Trap 2: Does Fiber make rendering asynchronous? When you call `setState`, does it always wait for the next frame?**
+
+<details>
+<summary>Answer</summary>
+
+Fiber makes rendering *interruptible*, not necessarily asynchronous. Most renders in React 18 still complete synchronously within the current event handler — React batches updates and commits them before yielding control. The key change is that React now *can* interrupt and spread work across frames when it needs to, not that it always does.
+
+Concurrent features like `startTransition` explicitly opt updates into async interruptible rendering. Without `startTransition`, even in React 18, a state update in a click handler will typically render synchronously within that event. The interruptibility is available; it's engaged selectively based on priority.
+
+Saying "Fiber makes React asynchronous" is an oversimplification that will get caught in an interview. The accurate statement is: Fiber gave React the *infrastructure* to do async rendering, and React 18 exposes that infrastructure through the concurrent API.
+
+</details>
+
+---
+
+**Trap 3: Why does the commit phase stay synchronous if the render phase is interruptible?**
+
+<details>
+<summary>Answer</summary>
+
+Because half-applied DOM mutations are worse than a brief block. The render phase computes what changes to make — it reads state, produces a new Fiber tree, and builds a list of effects. This computation can be thrown away and restarted if a higher-priority update arrives. Nothing visible happens.
+
+The commit phase applies those changes to the actual DOM. If React committed a deletion, then yielded, and then a user scrolled the page, they would see a partially-updated DOM — elements gone, new elements not yet inserted, layout jumps. The visual inconsistency would be jarring and potentially layout-breaking.
+
+By keeping the commit synchronous, React guarantees the DOM transitions atomically from one consistent state to the next. The render phase pays the cost of interruptibility; the commit phase pays the cost of a guaranteed-consistent single-frame mutation. The tradeoff is deliberate: the render phase is usually the expensive part, so making it interruptible gives most of the benefit, while the commit phase is fast enough that synchronous execution is acceptable.
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** A 500-node component tree takes 90ms to reconcile synchronously. At 60fps, how many frames does that drop, and what does the user experience?
+
+<details>
+<summary>Answer</summary>
+
+At 60fps, each frame has a 16.67ms budget. A 90ms synchronous reconciliation occupies the main thread for approximately 5.4 full frames. The browser cannot paint, cannot process input events, and cannot run any animation callbacks during that time. The user experiences a visible freeze: the UI does not update, clicks and keypresses are queued but not handled, and when the reconciliation finally completes, queued events may fire in rapid succession producing unexpected behavior. On lower-end devices the 90ms estimate grows further, making the problem worse.
+
+</details>
+
+---
+
+**Q2.** Why does the old stack reconciler's recursive approach make it impossible to pause mid-render and yield to the browser?
+
+<details>
+<summary>Answer</summary>
+
+Because the work-in-progress state lives on the JavaScript call stack, which is managed by the browser runtime. A recursive function cannot voluntarily suspend itself and be resumed later — the language has no mechanism for this (generators are the only exception, and they weren't used). Once `reconcile(root)` is called, the call stack grows as children are recursed into, and the only way to "finish" is to return from every frame on the stack. There is no external handle to the stack's state that could be saved, no way to say "pause here and resume from this exact frame when the browser gives us time." Fiber solves this by moving work tracking off the call stack and into a heap-allocated linked list that React controls completely.
+
+</details>
+
+---
+
+**Q3.** What is `nextUnitOfWork` in Fiber's work loop, and what happens to it when React yields to the browser?
+
+<details>
+<summary>Answer</summary>
+
+`nextUnitOfWork` is a module-level variable holding a pointer to the next Fiber node that needs to be processed. It survives across frames because it is a plain JavaScript variable on the heap, not a call stack frame. When the scheduler determines there is no time left in the current frame — `deadline.timeRemaining() === 0` — the work loop exits without processing the remaining nodes. `nextUnitOfWork` still points to the first unprocessed node. React schedules a continuation (via its own scheduler or `requestIdleCallback`), and when that callback fires in a future frame, the work loop resumes by reading `nextUnitOfWork` and continuing from exactly that node. The browser has full use of the thread between these frames.
+
+</details>
+
+---
+
+**Q4.** React maintains two Fiber trees: the current tree and the work-in-progress tree. What is the purpose of keeping both, and how do they relate to the DOM?
+
+<details>
+<summary>Answer</summary>
+
+The current tree reflects what is presently displayed in the DOM. The work-in-progress tree is the tree being constructed for the next render. By building the next render into a separate tree, React can safely throw it away if the work is interrupted or superseded by a higher-priority update — the DOM is never touched during this phase, so there is nothing to roll back. Each node in the work-in-progress tree has an `alternate` pointer to its counterpart in the current tree, enabling efficient diffing. When the render phase completes and the commit phase runs, the work-in-progress tree is applied to the DOM and then becomes the new current tree. The old current tree's nodes become the new work-in-progress pool for the next render cycle, allowing React to reuse allocations rather than garbage collect and reallocate them.
+
+</details>
+
+---
+
+**Q5.** A developer claims "Fiber makes all React updates asynchronous, so `setState` never blocks." Is this correct? What would you tell them?
+
+<details>
+<summary>Answer</summary>
+
+This is incorrect, and importantly it's the kind of misunderstanding that causes real bugs. Fiber provides the *infrastructure* for interruptible rendering, but it does not make all updates asynchronous by default. In React 18, most state updates triggered by user events still render synchronously within the same event — React batches them and commits the result before returning control. The browser is not involved between the `setState` call and the DOM update in these cases.
+
+Async, interruptible rendering is a mode React enters for updates explicitly marked as non-urgent via `startTransition`, or for Suspense-based data loading scenarios. For ordinary `useState` calls in click handlers, the rendering is synchronous. Telling a developer "setState never blocks" would lead them to write code expecting the DOM to update on the next frame, which is not guaranteed and would produce incorrect behavior when updates are actually synchronous.
+
+</details>

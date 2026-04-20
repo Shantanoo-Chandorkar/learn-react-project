@@ -206,7 +206,7 @@ If you lift `query` to `App` (because it feels like "global" state), changing it
 
 Lifting is not always the answer when two components need to share state. It depends on the distance between them in the tree.
 
-If two components are immediate siblings under a parent, lifting to the parent is trivial. If they are distant cousins separated by six levels of components, lifting requires drilling the value and callback through six intermediate components that do not use them. This is prop drilling, and it is the problem Context exists to solve. We cover that in Phase 6.
+If two components are immediate siblings under a parent, lifting to the parent is trivial. If they are distant cousins separated by six levels of components, lifting requires drilling the value and callback through six intermediate components that do not use them. This is prop drilling, and it is the problem Context exists to solve.
 
 The decision matrix:
 
@@ -252,7 +252,7 @@ The re-render scope is larger after lifting: the parent and both children re-ren
 
 The performance question is not whether lifting causes more re-renders (it does, necessarily) but whether those re-renders are expensive. If `CelsiusInput` and `FahrenheitInput` are trivial components (two DOM nodes each), the additional renders cost microseconds. If they have large subtrees, you can wrap them in `React.memo` to skip re-renders when their specific props have not changed.
 
-But critically: before adding `React.memo`, verify that both components actually receive stable props when the other changes. When the Celsius input changes, `TemperatureConverter` re-renders and passes new props to both inputs. The Fahrenheit input receives a new `value` (it must re-render to show the new temperature) and a new `onChange` function (new function reference created on every render). `React.memo` checks the `onChange` prop, sees a new reference, and re-renders anyway, defeating the optimization. The fix is `useCallback` on the handler, which we cover in Phase 7.
+But critically: before adding `React.memo`, verify that both components actually receive stable props when the other changes. When the Celsius input changes, `TemperatureConverter` re-renders and passes new props to both inputs. The Fahrenheit input receives a new `value` (it must re-render to show the new temperature) and a new `onChange` function (new function reference created on every render). `React.memo` checks the `onChange` prop, sees a new reference, and re-renders anyway, defeating the optimization. The fix is `useCallback` on the handler.
 
 This chain, lift state to parent, parent re-renders on change, children receive new prop references, `React.memo` fails because functions are recreated, fix with `useCallback`, is one of the most common performance optimization sequences in real React codebases. It is the direct consequence of the lifting pattern applied to components that are expensive enough to warrant memoization.
 

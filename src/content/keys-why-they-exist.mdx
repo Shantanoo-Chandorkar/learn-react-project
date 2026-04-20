@@ -1,1 +1,414 @@
-﻿# Keys, why they exist and what breaks without them
+﻿# Keys: Why They Exist and What Breaks Without Them
+
+### 1. The Problem
+
+You have a list of items. The user reorders them, removes one from the middle, or prepends a new one at the top. React needs to reconcile the old list with the new one.
+
+Without any additional information, React's only tool is position. The item at index 0 in the old list maps to the item at index 0 in the new list. Index 1 maps to index 1. And so on.
+
+This works when you append to the end. It silently breaks everywhere else. The wrong DOM nodes get updated. Component state ends up attached to the wrong items. Animations fire on the wrong elements. Input values jump to incorrect rows.
+
+The precise problem: **React cannot distinguish between "this item moved" and "this item changed" without a stable identity for each element.** Position is not identity.
+
+---
+
+### 2. The Naive Attempt
+
+Render a list of tasks. Allow the user to prepend a new one at the top.
+
+```jsx
+function TaskList() {
+  const [tasks, setTasks] = React.useState([
+    { id: 1, text: 'Write tests' },
+    { id: 2, text: 'Review PR' },
+  ]);
+
+  function prependTask() {
+    setTasks([{ id: 3, text: 'New task' }, ...tasks]);
+  }
+
+  return (
+    <div>
+      <button onClick={prependTask}>Add to top</button>
+      <ul>
+        {tasks.map((task) => (
+          <li>{task.text}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+```
+
+No keys. React reconciles by position.
+
+Before prepend:
+
+```
+index 0 → "Write tests"
+index 1 → "Review PR"
+```
+
+After prepend:
+
+```
+index 0 → "New task"
+index 1 → "Write tests"
+index 2 → "Review PR"
+```
+
+React compares index 0 old (`"Write tests"`) to index 0 new (`"New task"`). Same type (`li`). Different text content. **Updates the existing DOM node's text.** Compares index 1 old to index 1 new. Same situation. Updates again. Index 2 is new — inserts it.
+
+React performed two updates and one insertion. The correct answer was one insertion at the front.
+
+That's inefficiency. The silent disaster is when those `<li>` elements are not plain text but stateful components.
+
+```jsx
+function TaskItem({ text }) {
+  const [done, setDone] = React.useState(false);
+
+  return (
+    <li style={{ textDecoration: done ? 'line-through' : 'none' }}>
+      <input type="checkbox" checked={done} onChange={() => setDone(!done)} />
+      {text}
+    </li>
+  );
+}
+
+// rendered as:
+{tasks.map((task) => (
+  <TaskItem text={task.text} />
+))}
+```
+
+User checks "Write tests" as done. State: index 0 Fiber has `done: true`.
+
+User prepends a new task. React reconciles by position. Index 0 old fiber (`done: true`) is reused for the new task at index 0. The new task renders with a checked checkbox. `"Write tests"` has moved to index 1, whose fiber had `done: false`, so it now renders as unchecked.
+
+The checkbox state has migrated to the wrong item. React reused the Fiber and its state. The `text` prop updated correctly (React did update the prop), but the internal `useState` hook's value — `done` — belongs to the Fiber, not the data. It moved with the node position, not the data identity.
+
+---
+
+### 3. Why That Breaks
+
+The precise failure mode: **React's Fiber reuse is position-based by default. Fibers carry state. When items reorder, Fibers reuse across the wrong data, dragging their state with them.**
+
+A Fiber is not just a virtual DOM descriptor. It is a stateful object. Its `memoizedState` holds the linked list of all `useState` and `useEffect` hooks for that component instance. When React matches an old Fiber to a new element at the same position, it hands the new element the old Fiber's state. The props update. The state does not.
+
+This is correct behavior for stable lists (items never move). It is wrong behavior when list identity diverges from list position.
+
+React has no way to know that the `TaskItem` at index 0 after the prepend is a *different* task than the `TaskItem` at index 0 before it. From React's position-only perspective, the same component type is at the same index. Reuse the Fiber. Update the props. Done.
+
+The `key` prop is the signal that breaks the position assumption.
+
+---
+
+### 4. React's Mental Model
+
+A `key` is an explicit identity contract between your data and a Fiber.
+
+When React sees a `key` on a list element, it no longer uses position to match old Fibers to new elements. It uses `key`. If a Fiber with `key="1"` exists in the old tree and an element with `key="1"` exists in the new tree, they match — regardless of what index either occupies.
+
+If an element has a `key` that appears in the new tree but not the old tree, it is a new mount. If a Fiber has a `key` that appears in the old tree but not the new tree, it is an unmount.
+
+One sentence: **`key` tells React "this element represents this piece of data, not this position in the list."**
+
+---
+
+### 5. React's Solution
+
+Add the stable, unique data identity as the `key`:
+
+```jsx
+{tasks.map((task) => (
+  <TaskItem key={task.id} text={task.text} />
+))}
+```
+
+Now reconcile the prepend:
+
+Before:
+
+```
+key="1" → TaskItem (done: true, text: "Write tests")
+key="2" → TaskItem (done: false, text: "Review PR")
+```
+
+After:
+
+```
+key="3" → TaskItem (new, no existing Fiber)
+key="1" → TaskItem (existing Fiber, done: true)
+key="2" → TaskItem (existing Fiber, done: false)
+```
+
+React matches `key="1"` to its existing Fiber. Props are the same (`text` didn't change). No DOM update needed. `key="2"` same story. `key="3"` has no existing Fiber. React mounts a new `TaskItem` instance at the top. One DOM insertion. Zero state migrations.
+
+The checkbox state stays with the correct task regardless of where in the list it moves.
+
+**The deletion case:**
+
+```jsx
+const [tasks, setTasks] = React.useState([
+  { id: 1, text: 'Write tests' },
+  { id: 2, text: 'Review PR' },
+  { id: 3, text: 'Deploy' },
+]);
+
+function deleteMiddle() {
+  setTasks(tasks.filter((t) => t.id !== 2));
+}
+```
+
+Without keys, removing index 1 causes React to update index 1's DOM node with `"Deploy"`'s content and delete index 2. The `"Deploy"` Fiber and its state gets reused for the wrong position temporarily.
+
+With `key={task.id}`, React sees `key="2"` is gone: unmount that Fiber, run its cleanup effects. `key="1"` and `key="3"` are unchanged in position and props: React touches nothing. Zero DOM operations beyond the removal.
+
+**What makes a good key:**
+
+```jsx
+// ✅ Stable, unique data ID — correct
+{items.map((item) => <Row key={item.id} data={item} />)}
+
+// ✅ Stable string that uniquely identifies the item — correct
+{tabs.map((tab) => <Tab key={tab.slug} tab={tab} />)}
+
+// ❌ Array index — wrong for any list that can reorder, filter, or prepend
+{items.map((item, index) => <Row key={index} data={item} />)}
+
+// ❌ Random value — remounts every item on every render
+{items.map((item) => <Row key={Math.random()} data={item} />)}
+```
+
+Index-as-key is the most common mistake. For an append-only list that never reorders, it happens to be harmless. For any other list, it produces exactly the state migration bug described above. It also suppresses the missing-key warning, hiding the problem.
+
+**Using key for intentional remounts:**
+
+Key is not limited to lists. Setting a key on any element tells React to treat a change in key as "unmount the old, mount a new one." This is the canonical way to reset a component's state when a prop changes without adding a `useEffect`:
+
+```jsx
+// Every time userId changes, UserProfile is fully unmounted and remounted.
+// All internal state resets. No stale state from the previous user.
+<UserProfile key={userId} userId={userId} />
+```
+
+This pattern replaces the antipattern of `useEffect` watching a prop to reset derived state. The key change signals a new identity. React starts fresh.
+
+---
+
+### 6. Internals
+
+During reconciliation of a list (a parent with multiple children), React builds two data structures:
+
+1. A map from `key` → existing Fiber for all children in the current tree
+2. An ordered list of elements from the new render
+
+```js
+// Simplified version of what React builds internally
+const existingFiberMap = new Map();
+let child = currentParentFiber.child;
+while (child) {
+  const key = child.key ?? child.index; // fall back to index if no key
+  existingFiberMap.set(key, child);
+  child = child.sibling;
+}
+```
+
+React then iterates the new element array. For each element, it looks up `element.key` (or its index if no key) in `existingFiberMap`.
+
+- **Found:** Pull the existing Fiber. Update its props. Mark it as used. Remove from the map.
+- **Not found:** Allocate a new Fiber. Mark it for placement (insertion into the DOM).
+
+After iterating all new elements, any Fiber remaining in `existingFiberMap` was not matched. Mark them for deletion.
+
+The result is a set of mutations: placements, updates, deletions. These are applied in the commit phase.
+
+**Why index-as-key breaks this:**
+
+With index keys, `existingFiberMap` maps `0 → FiberA`, `1 → FiberB`, `2 → FiberC`. After a prepend, the new elements are at indices 0, 1, 2, 3. React finds `0` in the map, matches `FiberA` (wrong data). Updates its props to the new item's text. `FiberA`'s state is now attached to the wrong item. This is not a React bug. It is the correct behavior given the key contract: same key means same identity.
+
+**The cost of missing keys:**
+
+When keys are absent on a list, React falls back to index matching *and* logs a warning. The behavior is identical to index keys. The warning exists because React cannot guarantee this is what you intended. If you explicitly pass `key={index}`, React assumes you know what you're doing and suppresses the warning. This is why index keys are more dangerous than missing keys: they silence the diagnostic.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: A developer has a list of comment components. Each has a text input inside it for editing. They use `key={index}`. They delete the second comment. The input value in the third comment disappears. Why?**
+
+```jsx
+{comments.map((comment, index) => (
+  <Comment key={index} comment={comment} />
+))}
+
+function Comment({ comment }) {
+  const [editText, setEditText] = React.useState(comment.text);
+  return <input value={editText} onChange={(e) => setEditText(e.target.value)} />;
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+When the second comment (index 1) is deleted, the array becomes `[comment0, comment2]`. React reconciles with index keys. Index 0 maps to the existing `key=0` Fiber — unchanged. Index 1 now maps to `comment2`, but the existing `key=1` Fiber is `comment1`'s Fiber. React reuses it and updates the `comment` prop to `comment2`'s data.
+
+But `editText` in that Fiber is still `comment1`'s state. It is not reset. React does not call `useState` again — it reads the existing hook state from the Fiber. So the input shows `comment1`'s edit value with `comment2`'s underlying data.
+
+Index 2 no longer exists in the new array. The `key=2` Fiber is unmounted. Whatever the user had typed in `comment2`'s input is lost because that Fiber is destroyed.
+
+With stable data IDs as keys, `comment2`'s Fiber would survive with its state intact. `comment1`'s Fiber would be unmounted. The user's edits to any comment are preserved through deletions.
+
+</details>
+
+---
+
+**Trap 2: A developer wants to reset all state in a `<FilterPanel />` when the user switches data sources. They write a `useEffect` to watch `sourceId` and manually reset each piece of state. Is there a simpler approach?**
+
+```jsx
+function FilterPanel({ sourceId }) {
+  const [minPrice, setMinPrice] = React.useState(0);
+  const [maxPrice, setMaxPrice] = React.useState(1000);
+  const [category, setCategory] = React.useState('all');
+
+  // attempt to reset state when source changes
+  React.useEffect(() => {
+    setMinPrice(0);
+    setMaxPrice(1000);
+    setCategory('all');
+  }, [sourceId]);
+
+  // ...
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+Yes. Use `key`:
+
+```jsx
+<FilterPanel key={sourceId} sourceId={sourceId} />
+```
+
+When `sourceId` changes, React sees a different `key` on the same component type. It unmounts the old `FilterPanel` instance entirely — all state is destroyed — and mounts a fresh one. All `useState` initializers run from scratch. No `useEffect` needed, no manual reset calls, no risk of forgetting to reset a new piece of state added later.
+
+The `useEffect` approach has a subtle bug even when it works: there is a render frame between the `sourceId` prop changing and the effect running. During that frame, the component renders with the new `sourceId` but the old filter state. This can cause a stale query to fire. The `key` approach prevents this: the old instance is gone before the new one mounts, so there is never a frame with mismatched source and filter state.
+
+</details>
+
+---
+
+**Trap 3: A developer insists that `key={index}` is fine because "all it does is affect performance, not correctness." Refute this with a specific counterexample.**
+
+<details>
+<summary>Answer</summary>
+
+The claim is wrong. `key={index}` affects correctness, not just performance, whenever the list can reorder, filter, or have items prepended.
+
+Counterexample: a to-do list where each item has an internal text input for inline editing. The list supports deleting items.
+
+```jsx
+{todos.map((todo, index) => (
+  <TodoItem key={index} todo={todo} />
+))}
+
+function TodoItem({ todo }) {
+  const [draft, setDraft] = React.useState(todo.text);
+  return <input value={draft} onChange={(e) => setDraft(e.target.value)} />;
+}
+```
+
+The user edits the input in the second item (index 1) to say `"Updated text"`. The `draft` state in the `key=1` Fiber is now `"Updated text"`.
+
+The user then deletes the *first* item (index 0). The list shifts: what was index 1 is now index 0, what was index 2 is now index 1.
+
+React reconciles. Index 0 in the new list: looks up `key=0` Fiber (the old first item's Fiber, which had `draft: "First item's original text"`). Reuses it. Updates the `todo` prop to the second item's data. Now the input shows `"First item's original text"` inside the second item's row. The user's edit is gone.
+
+This is a correctness bug. The wrong value is displayed in the wrong row. `key={index}` gave React incorrect identity information, and React made a correct decision based on incorrect input.
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** Why does `key` need to be stable across renders, not just unique within a render?
+
+<details>
+<summary>Answer</summary>
+
+`key` is used by React to match old Fibers to new elements across renders. For this to preserve state correctly, the same data item must produce the same key on every render. If the key changes between renders — for example, `key={Math.random()}` — React sees a new key for every element on every render. It finds no match in the existing Fiber map, unmounts the old Fiber, and mounts a new one. All state is destroyed on every render. Every item is a fresh mount. The purpose of `key` is continuity of identity. Stability is what provides continuity.
+
+</details>
+
+---
+
+**Q2.** A list renders items A, B, C with stable IDs as keys. B is moved to the front: B, A, C. How many DOM operations does React perform, and why?
+
+<details>
+<summary>Answer</summary>
+
+React matches keys to existing Fibers. `key="B"` Fiber exists. `key="A"` Fiber exists. `key="C"` Fiber exists. All three match. React updates no props (the items themselves are unchanged). 
+
+However, one DOM operation occurs: React moves B's DOM node to the front. The real DOM must reflect the new order, and since B physically needs to precede A, React issues a DOM `insertBefore` to reposition it. Props are unchanged so no attribute updates happen, but the structural reordering requires one DOM move operation.
+
+This is significantly cheaper than the no-key case, where React would update two text nodes and preserve a third, potentially running unnecessary effects and applying wrong state to the wrong Fibers.
+
+</details>
+
+---
+
+**Q3.** When is `key={index}` actually safe? State the precise conditions.
+
+<details>
+<summary>Answer</summary>
+
+`key={index}` is safe when all three conditions hold simultaneously: the list is never reordered, items are only ever appended to the end (never prepended or inserted in the middle), and no item is ever deleted from anywhere other than the end. In practice, this means a static display list where the only operation is adding new items at the bottom — like a log feed or an activity timeline rendered in chronological order. The moment any operation can change the index of an existing item (deletion, insertion at a non-tail position, sorting), index keys produce the Fiber-state mismatch bug described throughout this topic. The additional condition: even when the list structure is stable, if items are stateful components (they own internal state via hooks), you should still prefer stable data IDs, because the safety of index keys depends on never violating the structural assumptions. Stable IDs make the safety unconditional.
+
+</details>
+
+---
+
+**Q4.** Explain why `key` is not accessible as a prop inside the component it is placed on, and how to handle a case where you need the key value inside the component.
+
+<details>
+<summary>Answer</summary>
+
+`key` is consumed entirely by React's reconciliation layer. It is stripped from the props object before the component function is called. React uses it to manage Fiber identity. From the component's perspective, it does not exist. Accessing `props.key` inside a component always returns `undefined`. React does not include it in the props object passed to the component function.
+
+If the component needs the identity value — for example, to include the item's ID in a callback or a data-fetch — pass it as a separate explicit prop:
+
+```jsx
+{items.map((item) => (
+  <ItemRow key={item.id} id={item.id} data={item} />
+))}
+
+function ItemRow({ id, data }) {
+  function handleDelete() {
+    deleteItem(id); // id is accessible; key is not
+  }
+  // ...
+}
+```
+
+The rule: `key` is for React. `id` (or any other name) is for your component. They are often the same value but always separate props.
+
+</details>
+
+---
+
+**Q5.** A `<UserProfile key={userId} />` is used to reset state when `userId` changes. A junior developer questions this: "Isn't changing the key a performance problem since it unmounts and remounts the whole component?" How do you respond?
+
+<details>
+<summary>Answer</summary>
+
+The junior developer is treating unmount-and-remount as inherently more expensive than staying mounted with a state reset. In most cases, this framing is wrong.
+
+The comparison is not "key change vs. no re-render." When `userId` changes, the component must reset its state and reflect the new user. The comparison is "key change (full remount) vs. useEffect (same Fiber, manual reset)."
+
+A full remount runs cleanup effects, destroys the Fiber, and mounts a fresh one. A `useEffect`-based reset runs cleanup effects, then runs the effect again, potentially with an intermediate render showing stale state. For components that need a complete reset on identity change, the remount is often the same cost as the effect-based reset, and it is simpler, has no intermediate stale-state frame, and does not require manually enumerating every state variable to reset.
+
+The `key` approach becomes a genuine performance concern only if the component being remounted is extremely expensive to initialize (heavy setup, slow async data fetching triggered on mount). In that case, an explicit state reset might be justified to avoid re-running expensive initialization. But this is an optimization to apply after measuring, not a reason to avoid the `key` pattern by default. For most components, the remount cost is sub-millisecond.
+
+</details>

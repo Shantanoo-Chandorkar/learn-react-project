@@ -1,1 +1,532 @@
-﻿# Why Context re-renders everything that consumes it
+﻿# Why Context Re-renders Everything That Consumes It
+
+### 1. The Problem
+
+Context solves prop drilling. You add it to your application. Data flows cleanly. No messenger components. Then you open the React DevTools Profiler and discover that a single state change in your `UserProvider` is causing 47 components to re-render, including components that only read stable data like the user's name that has not changed, components that only use the `logout` function which is the same reference as before, and components deep in completely different subtrees of the application.
+
+This is Context's performance trap. It is not a bug. It is the direct, mechanical consequence of how Context propagation works. The developer who does not understand this will blame Context, reach for a state library, and solve the symptom without understanding the cause. The developer who understands it can write Context-based code that performs correctly without a state library.
+
+---
+
+### 2. The Naive Attempt
+
+Build a user context that provides several pieces of related data. This is the obvious, natural way to write a context provider:
+
+```jsx
+const UserContext = React.createContext(null);
+
+function UserProvider({ children }) {
+  const [user, setUser] = React.useState(null);
+  const [preferences, setPreferences] = React.useState({
+    theme: 'light',
+    fontSize: 'medium',
+    notifications: true,
+  });
+  const [cart, setCart] = React.useState([]);
+
+  function login(credentials) {
+    return authenticate(credentials).then(setUser);
+  }
+
+  function logout() {
+    setUser(null);
+    setCart([]);
+  }
+
+  function updatePreference(key, value) {
+    setPreferences(prev => ({ ...prev, [key]: value }));
+  }
+
+  function addToCart(item) {
+    setCart(prev => [...prev, item]);
+  }
+
+  return (
+    <UserContext.Provider value={{
+      user,
+      preferences,
+      cart,
+      login,
+      logout,
+      updatePreference,
+      addToCart,
+    }}>
+      {children}
+    </UserContext.Provider>
+  );
+}
+```
+
+This looks reasonable. One provider, all user-related state in one place. The application has these consumers:
+
+```jsx
+function Header() {
+  const { user } = useUser(); // reads only user.name
+  return <nav>Hello, {user?.name}</nav>;
+}
+
+function ThemeToggle() {
+  const { preferences, updatePreference } = useUser(); // reads preferences.theme
+  return (
+    <button onClick={() => updatePreference('theme',
+      preferences.theme === 'light' ? 'dark' : 'light'
+    )}>
+      Toggle theme
+    </button>
+  );
+}
+
+function CartBadge() {
+  const { cart } = useUser(); // reads cart.length
+  return <span>{cart.length} items</span>;
+}
+
+function CheckoutButton({ product }) {
+  const { user, addToCart } = useUser(); // reads user and addToCart
+  return (
+    <button onClick={() => addToCart(product)}>
+      {user ? 'Add to cart' : 'Log in'}
+    </button>
+  );
+}
+```
+
+The user adds an item to the cart. `addToCart` calls `setCart`. `UserProvider` re-renders. The context value is a new object: `{ user, preferences, cart: newCart, login, logout, updatePreference, addToCart }`. Even though `user`, `preferences`, `login`, `logout`, `updatePreference` are all unchanged, they are now part of a new object with a new reference.
+
+`Object.is(oldValue, newValue)` in `updateContextProvider` is `false` (new object reference). `propagateContextChange` walks the entire subtree and marks every consumer with a force-update lane. `Header` re-renders (user did not change, but it re-renders). `ThemeToggle` re-renders (preferences did not change, but it re-renders). `CartBadge` re-renders (this one is correct: cart changed). `CheckoutButton` re-renders (technically correct: it does depend on `user`).
+
+Three of four re-renders are unnecessary. Every new item added to the cart causes every context consumer in the application to re-render.
+
+---
+
+### 3. Why That Breaks
+
+Two layered failure modes.
+
+**Failure mode 1: The context value object is recreated on every render.**
+
+The value passed to the Provider is `{ user, preferences, cart, login, logout, updatePreference, addToCart }`, an inline object literal. Every render of `UserProvider` creates a new object with a new reference. `Object.is(oldValue, newValue)` is `false` by definition, regardless of whether any individual field changed. `propagateContextChange` always runs. Every consumer always re-renders.
+
+This is the same problem as inline objects defeating `React.memo`, but amplified: instead of defeating one memoized component, it defeats every context consumer simultaneously.
+
+**Failure mode 2: `React.memo` cannot protect context consumers.**
+
+A developer notices the unnecessary re-renders and wraps each consumer in `React.memo`:
+
+```jsx
+const Header = React.memo(function Header() {
+  const { user } = useUser();
+  return <nav>Hello, {user?.name}</nav>;
+});
+```
+
+This does not help. `propagateContextChange` marks the consumer Fiber with a `ForceUpdate` lane, which bypasses the `React.memo` check entirely in `beginWork`. Even if all props are identical, the forced lane causes the component function to be called. `React.memo` blocks trigger 2 (parent re-render). Context changes are trigger 3. Trigger 3 ignores `React.memo`.
+
+This is the precise mechanical reason why "just add `React.memo`" does not solve context performance problems.
+
+---
+
+### 4. React's Mental Model
+
+Context propagation is all-or-nothing at the value boundary. A context value either changed (new reference) or it did not (same reference). If it changed, every consumer re-renders. There is no built-in mechanism for React to inspect the context value, determine which fields changed, and re-render only consumers of those specific fields. React does not know the shape of your context value object. It only knows the object reference.
+
+The developer's job is to structure context so that the value reference changes only when the data that consumers actually care about changes. This requires either splitting contexts into smaller, more focused units, or stabilizing the value object with `useMemo`.
+
+One sentence: every consumer of a Context re-renders when the context value changes by reference, bypassing `React.memo`, because React has no ability to inspect what changed inside the value.
+
+---
+
+### 5. React's Solution
+
+Three patterns, applied in order of effectiveness.
+
+**Pattern 1: Stabilize the context value with `useMemo`.**
+
+The immediate fix for the inline object problem:
+
+```jsx
+function UserProvider({ children }) {
+  const [user, setUser] = React.useState(null);
+  const [preferences, setPreferences] = React.useState({ theme: 'light' });
+  const [cart, setCart] = React.useState([]);
+
+  const login = React.useCallback((credentials) => {
+    return authenticate(credentials).then(setUser);
+  }, []);
+
+  const logout = React.useCallback(() => {
+    setUser(null);
+    setCart([]);
+  }, []);
+
+  const updatePreference = React.useCallback((key, value) => {
+    setPreferences(prev => ({ ...prev, [key]: value }));
+  }, []);
+
+  const addToCart = React.useCallback((item) => {
+    setCart(prev => [...prev, item]);
+  }, []);
+
+  const value = React.useMemo(
+    () => ({ user, preferences, cart, login, logout, updatePreference, addToCart }),
+    [user, preferences, cart, login, logout, updatePreference, addToCart]
+  );
+
+  return (
+    <UserContext.Provider value={value}>
+      {children}
+    </UserContext.Provider>
+  );
+}
+```
+
+Now when `addToCart` updates `cart`, `useMemo` recomputes the value object because `cart` is in its deps. The new object has a new reference. All consumers still re-render. This is correct: `cart` changed, and consumers that use `cart` should update.
+
+When `UserProvider` re-renders for an unrelated reason (a parent re-render, some external cause), `useMemo` checks all deps. If `user`, `preferences`, `cart` are all the same references and all callbacks are stable via `useCallback`, `useMemo` returns the same cached object. `Object.is(oldValue, newValue)` is `true`. `propagateContextChange` does not run. No consumers re-render.
+
+This is an improvement, but it does not solve the core problem: changing `cart` still causes `Header` (which only cares about `user`) and `ThemeToggle` (which only cares about `preferences`) to re-render unnecessarily.
+
+**Pattern 2: Split contexts by update frequency.**
+
+The fundamental fix: separate concerns into separate contexts, one per independently changing piece of state.
+
+```jsx
+const UserContext = React.createContext(null);
+const PreferencesContext = React.createContext(null);
+const CartContext = React.createContext(null);
+
+function AppProvider({ children }) {
+  const [user, setUser] = React.useState(null);
+  const [preferences, setPreferences] = React.useState({ theme: 'light' });
+  const [cart, setCart] = React.useState([]);
+
+  const userValue = React.useMemo(() => ({ user, login, logout }), [user]);
+  const prefsValue = React.useMemo(
+    () => ({ preferences, updatePreference }),
+    [preferences]
+  );
+  const cartValue = React.useMemo(
+    () => ({ cart, addToCart }),
+    [cart]
+  );
+
+  return (
+    <UserContext.Provider value={userValue}>
+      <PreferencesContext.Provider value={prefsValue}>
+        <CartContext.Provider value={cartValue}>
+          {children}
+        </CartContext.Provider>
+      </PreferencesContext.Provider>
+    </UserContext.Provider>
+  );
+}
+```
+
+Now each consumer subscribes only to its specific context:
+
+```jsx
+function Header() {
+  const { user } = React.useContext(UserContext);
+  return <nav>Hello, {user?.name}</nav>;
+}
+
+function ThemeToggle() {
+  const { preferences, updatePreference } = React.useContext(PreferencesContext);
+  // ...
+}
+
+function CartBadge() {
+  const { cart } = React.useContext(CartContext);
+  return <span>{cart.length} items</span>;
+}
+```
+
+When `addToCart` updates `cart`:
+- `CartContext`'s value changes → `CartBadge` and `CheckoutButton` re-render. Correct.
+- `UserContext`'s value is unchanged → `Header` does not re-render due to context trigger.
+- `PreferencesContext`'s value is unchanged → `ThemeToggle` does not re-render due to context trigger.
+
+Context splitting is the most effective performance pattern for Context-heavy applications. By matching context boundaries to independent state slices, you ensure that changing one slice only re-renders consumers of that slice.
+
+The split should follow update frequency and logical independence. Data that always changes together belongs in the same context. Data that changes independently belongs in separate contexts.
+
+**Pattern 3: Separate state from dispatch.**
+
+A specific but common application of Pattern 2: separate the stable parts (dispatch functions, setters) from the volatile parts (current state values). Setters from `useState` are always stable. If components only need to trigger updates without reading the current value, they can consume a dispatch-only context that never changes.
+
+```jsx
+const CartStateContext = React.createContext(null);
+const CartDispatchContext = React.createContext(null);
+
+function CartProvider({ children }) {
+  const [cart, dispatch] = React.useReducer(cartReducer, []);
+
+  // dispatch is stable: same reference for lifetime of component
+  // no useMemo needed for dispatch context
+
+  return (
+    <CartDispatchContext.Provider value={dispatch}>
+      <CartStateContext.Provider value={cart}>
+        {children}
+      </CartStateContext.Provider>
+    </CartDispatchContext.Provider>
+  );
+}
+
+// Component that only dispatches, never reads state
+function AddToCartButton({ product }) {
+  const dispatch = React.useContext(CartDispatchContext);
+  // This component NEVER re-renders due to cart state changes
+  // because it only subscribes to CartDispatchContext
+  // and dispatch never changes
+
+  return (
+    <button onClick={() => dispatch({ type: 'ADD', item: product })}>
+      Add to cart
+    </button>
+  );
+}
+
+// Component that only reads state
+function CartBadge() {
+  const cart = React.useContext(CartStateContext);
+  return <span>{cart.length} items</span>;
+}
+```
+
+`AddToCartButton` subscribes only to `CartDispatchContext`. `dispatch` from `useReducer` is a stable reference: the same function object for the entire lifetime of `CartProvider`. `CartDispatchContext`'s value never changes. `AddToCartButton` never re-renders due to context changes, regardless of how many items are added to or removed from the cart.
+
+This pattern, separating state context from dispatch context, is one of the most effective and underused performance patterns in React.
+
+---
+
+### 6. Internals
+
+**Why `React.memo` cannot block context re-renders: the ForceUpdate mechanism.**
+
+When `propagateContextChange` marks a consumer Fiber, it sets the Fiber's lanes to include the current render lanes:
+
+```js
+fiber.lanes = mergeLanes(fiber.lanes, renderLanes);
+```
+
+During the render phase, when `beginWork` processes this Fiber, it checks whether the component needs updating:
+
+```js
+function beginWork(current, workInProgress, renderLanes) {
+  // Check if any work is needed in this lane
+  if (!includesSomeLane(renderLanes, workInProgress.lanes)) {
+    // No work in the current lane: bail out
+    return bailoutOnAlreadyFinishedWork(current, workInProgress, renderLanes);
+  }
+
+  // For memo components:
+  if (workInProgress.tag === MemoComponent) {
+    // Check if we can bail out via prop comparison
+    // ... but ONLY if there is no forced lane
+  }
+}
+```
+
+The Fiber has been marked with `renderLanes` by `propagateContextChange`. `includesSomeLane(renderLanes, workInProgress.lanes)` is `true`. The Fiber has pending work. React processes it. For a `MemoComponent`, React would normally do the prop comparison. But the forced lane bypasses even this: a Fiber that has been explicitly scheduled for work by `propagateContextChange` is processed unconditionally. The prop comparison for `React.memo` only happens when the Fiber is being processed due to a parent re-render (trigger 2), not when it has been directly scheduled (trigger 3).
+
+This is why `React.memo` and context are orthogonal: `React.memo` blocks trigger 2, context changes are trigger 3, and the two triggers use different code paths in `beginWork`.
+
+**The `dependencies` list on each Fiber.**
+
+Every Fiber that consumes a Context has a `dependencies` field:
+
+```js
+fiber.dependencies = {
+  lanes: NoLanes,
+  firstContext: {
+    context: SomeContext,       // which context
+    memoizedValue: currentValue, // value when last rendered
+    next: nextDependency,        // next context this fiber consumes
+  }
+}
+```
+
+A component that calls `useContext` multiple times has a linked list of dependencies. `propagateContextChange` walks this list for each Fiber it visits. If any dependency matches the changed context, the Fiber is marked.
+
+The `memoizedValue` in each dependency is the context value the component last rendered with. This is used for an optimization: if the context changed (new reference) but the consumer's `memoizedValue` happens to be `Object.is`-equal to the new value (rare but possible with primitive context values), the consumer may not need to re-render.
+
+**The full O(n) walk cost.**
+
+The subtree walk in `propagateContextChange` visits every Fiber below the Provider. For a Provider at the root with 10,000 Fiber nodes in the subtree, every context value change triggers 10,000 Fiber visits. This is not 10,000 function calls: each visit is cheap (reading `fiber.child`, checking `fiber.dependencies`). But for large applications with high-frequency context changes (context that updates on every keystroke, on every animation frame, on every WebSocket message), this walk becomes the performance bottleneck.
+
+Context splitting reduces this cost not by making each walk cheaper but by reducing how often each walk happens. If `CartContext` only changes when the cart changes, its propagation walk only runs on cart changes. `UserContext`'s walk only runs on user changes. The total walk count over time is reduced by the independence of the contexts.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: A developer wraps every context consumer in `React.memo` to prevent context-triggered re-renders. Does it work?**
+
+```jsx
+const MemoizedCartBadge = React.memo(function CartBadge() {
+  const { cart } = useUser(); // consumes UserContext
+  return <span>{cart.length}</span>;
+});
+```
+
+<details>
+<summary>Answer</summary>
+
+No. `React.memo` prevents re-renders caused by trigger 2 (parent re-render). Context changes are trigger 3, which directly marks the consumer Fiber with a force-update lane via `propagateContextChange`. This lane marking causes `beginWork` to process the Fiber unconditionally, bypassing the `React.memo` prop comparison.
+
+When `UserContext`'s value changes (any part of it, because it is a single object), `propagateContextChange` marks `CartBadge`'s Fiber. `React.memo`'s prop check is irrelevant: the Fiber has been directly scheduled for work. It re-renders regardless.
+
+`React.memo` is the wrong tool for context performance. The correct tools are: context splitting (so the consumer's specific context only changes when relevant data changes), memoized value objects (so the context value reference does not change when irrelevant internal state changes), and separating state from dispatch contexts (so action-only consumers never re-render on state changes).
+
+</details>
+
+---
+
+**Trap 2: This provider has two consumers. User changes. How many re-renders happen and why?**
+
+```jsx
+const AppContext = React.createContext(null);
+
+function AppProvider({ children }) {
+  const [user, setUser] = React.useState({ name: 'Shan' });
+  const [count, setCount] = React.useState(0);
+
+  const value = React.useMemo(
+    () => ({ user, count, setUser, setCount }),
+    [user, count]
+  );
+
+  return (
+    <AppContext.Provider value={value}>
+      {children}
+    </AppContext.Provider>
+  );
+}
+
+const UserDisplay = React.memo(function UserDisplay() {
+  const { user } = React.useContext(AppContext);
+  return <p>{user.name}</p>;
+});
+
+const Counter = React.memo(function Counter() {
+  const { count, setCount } = React.useContext(AppContext);
+  return <button onClick={() => setCount(c => c + 1)}>{count}</button>;
+});
+```
+
+`setUser({ name: 'Ravi' })` is called. How many re-renders?
+
+<details>
+<summary>Answer</summary>
+
+Both `UserDisplay` and `Counter` re-render. Three total renders: `AppProvider`, `UserDisplay`, and `Counter`.
+
+The sequence: `setUser` updates `user` in `AppProvider`. `AppProvider` re-renders. `useMemo` checks deps: `[user, count]`. `user` changed (new reference). `useMemo` recomputes. New object: `{ user: newUser, count: 0, setUser, setCount }`. New reference. `AppContext.Provider` receives a new `value`. `Object.is(oldValue, newValue)` is `false`. `propagateContextChange` walks the subtree, finds `UserDisplay` and `Counter` as consumers. Both are marked with force-update lanes.
+
+`UserDisplay` re-renders (correct: `user.name` changed, the display should update).
+
+`Counter` re-renders (unnecessary: `count` did not change, `setCount` is stable). But because both consume the same `AppContext`, which changed, both re-render. `React.memo` on `Counter` does not help because context trigger 3 bypasses it.
+
+This is exactly why context splitting matters: if `user` and `count` were in separate contexts, changing `user` would only re-render `UserDisplay`, not `Counter`.
+
+</details>
+
+---
+
+**Trap 3: Is there a way to make a component consume context without re-rendering when the context changes?**
+
+```jsx
+function ActionButton() {
+  const { addToCart } = useCartContext();
+  // This component should never re-render when cart state changes
+  // because it only needs the addToCart function
+  return <button onClick={() => addToCart(item)}>Add</button>;
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+Yes, by separating the dispatch function into its own context whose value never changes.
+
+`useReducer`'s `dispatch` is a stable reference: same function object for the entire lifetime of the component. If `addToCart` is derived from `dispatch`, and `dispatch` is provided through a separate `CartDispatchContext`, then `CartDispatchContext`'s value is `dispatch`, which never changes. `Object.is(dispatch, dispatch)` is `true` on every render. `propagateContextChange` is never called for `CartDispatchContext`. `ActionButton` is never re-rendered by context trigger 3.
+
+```jsx
+const CartDispatchContext = React.createContext(null);
+const CartStateContext = React.createContext(null);
+
+function CartProvider({ children }) {
+  const [cart, dispatch] = React.useReducer(cartReducer, []);
+
+  // dispatch is stable: never changes
+  return (
+    <CartDispatchContext.Provider value={dispatch}>
+      <CartStateContext.Provider value={cart}>
+        {children}
+      </CartStateContext.Provider>
+    </CartDispatchContext.Provider>
+  );
+}
+
+function ActionButton() {
+  const dispatch = React.useContext(CartDispatchContext);
+  // Never re-renders due to cart state changes
+  return (
+    <button onClick={() => dispatch({ type: 'ADD', item })}>Add</button>
+  );
+}
+```
+
+The key insight: if the context value is a stable reference (a primitive, a stable function, or a memoized object whose deps never change), the context never triggers re-renders. Structuring contexts so that action-only consumers subscribe to stable dispatch values is the most reliable way to prevent unnecessary context re-renders without external state libraries.
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** `React.memo` blocks trigger 2 re-renders. Why can it not block trigger 3 (context change) re-renders?
+
+<details>
+<summary>Answer</summary>
+
+`React.memo` works by intercepting the render decision in `beginWork` for `MemoComponent` Fibers. It compares previous and current props using `shallowEqual`. If props are equal, it calls `bailoutOnAlreadyFinishedWork`, which skips calling the component function and reuses the previous render output.
+
+This interception happens only when the Fiber is being processed due to a parent re-render (trigger 2), where the Fiber's lanes were set because its parent is re-rendering.
+
+Context changes (trigger 3) work differently. `propagateContextChange` directly marks the consumer Fiber's `lanes` field with the current render lanes. When `beginWork` processes this Fiber, it finds pending work in the current render lanes (`includesSomeLane` returns `true`). The Fiber has been explicitly scheduled for work by the context propagation system, not by a parent re-render. This direct scheduling bypasses the `React.memo` prop comparison entirely. The component function is called regardless of what its props are.
+
+The two triggers use different mechanisms to schedule work. `React.memo` only intercepts the parent-propagated mechanism. Context changes use a direct scheduling mechanism that `React.memo` cannot observe.
+
+</details>
+
+---
+
+**Q2.** Context A and Context B are both provided by the same component. A consumer subscribes to both. Context A changes. Does the consumer re-render once or twice?
+
+<details>
+<summary>Answer</summary>
+
+Once. React batches the work from both context changes into a single render pass.
+
+When Context A changes, `propagateContextChange` for Context A marks the consumer's Fiber with the current render lanes. When React subsequently processes the render (or when Context B also changes in the same render if both Providers are updated simultaneously), `propagateContextChange` for Context B marks the same Fiber again. The `mergeLanes` operation just sets the same lane bits again on the already-marked Fiber: it is idempotent. The Fiber is marked once, processed once, and the component function is called once.
+
+React's rendering model is: collect all work, process it in one pass. Multiple context changes, multiple parent re-renders, and state updates can all target the same component, but the component's function is called once per render pass. All pending updates for that render are processed in that single call.
+
+</details>
+
+---
+
+**Q3.** The state-dispatch separation pattern uses `useReducer` rather than `useState`. What property of `useReducer`'s dispatch makes it suitable for this pattern that `useState`'s setter shares?
+
+<details>
+<summary>Answer</summary>
+
+Both `useReducer`'s `dispatch` and `useState`'s setter are guaranteed to be stable references: the same function object for the entire lifetime of the component. React creates these functions once at mount time, binds them to the specific Fiber and update queue, and returns the same reference on every subsequent render.
+
+The reason `dispatch` is highlighted in this pattern is that `useReducer` naturally separates the "how to update" logic (the reducer function) from the "trigger an update" mechanism (dispatch). This makes it natural to provide `dispatch` as the entire interface for the dispatch context, with consumers calling `dispatch({ type: 'ADD', item })` without knowing the current state. With `useState`, the setter is a function that takes either a new value or an updater function. It is equally stable. The pattern `const [count, setCount] = useState(0)` produces a stable `setCount` that can be placed in a dispatch context with the same guarantees.
+
+The selection of `useReducer` over `useState` for this pattern is often about the complexity of the state logic (many action types benefit from a reducer) rather than any difference in the stability of the update function.
+
+</details>

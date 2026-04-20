@@ -1,1 +1,430 @@
-﻿# What is prop drilling, why is it painful
+﻿# What is Prop Drilling, Why is it Painful?
+
+### 1. The Problem
+
+You have data at the top of your component tree. A deeply nested component needs it. React's data model says: data flows down via props. So you pass it down. One level. Two levels. Three levels. Five levels. Every intermediate component that does not need the data receives it anyway, just to forward it to the next level.
+
+This is prop drilling. And the pain is not just aesthetic. It is structural. It creates coupling between components that have no business being coupled. It makes refactoring expensive. It makes components harder to reuse. And it scales linearly with the depth of your tree, meaning the larger and more complex your application becomes, the worse it gets.
+
+Before you can understand why Context exists, you need to feel this pain precisely. Not "it's a lot of typing" but the specific mechanical ways prop drilling breaks component design.
+
+---
+
+### 2. The Naive Attempt
+
+Build an e-commerce application. The top-level `App` component fetches the current user. Deep inside the component tree, four components down, a `CheckoutButton` needs to know if the user is authenticated to decide whether to show a login prompt or proceed directly.
+
+```jsx
+function App() {
+  const [user, setUser] = React.useState(null);
+
+  return (
+    <div className="app">
+      <Header user={user} />
+      <Main user={user} />
+      <Footer />
+    </div>
+  );
+}
+
+function Header({ user }) {
+  return (
+    <nav>
+      <Logo />
+      <Navigation user={user} />
+    </nav>
+  );
+}
+
+function Navigation({ user }) {
+  return (
+    <ul>
+      <li><a href="/">Home</a></li>
+      <li><a href="/shop">Shop</a></li>
+      <UserMenu user={user} />
+    </ul>
+  );
+}
+
+function UserMenu({ user }) {
+  return (
+    <li>
+      {user
+        ? <span>Hello, {user.name}</span>
+        : <a href="/login">Log in</a>
+      }
+    </li>
+  );
+}
+
+function Main({ user }) {
+  return (
+    <div className="main">
+      <ProductGrid user={user} />
+    </div>
+  );
+}
+
+function ProductGrid({ user }) {
+  return (
+    <div className="grid">
+      {products.map(p => (
+        <ProductCard key={p.id} product={p} user={user} />
+      ))}
+    </div>
+  );
+}
+
+function ProductCard({ product, user }) {
+  return (
+    <div className="card">
+      <img src={product.image} alt={product.name} />
+      <h3>{product.name}</h3>
+      <p>${product.price}</p>
+      <CheckoutButton product={product} user={user} />
+    </div>
+  );
+}
+
+function CheckoutButton({ product, user }) {
+  function handleClick() {
+    if (!user) {
+      redirectToLogin();
+    } else {
+      addToCart(product.id, user.id);
+    }
+  }
+
+  return (
+    <button onClick={handleClick}>
+      {user ? 'Add to cart' : 'Log in to buy'}
+    </button>
+  );
+}
+```
+
+Trace `user` through the tree:
+
+```
+App (owns user)
+  → Header (receives user, uses it in Navigation)
+      → Navigation (receives user, passes to UserMenu)
+          → UserMenu (USES user: the first actual consumer)
+  → Main (receives user, does not use it directly)
+      → ProductGrid (receives user, does not use it directly)
+          → ProductCard (receives user, does not use it directly)
+              → CheckoutButton (USES user: the second actual consumer)
+```
+
+Two components actually need `user`: `UserMenu` and `CheckoutButton`. Six components receive `user` as a prop. Four of them (`Header`, `Navigation`, `Main`, `ProductGrid`, `ProductCard`) are pure messengers. They accept `user`, do nothing with it in their own render output, and exist in this chain only to pass it along.
+
+---
+
+### 3. Why That Breaks
+
+Four distinct failure modes, each progressively worse.
+
+**Failure mode 1: Messenger components are coupled to data they do not use.**
+
+`ProductGrid` does not use `user`. It renders a grid of product cards. Its only job is layout. But because `CheckoutButton` deep inside it needs `user`, `ProductGrid` must accept `user` as a prop, include it in its prop signature, and forward it to `ProductCard`. `ProductGrid`'s API is polluted by a concern that is not its own.
+
+Now write a test for `ProductGrid`. To test its layout behavior, you must provide a `user` prop even though `ProductGrid` does not care about it. The test is coupled to data it has no logical connection to.
+
+**Failure mode 2: Refactoring requires touching every messenger.**
+
+The product team decides to add a new feature: a `WishlistButton` that also needs `user`. It lives inside `ProductCard`, as a sibling to `CheckoutButton`. Adding it requires no new component logic for `user`. But `WishlistButton` needs `user`, so `ProductCard` must pass it, so `ProductCard` already has it, so you are fine at that level. But what if the `WishlistButton` needed something else from the user object, say `user.wishlistId`? If that was a new field, every component in the chain might need updating.
+
+Now change `user` to `currentUser` across the entire application. Find every messenger component. Rename the prop in each. Update every call site. For a chain of five messengers, that is five files, ten to twenty lines changed, all to rename a variable that none of those components actually use. This is a maintenance tax paid indefinitely.
+
+**Failure mode 3: Components cannot be reused without their drilling context.**
+
+`CheckoutButton` seems like a reusable component. "Add to cart" is a generic concept. But in this codebase, `CheckoutButton` requires a `user` prop. To use it in a new context, say in a recommendations widget on the home page, you must ensure `user` is threaded down through that entire new component subtree as well. The component carries its full drilling dependency graph wherever it goes. It is not truly reusable without the entire chain above it.
+
+**Failure mode 4: Intermediate components re-render unnecessarily.**
+
+When `user` changes (login, logout, profile update), `App` re-renders with the new `user`. This re-render propagates down: `Header`, `Navigation`, `Main`, `ProductGrid`, `ProductCard` all re-render, because they all receive `user` as a prop that changed. `Navigation` re-renders not because its visual output changed significantly, but because it received a new `user` reference to pass along. The drilling chain is also a re-render chain. Data that travels through six components forces six component re-renders even if only two of them produce different output.
+
+---
+
+### 4. React's Mental Model
+
+Prop drilling is the correct solution when components are close together in the tree, one to three levels, and the data is genuinely part of the intermediate components' concerns. It breaks when the distance is large, when the intermediate components have no legitimate connection to the data, and when the data is truly global to the subtree.
+
+When these conditions are met, you need a way to make data available at any depth without threading it through every intermediate component. That mechanism is Context.
+
+But before reaching for Context, the correct question is: "why is this data so far from the components that need it?" Sometimes the answer is architecture, data genuinely must be global. Sometimes the answer is that the component tree is not well-designed and the components could be restructured to reduce the distance.
+
+One sentence: prop drilling is the symptom of a mismatch between where data lives and where it is consumed, and the correct response is first to question the architecture and then, if the mismatch is genuine, to use Context.
+
+---
+
+### 5. React's Solution
+
+Two structural fixes before reaching for Context.
+
+**Fix 1: Component composition (the children-as-props pattern).**
+
+Sometimes the drilling chain exists because of a rigid component hierarchy that does not need to be rigid. Instead of `ProductGrid` knowing about and forwarding `user`, you can invert control: pass the already-assembled `CheckoutButton` (with `user` baked in) as a prop rather than assembling it deep inside the tree.
+
+```jsx
+function App() {
+  const [user, setUser] = React.useState(null);
+
+  // Assemble the button here, where user is available
+  // Pass it down as JSX, not as a prop to drill
+  return (
+    <Main
+      renderProduct={(product) => (
+        <ProductCard
+          key={product.id}
+          product={product}
+          action={
+            <CheckoutButton product={product} user={user} />
+          }
+        />
+      )}
+    />
+  );
+}
+
+function Main({ renderProduct }) {
+  return (
+    <div className="main">
+      <ProductGrid renderProduct={renderProduct} />
+    </div>
+  );
+}
+
+function ProductGrid({ renderProduct }) {
+  return (
+    <div className="grid">
+      {products.map(renderProduct)}
+    </div>
+  );
+}
+
+function ProductCard({ product, action }) {
+  return (
+    <div className="card">
+      <img src={product.image} alt={product.name} />
+      <h3>{product.name}</h3>
+      <p>${product.price}</p>
+      {action}
+    </div>
+  );
+}
+```
+
+`user` no longer drills through `Main`, `ProductGrid`, or `ProductCard`. Those components receive render functions or JSX slots. They have no knowledge of `user`. `CheckoutButton` gets `user` directly from `App` at assembly time. The chain is broken.
+
+This pattern is powerful but has limits: it works when the parent can assemble the child's content, but sometimes the child genuinely needs to control its own behavior based on data it does not have. This is where Context is the right answer.
+
+**Fix 2: Move state closer to consumers.**
+
+If `user` is only needed by `UserMenu` and `CheckoutButton`, and both live under `Main`, consider whether `App` must own `user` or whether a `UserProvider` component could own it and be placed just above the components that need it, rather than at the very top.
+
+But in most real applications, `user` is genuinely global: it is needed in too many places, too spread across the tree, for component composition to be a complete solution. For these cases, Context is the correct tool.
+
+---
+
+### 6. Internals
+
+**Why messenger re-renders happen mechanically.**
+
+When `user` changes in `App`, `App` re-renders (trigger 1: own state change). Every component in `App`'s JSX re-renders by default (trigger 2: parent re-render). `Header`, `Main`, and `Footer` all re-render. `Header` passes the new `user` to `Navigation`. `Navigation` re-renders (trigger 2 again) and passes `user` to `UserMenu`. This cascade continues down the entire drilling chain.
+
+The key mechanic: every time a component function runs, it executes the JSX expressions in its return. `<Navigation user={user} />` evaluates to a new React element with `user` as a prop. Even if `user` is the same reference, React processes this element against the current Fiber tree. Without `React.memo`, React calls `Navigation` again. `Navigation` creates a new element for `UserMenu` with `user`. React calls `UserMenu`. And so on.
+
+The drilling chain and the re-render chain are identical. Every link in the drilling chain is a component that must be called on every `user` change, doing nothing meaningful with the new value except forwarding it.
+
+This is why Context solves not just the API ergonomics problem but the performance problem: Context bypasses the drilling chain entirely and updates only the consumers directly.
+
+**The prop vs context update path in the Fiber tree.**
+
+With prop drilling, the update path is:
+
+```
+App.memoizedState (user changes)
+→ scheduleUpdateOnFiber(App.fiber)
+→ App re-renders → new props for Header, Main
+→ Header re-renders → new props for Navigation
+→ Navigation re-renders → new props for UserMenu
+→ UserMenu re-renders → DOM update
+→ Main re-renders → new props for ProductGrid
+→ ProductGrid re-renders → new props for each ProductCard
+→ each ProductCard re-renders → new props for CheckoutButton
+→ CheckoutButton re-renders → DOM update
+```
+
+Every component in the chain is in the re-render set. With Context (covered in 6.2):
+
+```
+ContextProvider value changes
+→ React walks the subtree looking for context consumers
+→ UserMenu.fiber marked with ForceUpdate lane
+→ CheckoutButton.fiber marked with ForceUpdate lane
+→ Only UserMenu and CheckoutButton re-render
+→ All intermediate components (Header, Navigation, Main, ProductGrid, ProductCard)
+   may or may not re-render based on their own props and parent re-renders
+```
+
+The update targeting is surgical. Context marks only the consumers. The messengers are untouched by the context update itself. This is both the ergonomic win and the performance win of Context over drilling.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: A developer says "prop drilling is always bad and should always be replaced with Context." Evaluate this claim.**
+
+<details>
+<summary>Answer</summary>
+
+The claim is wrong. Prop drilling is the correct solution for most data sharing between components.
+
+Prop drilling at one to two levels of depth is explicit, traceable, and testable. You can read a component and immediately know what data it receives and where it comes from. Changes to the data shape are caught by TypeScript at every call site. Testing a component in isolation only requires providing the props it declares.
+
+Context has real costs: every consumer re-renders when the context value changes (covered in 6.3), the data source is implicit and requires global knowledge to trace, and components that consume context are harder to test in isolation (they require a Provider wrapper).
+
+The correct principle: use props when the distance is short and the data is relevant to intermediate components. Use Context when the distance is large, the intermediate components have no legitimate connection to the data, and the data genuinely represents a cross-cutting concern (theme, locale, authenticated user, feature flags). Treating prop drilling as universally bad leads to premature Context adoption, which introduces re-render performance problems and implicit coupling.
+
+</details>
+
+---
+
+**Trap 2: What is wrong with this approach to fixing prop drilling?**
+
+```jsx
+// "Fix": put user on window to avoid drilling
+window.currentUser = user;
+
+function CheckoutButton({ product }) {
+  function handleClick() {
+    if (!window.currentUser) {
+      redirectToLogin();
+    } else {
+      addToCart(product.id, window.currentUser.id);
+    }
+  }
+  return <button onClick={handleClick}>Add to cart</button>;
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+Three concrete problems.
+
+First, React has no knowledge of `window.currentUser`. When `user` changes, React schedules re-renders based on state changes. `window.currentUser = user` is a direct mutation of a global variable. It triggers no re-render. `CheckoutButton` continues to render based on its existing output. The button label (which shows "Log in to buy" or "Add to cart" based on user state) would not update when the user logs in or out. The UI is stale.
+
+Second, `window` is a shared global. In server-side rendering, `window` does not exist, causing crashes. In testing, global state leaks between tests: one test's `window.currentUser` affects the next test's behavior. The component's behavior depends on invisible, untrackable global state.
+
+Third, this breaks the `UI = f(state)` contract entirely. `CheckoutButton` takes `product` as a prop but depends on `window.currentUser` for its logic. Its output is not a pure function of its declared inputs. Two instances of `CheckoutButton` with the same `product` prop could produce different behavior depending on what `window.currentUser` is at runtime. The component is non-deterministic from React's perspective.
+
+Context is the correct solution: it is React-aware, triggers re-renders when the value changes, is scoped to a subtree rather than global, and is explicit in the component's consumption.
+
+</details>
+
+---
+
+**Trap 3: The children-as-props pattern eliminates `user` drilling through intermediate components. But does it eliminate all the re-renders from the drilling chain? Trace precisely.**
+
+```jsx
+function App() {
+  const [user, setUser] = React.useState(null);
+
+  return (
+    <Main
+      renderProduct={(product) => (
+        <CheckoutButton product={product} user={user} />
+      )}
+    />
+  );
+}
+
+function Main({ renderProduct }) {
+  return <ProductGrid renderProduct={renderProduct} />;
+}
+
+function ProductGrid({ renderProduct }) {
+  return (
+    <div>{products.map(renderProduct)}</div>
+  );
+}
+```
+
+When `user` changes, do `Main` and `ProductGrid` re-render?
+
+<details>
+<summary>Answer</summary>
+
+Yes, `Main` and `ProductGrid` still re-render when `user` changes, but for a different reason.
+
+When `user` changes, `App` re-renders (trigger 1: own state). `App`'s render body executes. The `renderProduct` function is defined inline: `(product) => <CheckoutButton product={product} user={user} />`. This creates a new function object on every `App` render. `Main` receives the new `renderProduct` reference as a prop. Even though `user` is no longer threaded through `Main`, `Main` still receives a changed prop and re-renders by default (trigger 2). `ProductGrid` receives the changed `renderProduct` from `Main` and re-renders.
+
+The drilling chain re-render still occurs because the function carrying `user` is recreated on every `App` render.
+
+The fix for the re-renders is `useCallback` on `renderProduct`:
+
+```jsx
+const renderProduct = React.useCallback(
+  (product) => <CheckoutButton product={product} user={user} />,
+  [user]
+);
+```
+
+Now `renderProduct` is the same reference when `user` is unchanged. Combined with `React.memo` on `Main` and `ProductGrid`, re-renders are prevented when `user` has not changed. When `user` does change, the re-renders are correct and necessary because the button rendering behavior changed.
+
+The children-as-props pattern eliminates the prop drilling problem (messenger coupling) but does not automatically eliminate re-render propagation. That still requires either `React.memo` with stable references, or Context (which directly targets consumers without propagating through intermediaries).
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** Name the four failure modes of prop drilling. Which one is purely a performance problem, and which ones are correctness and maintainability problems?
+
+<details>
+<summary>Answer</summary>
+
+The four failure modes are: messenger coupling (components accepting props they do not use), refactoring cost (renaming or changing the prop requires touching every messenger), reusability loss (components carry their drilling dependencies wherever they go), and unnecessary re-renders (the drilling chain is also a re-render chain).
+
+The unnecessary re-render failure mode is purely a performance problem. The component tree still renders correctly, just with wasted work.
+
+The other three are correctness and maintainability problems. Messenger coupling produces incorrect abstractions: `ProductGrid`'s API implies it cares about `user` when it does not. Refactoring cost means that changes to the data shape produce incorrect code (compilation errors or runtime failures) across many files simultaneously, requiring multiple changes to fix one logical change. Reusability loss means that components cannot be correctly used in new contexts without understanding and replicating their full drilling chain.
+
+</details>
+
+---
+
+**Q2.** What question should you ask before replacing prop drilling with Context? Why is this question important?
+
+<details>
+<summary>Answer</summary>
+
+The question is: "why is the data so far from the components that need it?" This asks you to examine the architecture before applying a solution.
+
+Sometimes the answer reveals a design problem: the component tree is too rigid, and component composition (children-as-props) or moving state closer to consumers would eliminate the drilling without introducing Context's performance costs.
+
+Sometimes the answer confirms that Context is correct: the data is genuinely global to the application (authenticated user, theme, locale), needed in many unrelated parts of the tree simultaneously, and there is no reasonable way to restructure the component hierarchy to eliminate the distance.
+
+The question is important because Context has real costs, primarily the re-render problem where every consumer re-renders on every value change. Applying Context prematurely to solve drilling that could be fixed structurally introduces these costs unnecessarily. The correct pattern: exhaust structural solutions first, then apply Context for genuinely global data.
+
+</details>
+
+---
+
+**Q3.** Two components consume the same data. One is four levels below its data source. The other is one level below. Should you use Context for both, drilling for both, or a mix? Justify the decision.
+
+<details>
+<summary>Answer</summary>
+
+A mix is the most architecturally precise answer, but it depends on the nature of the data and the component tree structure.
+
+For the component one level below its data source, prop drilling is correct. The data passes through one intermediate level at most, the intermediate component likely has a legitimate relationship with the data (it probably renders the consumer directly), refactoring cost is minimal (one prop to change in two places), and re-render propagation is one level deep (negligible cost). Context's costs, implicit data source, re-render performance trap, Provider wrapper required for testing, are not justified by the shallow distance.
+
+For the component four levels below, Context is likely correct if the three intermediate components have no legitimate connection to the data. They are messengers. The structural coupling, maintenance tax, and re-render chain from four levels of drilling outweigh Context's costs.
+
+In practice, you would probably use Context for the whole concern and let both components consume it, rather than drilling for one and using Context for the other, because splitting the data source creates inconsistency and makes the codebase harder to reason about. The practical decision: if any consumer is far enough that drilling is painful, use Context for all consumers of that data and let the shallow consumer also read from Context. This is consistent and avoids the split-source problem.
+
+</details>

@@ -1,1 +1,459 @@
 ﻿# useEffect vs useLayoutEffect
+
+### 1. The Problem
+
+React provides two hooks for running side effects after render: `useEffect` and `useLayoutEffect`. Most documentation says "`useLayoutEffect` is like `useEffect` but fires synchronously after DOM mutations." This is accurate but insufficient. It tells you the what but not the why, and without the why, you cannot reason about when each is correct.
+
+The practical consequence of choosing the wrong one is a specific, observable user experience problem: visual flicker. A component renders with one visual state, the browser paints it, then the effect runs and changes it, and the browser paints again. The user sees the intermediate state for a single frame, a brief flash of incorrect content before the final state appears.
+
+`useLayoutEffect` exists specifically to prevent this. But `useLayoutEffect` blocks the browser from painting at all until it completes, which is its own performance cost. The correct choice between them is determined by one question, answered precisely.
+
+---
+
+### 2. The Naive Attempt
+
+Build a tooltip that appears next to an element. The tooltip must be positioned based on the element's dimensions, which are only known after the DOM is rendered.
+
+```jsx
+function Tooltip({ targetRef, content }) {
+  const [position, setPosition] = React.useState({ top: 0, left: 0 });
+
+  React.useEffect(() => {
+    const rect = targetRef.current.getBoundingClientRect();
+    setPosition({
+      top: rect.bottom + 8,
+      left: rect.left,
+    });
+  }, [targetRef]);
+
+  return (
+    <div
+      className="tooltip"
+      style={{
+        position: 'fixed',
+        top: position.top,
+        left: position.left,
+      }}
+    >
+      {content}
+    </div>
+  );
+}
+```
+
+The component renders the tooltip at `{ top: 0, left: 0 }`. The browser paints: the tooltip appears at the top-left of the screen for one frame. Then `useEffect` runs, measures the target element, calls `setPosition` with the correct position, React re-renders, the tooltip moves to the correct position, the browser paints again. The user sees the tooltip flash from the top-left corner to its correct position.
+
+This is the flicker. It is not always noticeable (fast connections and CPUs mean the flash is under 16ms), but it is architecturally incorrect: the user is briefly shown an invalid visual state.
+
+---
+
+### 3. Why That Breaks
+
+The precise failure mode: **`useEffect` fires after the browser has painted. Any DOM mutation or state update inside it that affects visible layout causes a second paint with the correct state, making the first paint a visible error.**
+
+The browser's rendering pipeline is:
+
+```
+React commit phase (DOM mutations)
+    ↓
+useLayoutEffect fires (synchronous)
+    ↓
+Browser: style recalculation + layout + paint
+    ↓
+useEffect fires (asynchronous, via MessageChannel macrotask)
+    ↓
+[if useEffect causes state change → another render cycle]
+```
+
+`useEffect` fires after the browser has already painted. The first paint reflects the initial state (`{ top: 0, left: 0 }`). The effect fires, updates state, React re-renders, and a second paint shows the correct position. The user sees both paints if they are distinct enough to be visible.
+
+`useLayoutEffect` fires before the browser paints. Any state updates inside it are processed synchronously before the browser gets to paint. The browser paints only once, with the final correct state. The user never sees the intermediate state.
+
+---
+
+### 4. React's Mental Model
+
+`useEffect`: "after React has committed changes to the DOM and the browser has painted the result, do this work." For effects that do not affect visible layout, this is correct. The user sees the committed DOM first. The effect runs in the background.
+
+`useLayoutEffect`: "after React has committed changes to the DOM but before the browser paints, do this work." For effects that must read DOM layout and synchronously apply corrections before the user sees anything, this is correct. The browser waits for the effect to complete before painting.
+
+One sentence: use `useLayoutEffect` when your effect reads DOM geometry and must synchronously correct the UI before the user sees any incorrect intermediate state, and use `useEffect` for everything else.
+
+---
+
+### 5. React's Solution
+
+**The deciding question.**
+
+```
+Does this effect read DOM layout (getBoundingClientRect, offsetHeight,
+scrollWidth, etc.) AND use that measurement to synchronously update
+something visible (position, size, scroll, animation start state)?
+
+YES → useLayoutEffect
+NO  → useEffect
+```
+
+If the answer is no, `useLayoutEffect` is the wrong choice: it synchronously blocks the browser from painting until it completes. If the effect is slow, the user sees the previous frame for longer. `useEffect` is correct for the vast majority of effects.
+
+**When `useEffect` is correct.**
+
+```jsx
+// Fetching data: does not affect current DOM layout
+React.useEffect(() => {
+  fetchUser(userId).then(setUser);
+}, [userId]);
+
+// Setting document title: does not cause visible layout changes
+React.useEffect(() => {
+  document.title = pageName;
+}, [pageName]);
+
+// Subscribing to external events
+React.useEffect(() => {
+  const handler = (e) => setScrollY(e.target.scrollTop);
+  window.addEventListener('scroll', handler);
+  return () => window.removeEventListener('scroll', handler);
+}, []);
+
+// Analytics and logging: explicitly should run after paint
+React.useEffect(() => {
+  analytics.track('page_view', { page: pageName });
+}, [pageName]);
+
+// Timers: run after render, no layout dependency
+React.useEffect(() => {
+  const id = setTimeout(onTimeout, delay);
+  return () => clearTimeout(id);
+}, [onTimeout, delay]);
+```
+
+None of these read DOM geometry or need to correct visible layout. They run after paint correctly: the user sees the rendered output first, then these effects fire.
+
+**When `useLayoutEffect` is correct.**
+
+```jsx
+// Tooltip positioning: reads DOM geometry, corrects visible position
+React.useLayoutEffect(() => {
+  const rect = targetRef.current.getBoundingClientRect();
+  setPosition({
+    top: rect.bottom + 8,
+    left: rect.left,
+  });
+}, [targetRef]);
+// No flicker: position is correct before first paint
+
+// Measuring rendered element size for animation
+React.useLayoutEffect(() => {
+  const height = elementRef.current.scrollHeight;
+  elementRef.current.style.height = '0px';
+  elementRef.current.style.transition = 'height 300ms';
+  requestAnimationFrame(() => {
+    elementRef.current.style.height = `${height}px`;
+  });
+}, [isVisible]);
+// Animation starts from correct height, no jump from 0 to measured
+
+// Synchronizing scroll position after content change
+React.useLayoutEffect(() => {
+  if (shouldScrollToBottom) {
+    containerRef.current.scrollTop = containerRef.current.scrollHeight;
+  }
+}, [messages]); // when new messages arrive, scroll before paint
+// User never sees scroll position before new messages are shown
+
+// Focus management: moving focus before paint prevents flash of focused state
+React.useLayoutEffect(() => {
+  if (isOpen) {
+    dialogRef.current?.focus();
+  }
+}, [isOpen]);
+```
+
+All of these read DOM geometry or affect visible geometry and must complete before the browser shows the committed DOM to the user.
+
+**The server-side rendering constraint.**
+
+`useLayoutEffect` causes a warning in SSR (server-side rendering) environments: "Warning: `useLayoutEffect` does nothing on the server." This is because there is no DOM on the server. The browser's layout engine does not exist. `getBoundingClientRect` would throw or return zero.
+
+The correct SSR-compatible pattern:
+
+```jsx
+// Option 1: use useEffect for the SSR build, accept potential flash
+// (often acceptable because SSR-rendered HTML is replaced by React
+// during hydration anyway)
+
+// Option 2: a custom hook that uses useEffect on server, useLayoutEffect on client
+const useIsomorphicLayoutEffect =
+  typeof window !== 'undefined' ? React.useLayoutEffect : React.useEffect;
+
+function Tooltip({ targetRef, content }) {
+  const [position, setPosition] = React.useState({ top: 0, left: 0 });
+
+  useIsomorphicLayoutEffect(() => {
+    const rect = targetRef.current.getBoundingClientRect();
+    setPosition({ top: rect.bottom + 8, left: rect.left });
+  }, [targetRef]);
+
+  return <div style={{ position: 'fixed', ...position }}>{content}</div>;
+}
+```
+
+`useIsomorphicLayoutEffect` is a widely used pattern. Libraries like `react-use` and Radix UI export it. The name communicates intent: use layout timing on the client, fall back to passive timing on the server.
+
+**The performance cost of `useLayoutEffect`.**
+
+`useLayoutEffect` holds the browser from painting until it completes. This is the cost of preventing flicker.
+
+```jsx
+// This blocks paint for the entire duration
+React.useLayoutEffect(() => {
+  const measurement = expensiveLayoutCalculation(); // 50ms
+  applyMeasurement(measurement);
+}, [deps]);
+```
+
+50ms inside `useLayoutEffect` means the user sees the previous frame for an extra 50ms. For 60fps, a frame is 16.6ms. A 50ms `useLayoutEffect` drops 3 frames. The user perceives this as jank on the transition into the component.
+
+The rule: `useLayoutEffect` callbacks must be fast. They should only read a single DOM measurement and apply a correction. Complex computations belong in `useEffect` or outside the effect entirely.
+
+---
+
+### 6. Internals
+
+**The commit phase timing, precise.**
+
+The commit phase has three sub-phases. `useLayoutEffect` fires in the layout sub-phase, after DOM mutations. `useEffect` is scheduled after the browser paints via `MessageChannel`:
+
+```
+Commit phase begins (synchronous, non-interruptible)
+│
+├── Before mutation phase
+│     getSnapshotBeforeUpdate, refs detached
+│
+├── Mutation phase
+│     DOM insertions, updates, deletions applied
+│     useLayoutEffect CLEANUPS from previous render run
+│     (fiber.alternate.memoizedState effects with HookLayout | HookHasEffect)
+│
+│     [root.current pointer swapped here]
+│
+├── Layout phase
+│     useLayoutEffect CALLBACKS run (HookLayout | HookHasEffect)
+│     componentDidMount / componentDidUpdate
+│     refs attached (ref.current = domNode)
+│
+└── Commit phase ends
+
+[Browser: style recalculation, layout, paint, composite]
+    ← USER SEES THE UPDATED UI HERE
+
+[MessageChannel macrotask fires]
+│
+└── Passive effects phase
+      useEffect CLEANUPS from previous render run
+      useEffect CALLBACKS run
+      (HookPassive | HookHasEffect)
+```
+
+The exact moment `useLayoutEffect` fires is after DOM mutations are applied but before the browser paints. The exact moment `useEffect` fires is after the browser paints.
+
+**Why `useLayoutEffect` state updates are absorbed into one paint.**
+
+When `useLayoutEffect` calls `setPosition`, React processes the state update synchronously within the layout phase:
+
+```js
+function commitLayoutEffects(root, firstEffect) {
+  let effect = firstEffect;
+  while (effect !== null) {
+    if (effect.flags & (Update | Callback)) {
+      // For function components: run useLayoutEffect callbacks
+      commitLifeCycles(root, current, effect);
+      // If setPosition was called inside, it enqueues a synchronous update
+      // React processes it before returning from commitLayoutEffects
+    }
+    effect = effect.nextEffect;
+  }
+}
+```
+
+The synchronous update triggered by `setPosition` inside `useLayoutEffect` causes React to run the render and commit phase again, synchronously, before returning control to the browser. The browser waits for this entire sequence to complete before painting. It sees the final state, not the intermediate state.
+
+This is why `useLayoutEffect` prevents flicker: the state update, re-render, and re-commit all happen in one synchronous block. The browser paints only once, after everything settles.
+
+**The `HookLayout` and `HookPassive` flags.**
+
+Effects are distinguished by their flags on the hook node's `memoizedState.tag`:
+
+```js
+const HookLayout  = 0b100; // useLayoutEffect
+const HookPassive = 0b010; // useEffect
+const HookHasEffect = 0b001; // needs to run this commit
+
+// useLayoutEffect with changed deps:
+effect.tag = HookLayout | HookHasEffect
+
+// useEffect with changed deps:
+effect.tag = HookPassive | HookHasEffect
+```
+
+The commit phase checks these flags to route each effect to the correct sub-phase. Layout effects go through the layout sub-phase. Passive effects are collected and scheduled for the passive effects phase via `scheduleCallback`.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: A developer replaces all `useEffect` calls with `useLayoutEffect` "to be safe and ensure effects run before paint." What is wrong with this reasoning?**
+
+<details>
+<summary>Answer</summary>
+
+The reasoning inverts the correct default. `useLayoutEffect` is not "safer" than `useEffect`. It is more restrictive and comes with a concrete performance cost.
+
+`useLayoutEffect` blocks the browser from painting until the effect completes. For effects that do not need pre-paint timing, this is strictly worse: the user sees the previous frame for longer (the duration of the effect) while the browser waits. A data fetch, a subscription, a timer setup, an analytics call inside `useLayoutEffect` all delay the paint unnecessarily.
+
+For slow effects (a 100ms API call inside `useLayoutEffect`), this is visually catastrophic: the user sees the previous page for 100ms after navigation because the browser is waiting for the effect to complete before painting the new page.
+
+The correct reasoning: `useEffect` is the correct default. It runs after paint, does not block the user from seeing the committed DOM, and is appropriate for the vast majority of side effects. `useLayoutEffect` is a specialized tool for the specific case of DOM measurement followed by synchronous correction, used when the `useEffect` alternative would cause a visible flash of incorrect state. The burden of proof is on using `useLayoutEffect`, not on using `useEffect`.
+
+</details>
+
+---
+
+**Trap 2: This `useLayoutEffect` causes a warning in the SSR build. Why, and what is the fix?**
+
+```jsx
+function Dropdown({ items }) {
+  const [menuHeight, setMenuHeight] = React.useState(0);
+  const menuRef = React.useRef(null);
+
+  React.useLayoutEffect(() => {
+    if (menuRef.current) {
+      setMenuHeight(menuRef.current.scrollHeight);
+    }
+  }, [items]);
+
+  return (
+    <div>
+      <div ref={menuRef} style={{ maxHeight: menuHeight }}>
+        {items.map(i => <div key={i.id}>{i.label}</div>)}
+      </div>
+    </div>
+  );
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+The warning: "Warning: useLayoutEffect does nothing on the server because its effect cannot be encoded into the server renderer's output format. This will lead to a mismatch."
+
+During SSR, React renders components to a string or stream on the server. There is no DOM. `menuRef.current` is `null` or the ref system does not work as expected. `scrollHeight` does not exist. `useLayoutEffect` is silently skipped on the server, which means the server renders `Dropdown` with `menuHeight = 0`. The client receives this HTML, hydrates it, and then `useLayoutEffect` fires on the client with the actual `scrollHeight`. If the height differs from 0 (it will), React updates the DOM after hydration, potentially causing a layout shift.
+
+The fix is `useIsomorphicLayoutEffect`:
+
+```jsx
+const useIsomorphicLayoutEffect =
+  typeof window !== 'undefined'
+    ? React.useLayoutEffect
+    : React.useEffect;
+
+function Dropdown({ items }) {
+  const [menuHeight, setMenuHeight] = React.useState(0);
+  const menuRef = React.useRef(null);
+
+  useIsomorphicLayoutEffect(() => {
+    if (menuRef.current) {
+      setMenuHeight(menuRef.current.scrollHeight);
+    }
+  }, [items]);
+
+  // ...
+}
+```
+
+On the server, this runs as `useEffect`, which is a no-op on the server (effects do not run during SSR). The server renders `menuHeight = 0`. On the client, it runs as `useLayoutEffect`, fires before paint, measures the height, and sets it before the user sees anything. The warning disappears. The hydration mismatch is unavoidable (server sends 0, client corrects to actual height) but `useLayoutEffect` ensures the correction happens before paint so the user never sees the 0-height state.
+
+</details>
+
+---
+
+**Trap 3: Both hooks have the same signature. What is the observable difference in behavior in this specific example?**
+
+```jsx
+function Box() {
+  const [color, setColor] = React.useState('red');
+
+  // Version A:
+  React.useEffect(() => {
+    setColor('blue');
+  }, []);
+
+  // Version B:
+  React.useLayoutEffect(() => {
+    setColor('blue');
+  }, []);
+
+  return <div style={{ background: color, width: 100, height: 100 }} />;
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+Version A (`useEffect`): the user sees a red box for one frame (the initial render commits the red box, the browser paints it), then `useEffect` fires, `setColor('blue')` is called, React re-renders, the browser paints again. The user sees a brief red flash before the box turns blue.
+
+Version B (`useLayoutEffect`): the user never sees the red box. `useLayoutEffect` fires synchronously after the DOM mutation (the red box is written to the DOM) but before the browser paints. `setColor('blue')` is called. React processes the update synchronously within the layout phase, re-renders with `color = 'blue'`, commits the blue box to the DOM. The browser paints once, showing only the blue box. The user sees the box appear as blue from the start.
+
+The observable difference is exactly one frame of visual state: with `useEffect`, the initial color is visible for one frame before the effect corrects it. With `useLayoutEffect`, the initial color is never painted.
+
+For this specific pattern (setting state synchronously on mount to a value that depends on the committed DOM), `useLayoutEffect` is the correct choice. The initial value (`'red'`) is meaningless and the user should never see it. For cases where the initial value is meaningful and the correction is a response to some measurement, the same reasoning applies.
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** State the single deciding question that determines whether to use `useEffect` or `useLayoutEffect`, and apply it to: updating the document title and measuring an element's height to position a popover.
+
+<details>
+<summary>Answer</summary>
+
+The deciding question: does this effect read DOM geometry and must synchronously correct visible UI before the user sees any incorrect intermediate state?
+
+Updating the document title: no. `document.title = pageName` does not read DOM geometry. It does not affect visible layout in the React component tree. It fires after paint without any visible consequence to the user: the title updates asynchronously, which is the correct and expected behavior. `useEffect` is correct.
+
+Measuring an element's height to position a popover: yes. The popover must be positioned at the correct location before the user sees it. The correct position depends on `getBoundingClientRect()`, a DOM geometry read. If `useEffect` is used, the popover renders at an incorrect initial position, the browser paints it there (potentially showing it at the top of the screen or overlapping the trigger), then the effect runs, position is corrected, and the browser paints again. The user sees the flash. `useLayoutEffect` fires before paint, measures, sets position, React re-renders with correct position, browser paints once with the popover in the right place. `useLayoutEffect` is correct.
+
+</details>
+
+---
+
+**Q2.** `useLayoutEffect` fires before paint and `useEffect` fires after. How does this map to the three sub-phases of the commit phase and the browser rendering pipeline?
+
+<details>
+<summary>Answer</summary>
+
+The commit phase has three sub-phases: before mutation, mutation, and layout. `useLayoutEffect` callbacks fire during the layout sub-phase, the third sub-phase of the commit phase. This is after all DOM mutations have been applied (the mutation sub-phase has completed) but before the commit phase returns control to the browser. The browser does not run its style recalculation, layout, or paint until the commit phase has fully returned, which means `useLayoutEffect` runs while the browser is still "waiting" for JavaScript to finish.
+
+`useEffect` is scheduled during the layout sub-phase via `scheduleCallback`, which posts a `MessageChannel` message. This message becomes a macrotask. Macrotasks run after the current task (the commit phase) completes and after the browser has processed its rendering pipeline. The sequence is: commit phase ends → browser runs style recalculation, layout, paint, composite → MessageChannel macrotask fires → `useEffect` callbacks run.
+
+The practical mapping: anything in `useLayoutEffect` executes in the same synchronous block as the commit phase, blocking paint. Anything in `useEffect` executes in a separate macrotask after paint, non-blocking.
+
+</details>
+
+---
+
+**Q3.** Why does calling `setState` inside `useLayoutEffect` not cause a visible intermediate state, but calling it inside `useEffect` does?
+
+<details>
+<summary>Answer</summary>
+
+`useLayoutEffect` fires during the commit phase, before the browser paints. When `setState` is called inside a `useLayoutEffect` callback, React processes the resulting state update synchronously within the same commit phase execution. React re-renders the component, runs reconciliation, and commits the new DOM mutations, all before returning from the layout sub-phase. The browser has not yet had any opportunity to paint the intermediate state. It receives the final DOM (after all `useLayoutEffect`-triggered updates) and paints only that.
+
+`useEffect` fires after the browser has already painted the committed DOM. When `setState` is called inside a `useEffect` callback, the user has already seen the committed state (the intermediate state). React schedules a new render, runs reconciliation, and commits the new mutations. The browser paints the corrected state. The user saw both: the initial committed state and then the corrected state after the effect ran. This is the visible intermediate state.
+
+The key is whether the state update happens before or after the browser's paint step. `useLayoutEffect` is before; `useEffect` is after. For corrections that must be invisible to the user, the update must complete before paint, which is what `useLayoutEffect` guarantees.
+
+</details>

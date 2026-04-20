@@ -1,1 +1,297 @@
-﻿# What is Fiber, really
+﻿# What is Fiber, Really?
+
+### 1. The Problem
+
+You need to represent a React component tree in memory. The tree has to support:
+
+- Pausing mid-traversal and resuming later, from the exact node you stopped at
+- Knowing which component to process next without maintaining a call stack
+- Storing per-component state that survives between renders without re-allocating
+- Tracking what DOM mutations each component needs
+- Navigating back to a parent after finishing a subtree
+- Comparing the previous render's output to the current one, node by node
+
+A recursive JavaScript function cannot do most of these. A plain object tree — `{ children: [] }` — can be traversed, but only recursively, only top-down, and only all at once. You lose your place the moment you yield.
+
+What data structure could represent a tree but support iterative traversal, pausing at any node, and resuming without losing context?
+
+---
+
+### 2. The Naive Attempt
+
+A developer unfamiliar with Fiber's constraints might model the component tree as a literal JavaScript tree:
+
+```js
+const tree = {
+  type: App,
+  children: [
+    {
+      type: Nav,
+      children: []
+    },
+    {
+      type: Main,
+      children: [
+        { type: Hero, children: [] },
+        { type: List, children: [] },
+      ]
+    }
+  ]
+};
+
+function reconcile(node) {
+  processNode(node);
+  node.children.forEach(child => reconcile(child)); // recursive
+}
+```
+
+This structure works for tree traversal but has several precise problems:
+
+First, it's recursive. Once you call `reconcile(tree)`, the JavaScript call stack grows with every nested call. You cannot "pause" at any level — stopping means the stack unwinds, you lose your position, and you'd have to restart from the root.
+
+Second, there's no pointer back to the parent. When you finish processing `Hero`, you know you need to process `List` next — but only because `forEach` is tracking the index for you. The moment you lose the call stack, you have no way to know where in the tree you are.
+
+Third, there's no place to store per-component work metadata. Where do pending state updates live? What DOM mutations does this node need? You'd have to bolt on parallel data structures, keeping them in sync — a recipe for bugs.
+
+---
+
+### 3. Why That Breaks
+
+Two failure modes, both structural.
+
+**Failure mode 1: You cannot yield from a recursive traversal.** The tree-with-`children` model requires recursion. Recursion uses the call stack. The call stack is not a data structure you control — you can push frames onto it by calling functions, and you can pop them by returning, but you cannot freeze it and hand it back to the browser. Any attempt to "pause" means you return prematurely, and all the stack frames for the in-progress traversal are gone. You have to start over from the root on the next frame.
+
+**Failure mode 2: No intrinsic navigation.** In a `children[]` tree, a node knows its children but not its parent or siblings. To navigate the tree, you depend on the call stack implicitly maintaining "where you came from." Strip the call stack, and navigation collapses. You need explicit pointers — stored on each node — to navigate without recursion.
+
+---
+
+### 4. React's Mental Model
+
+A tree can be encoded as a linked list. Every node stores three pointers: `child` (first child), `sibling` (next sibling), and `return` (parent). With these three pointers, the entire tree is reachable from any single node, iteratively, without a call stack.
+
+This is the core insight of Fiber. A Fiber node is not just a description of a component — it is a node in a linked list that encodes the tree structure. The work loop walks this list one node at a time. At any node, it can stop, save a pointer to `nextUnitOfWork`, return control to the browser, and resume from exactly that node on the next frame. The browser knows nothing. The list remains intact on the heap.
+
+Think of it like a choose-your-own-path structure:
+- To go deeper: follow `child`
+- To go right: follow `sibling`
+- To go up: follow `return`
+- To resume after a pause: read `nextUnitOfWork`
+
+The three-pointer encoding means you can reconstruct the full tree structure from any single node. That's what makes interruption safe.
+
+---
+
+### 5. React's Solution
+
+Each component instance corresponds to one Fiber node — a plain JavaScript object. Here is the real shape of the key fields (simplified to what matters):
+
+```js
+const fiber = {
+  // Identity
+  tag: FunctionComponent,   // the kind of component (0-24 enum values)
+  type: MyComponent,        // the function or class itself
+  key: null,                // the JSX key prop, used in reconciliation
+  stateNode: domNode,       // the actual DOM node, or class instance, or null
+
+  // Tree pointers — the linked list
+  child: FiberNode | null,    // first child
+  sibling: FiberNode | null,  // next sibling at the same level
+  return: FiberNode | null,   // parent (named "return" because work returns there)
+
+  // Work
+  pendingProps: {},          // props for the in-progress render
+  memoizedProps: {},         // props from the last completed render
+  memoizedState: HookNode,  // head of the hook linked list (useState, useEffect, etc.)
+  updateQueue: UpdateQueue,  // pending state updates for this component
+
+  // Scheduling
+  lanes: Lanes,              // bitmask of priority lanes (covered in 8.5)
+  childLanes: Lanes,         // union of all descendant lanes (for fast bailout)
+  flags: Flags,              // what DOM mutations are needed (Placement, Update, Deletion...)
+
+  // Double-buffering
+  alternate: FiberNode | null, // the mirror node in the other tree
+};
+```
+
+The traversal algorithm uses these pointers to walk the tree without recursion:
+
+```js
+function performUnitOfWork(fiber) {
+  // 1. Process this node (run the component, diff props, etc.)
+  beginWork(fiber);
+
+  // 2. Determine next unit of work
+  if (fiber.child) {
+    return fiber.child;       // go deeper
+  }
+
+  let node = fiber;
+  while (node) {
+    completeWork(node);       // finish this node's work
+    if (node.sibling) {
+      return node.sibling;    // go to next sibling
+    }
+    node = node.return;       // go up to parent and complete it
+  }
+
+  return null;                // traversal complete
+}
+```
+
+Notice: no recursion. No call stack growth. `performUnitOfWork` returns the next node as a value — the work loop stores it in `nextUnitOfWork` and can call it next frame, or next millisecond, or after a higher-priority update finishes.
+
+The `return` pointer is named "return" rather than "parent" for a precise reason: it points to the node that work *returns to* after a subtree is finished. It mirrors the conceptual direction of a function return, even though no actual function return is involved.
+
+---
+
+### 6. Internals
+
+React maintains two Fiber trees simultaneously at all times.
+
+The `current` tree is the tree that reflects what the DOM currently shows. Every committed render leaves a stable `current` tree behind.
+
+The `work-in-progress` (WIP) tree is built during the render phase. It is a cloned, mutated-in-place copy of `current`. React does not modify the current tree during rendering — it builds the WIP tree from scratch (or reuses nodes from the previous WIP tree via `alternate` pointers).
+
+Every Fiber node in the current tree has an `alternate` pointer to its counterpart in the WIP tree, and vice versa. These two trees share nodes where nothing has changed, and diverge where state or props are different.
+
+```
+current tree          work-in-progress tree
+─────────────         ─────────────────────
+
+App (current) ◄──────► App (WIP)
+  │                       │
+  ▼                       ▼
+Nav (current) ◄──────► Nav (WIP)
+  │                       │
+  ▼                       ▼
+Main (current) ◄─────► Main (WIP)  ← state changed here
+  │                       │
+  ▼                       ▼
+Hero (current) ◄─────► Hero (WIP)
+```
+
+When the render phase completes, the commit phase applies the WIP tree's mutations to the DOM atomically. Then it performs a pointer swap:
+
+```js
+root.current = finishedWork; // WIP becomes current
+```
+
+The old `current` tree's nodes are now the new WIP pool. On the next render, React reuses those nodes rather than allocating fresh ones — that's why every Fiber node has an `alternate`: it's its own recycled future self.
+
+This double-buffering is why React can safely interrupt rendering. The DOM is always driven by `current`. The WIP tree can be thrown away, rebuilt, or reprioritized without affecting what's on screen.
+
+The `memoizedState` field deserves special attention. For function components, it is not a single value — it is the head of a linked list of hook state objects, one per `useState`, `useRef`, `useEffect`, and so on, in call order. This is exactly the hook linked list from module 8.7, and the reason hooks must be called in the same order every render: position in the list is identity.
+
+```js
+// memoizedState on a component with useState('') and useRef(null):
+{
+  memoizedState: '',         // useState('')
+  queue: { ... },
+  next: {
+    memoizedState: { current: null },  // useRef(null)
+    queue: null,
+    next: null
+  }
+}
+```
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: Why is the parent pointer called `return` instead of `parent`?**
+
+<details>
+<summary>Answer</summary>
+
+The name reflects what the pointer is used for, not what it represents structurally. In the old stack reconciler, when a recursive `reconcile(child)` call finished, execution literally *returned* to the parent frame on the call stack. In Fiber, there is no call stack, but the concept is preserved: when `performUnitOfWork` finishes a node and there are no more siblings, it follows the `return` pointer to continue work at the parent. The pointer is named after the *operation* (returning work to the parent) rather than the *relationship* (this is my parent). It is a semantic choice, not an accident. Interviewers sometimes ask this to check whether you understand that Fiber's linked list is a deliberate encoding of a traversal algorithm, not just a tree with edges renamed.
+
+</details>
+
+---
+
+**Trap 2: What is `alternate`, and when would React throw away the WIP tree and start over?**
+
+<details>
+<summary>Answer</summary>
+
+Every Fiber node has an `alternate` field pointing to its counterpart in the other tree. A `current` node's `alternate` is its `work-in-progress` twin, and vice versa. This enables efficient diffing: React can walk both trees in parallel, comparing `memoizedProps` on the current node to `pendingProps` on the WIP node.
+
+React throws away the entire WIP tree when a higher-priority update arrives during rendering. If the user triggers a synchronous, urgent update (say, a keypress) while React is mid-render on a low-priority transition, React abandons the in-progress WIP tree, discards all uncommitted work, and starts a new WIP tree for the urgent update. The `current` tree is untouched — the DOM never changed, so nothing needs to be rolled back. After the urgent update is committed, React starts the low-priority work again from the beginning. This is interruptible rendering: the WIP tree is ephemeral until it is committed. `alternate` ensures that the discarded nodes can be reused as allocation pools on the next attempt.
+
+</details>
+
+---
+
+**Trap 3: A component renders with `useState`. Where exactly is that state stored — in JavaScript memory, in the DOM, on the Fiber node?**
+
+<details>
+<summary>Answer</summary>
+
+On the Fiber node, in its `memoizedState` field. Specifically, for a function component, `memoizedState` is the head of a linked list of hook state objects, one for each hook call in the component in order. The state value from `useState('hello')` lives in the `memoizedState` property of the first hook node in that list. It is not in the DOM — the DOM only stores what is painted. It is not a plain JavaScript closure variable — if it were, it would be recreated on every render. It lives on the heap-allocated Fiber node, which persists between renders. When React re-renders the component, it reads `memoizedState` off the Fiber node, walks the linked list hook by hook, and provides each hook's current value to the function call. This is why state survives across renders even though the component function is called fresh each time.
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** A Fiber node has three tree-navigation pointers: `child`, `sibling`, and `return`. If you are at the `Hero` node in a tree `App → Main → [Hero, List]`, describe in order every pointer follow you make to traverse the full tree iteratively, starting from `Hero`.
+
+<details>
+<summary>Answer</summary>
+
+Starting at `Hero`: `Hero` has no child, so `completeWork(Hero)` runs. `Hero` has a sibling (`List`), so follow `sibling` → arrive at `List`. `List` has no child, so `completeWork(List)` runs. `List` has no sibling, so follow `return` → arrive at `Main`. `completeWork(Main)` runs. `Main` has no sibling (assuming it is the only child of `App` in this subtree), so follow `return` → arrive at `App`. `completeWork(App)` runs. `App` has no sibling, and `return` is null (it is the root). Traversal is complete.
+
+The full pointer sequence: `Hero.sibling` → `List.return` → `Main.return` → `App` (done). The three-pointer design means this entire traversal happens via stored references, with no call stack, pauseable at any step by saving the current node as `nextUnitOfWork`.
+
+</details>
+
+---
+
+**Q2.** What is the difference between `memoizedProps` and `pendingProps` on a Fiber node, and when does each one contain a meaningful value?
+
+<details>
+<summary>Answer</summary>
+
+`pendingProps` holds the props that the component is being rendered *with* in the current, in-progress render. They are set at the start of `beginWork` and represent the "next" state of the component. `memoizedProps` holds the props from the last *completed, committed* render. They represent the last known good state — what the component was rendered with the last time a commit reached the DOM.
+
+During the render phase, both fields exist: `pendingProps` has the new proposed props, `memoizedProps` has the old committed props. React uses the comparison `pendingProps === memoizedProps` as the first fast bailout check — if they are referentially equal, the component likely doesn't need to re-render. After a commit, `pendingProps` is copied into `memoizedProps`, recording the rendered props as the new baseline. If a render is interrupted and discarded, `memoizedProps` retains the last committed value — it is never updated by an incomplete render.
+
+</details>
+
+---
+
+**Q3.** React has a `current` tree and a `work-in-progress` tree. After a commit, what happens to each, and why does this design avoid garbage collection pressure?
+
+<details>
+<summary>Answer</summary>
+
+After a commit, the WIP tree becomes the new `current` tree via a single pointer assignment: `root.current = finishedWork`. The old `current` tree's nodes are not immediately garbage collected. Instead, they become the new WIP pool for the next render — each old node is reachable via the new current node's `alternate` pointer, and React reuses these objects on the next render cycle rather than allocating fresh Fiber nodes. This is double-buffering: two trees of pre-allocated nodes, alternating roles every commit. The result is that after startup, React renders without allocating new Fiber objects — it mutates the alternate nodes in place. This dramatically reduces GC pressure on fast interaction paths, which is critical for maintaining frame budget in high-frequency input handlers.
+
+</details>
+
+---
+
+**Q4.** Why is `memoizedState` on a function component's Fiber node a linked list rather than a single object?
+
+<details>
+<summary>Answer</summary>
+
+Because a function component can call multiple hooks, each with independent state. Every `useState`, `useRef`, `useEffect`, `useMemo`, and so on corresponds to one node in the linked list. The list is ordered by call order — hook call 1 maps to list node 1, hook call 2 maps to list node 2. React has no names to identify hooks by; it uses position. `memoizedState` on the Fiber node is the head pointer to this list. On each render, React walks the list from the head, serving each hook its value in sequence. This is why hooks cannot be called conditionally — skipping a hook in the middle would shift every subsequent hook's position, causing each one to read the wrong node's value. The linked list is the implementation; the Rules of Hooks are the consequence.
+
+</details>
+
+---
+
+**Q5.** You call `setCount(1)` inside a component. At the moment of that call, where does the value `1` go — what precise data structure does it land in, and when does it actually end up in `memoizedState`?
+
+<details>
+<summary>Answer</summary>
+
+The value `1` is wrapped in an update object `{ action: 1, lane: SyncLane, next: null }` and enqueued onto the hook's `queue.pending` field — a circular linked list of pending updates on the relevant hook state node in the Fiber's `memoizedState` list. `memoizedState` is not mutated immediately.
+
+React then schedules a re-render. During that re-render, `beginWork` processes the Fiber node. For each hook, React reads `queue.pending`, processes all enqueued updates in order (applying each `action` to the previous state), and computes a new state value. That new value is written into `memoizedState` on the hook node — but this is the *work-in-progress* Fiber, not the current one. The current Fiber's `memoizedState` still holds `0` (the previous committed value). Only after the commit phase completes does the WIP Fiber become `current`, and its `memoizedState` containing `1` becomes the stable, committed state that the next render will read.
+
+</details>

@@ -1,1 +1,161 @@
-﻿# useEffect's mental model
+﻿# useEffect's Mental Model: "After Render, Sync This External Thing"
+
+### 1. The Problem
+
+You know side effects cannot go in render. You know `useEffect` exists. But knowing where to put code is not the same as understanding why the API is shaped the way it is.
+
+Most developers learn `useEffect` as "run this code after render." That description is technically accurate and conceptually wrong. It teaches you to think about timing. React is not asking you to think about timing. It is asking you to think about synchronization.
+
+When you think about timing, you write effects that answer "when should this run?" When you think about synchronization, you write effects that answer "what external thing should reflect the current state of this component?" These sound similar. They produce completely different code, and only one of them is correct.
+
+---
+
+### 2. The Naive Attempt
+
+A component needs to connect to a chat room when it mounts. Thinking in timing:
+
+```jsx
+function ChatRoom({ roomId }) {
+  useEffect(() => {
+    // "run this once when the component mounts"
+    const connection = createConnection(roomId);
+    connection.connect();
+  }, []); // empty array: "run once"
+
+  return <div>Connected to {roomId}</div>;
+}
+```
+
+This feels right. Connect on mount. Empty dependency array means once. Done.
+
+Now the user switches rooms. `roomId` changes from `"general"` to `"sports"`. The component re-renders with the new `roomId`. The effect does not re-run — the empty array said once. The component now displays `"Connected to sports"` while the actual connection is still to `"general"`.
+
+The display and the external system are out of sync. This is the exact problem `useEffect` exists to prevent, and the timing mental model caused it.
+
+---
+
+### 3. Why That Breaks
+
+Thinking about timing produces effects written to answer "when." Empty array means once. Array with a value means when that value changes. No array means every render. These rules are memorized and applied mechanically.
+
+The failure is that "run once" is not a React concept. React does not have lifecycle moments in the way class components did — no `componentDidMount`, no `componentDidUpdate`. It has one concept: after every render, check if the external world needs to be updated to match the current state.
+
+When you write `[]` thinking "run once," you are opting out of that check permanently. You are saying "this effect never needs to re-sync." That is sometimes true — truly one-time setup, like initializing an analytics library. But it is almost never true for effects that depend on props or state. The chat room connection depends on `roomId`. When `roomId` changes, the connection is wrong. The empty array was a lie about the dependency.
+
+The underlying issue: thinking about timing causes you to think about what the component is doing. Thinking about synchronization causes you to think about what the external system should look like. The external system should always reflect the current `roomId`. That is the truth the dependency array must encode.
+
+---
+
+### 4. React's Mental Model
+
+Every `useEffect` is the answer to one question:
+
+**"After React renders this component, what external thing should be synchronized with the current props and state?"**
+
+Not "when should this run." Not "what lifecycle event is this." What external thing. What should it look like. What current values does it depend on.
+
+The effect is a synchronization instruction. React runs it after render to bring the external world into alignment with the current component state. If the relevant state changes, the external world needs to be re-synchronized. If it does not change, re-synchronization is unnecessary.
+
+Think of it like a formula in a spreadsheet cell. The cell always shows the result of the formula applied to the current values of its input cells. When an input changes, the formula re-runs. Not because you told it "run when A2 changes" — because the formula depends on A2, so its output must always reflect A2's current value.
+
+`useEffect` is that formula, but for external systems instead of cell values.
+
+---
+
+### 5. React's Solution
+
+Rewrite the chat room with the synchronization mental model:
+
+```jsx
+function ChatRoom({ roomId }) {
+  useEffect(() => {
+    // "the external thing that should reflect roomId: the connection"
+    // after render, sync the connection to the current roomId
+    const connection = createConnection(roomId);
+    connection.connect();
+
+    return () => {
+      // when roomId changes, the old connection is wrong
+      // disconnect before syncing to the new roomId
+      connection.disconnect();
+    };
+  }, [roomId]); // roomId is what this effect synchronizes with
+
+  return <div>Connected to {roomId}</div>;
+}
+```
+
+Now when `roomId` changes from `"general"` to `"sports"`:
+
+1. React renders the component with `roomId = "sports"`
+2. React runs the cleanup from the previous effect: `connection.disconnect()` on the `"general"` connection
+3. React runs the new effect: creates and connects to `"sports"`
+
+The external system — the connection — always reflects the current `roomId`. The effect is a synchronization formula, not a lifecycle hook.
+
+---
+
+### 6. Internals
+
+React stores each effect as an object in the Fiber node's `updateQueue`, a linked list of effect records. Each record contains the setup function, the cleanup function (the return value of setup), and the dependency array.
+
+After every commit, React walks this list. For each effect, it compares the current deps against the previous deps using `Object.is` comparison on each element. If all deps are equal, the effect is skipped. If any dep changed, React runs the previous cleanup, then runs the new setup, and stores the new cleanup.
+
+This is not a scheduler. React is not deciding "it is time to run this." It is a synchronizer. React is asking: "does the external world still match what this effect would produce for the current deps?" If no, re-sync.
+
+The consequence: the effect runs as many times as it needs to keep the external world in sync. Not once. Not on mount. As many times as its dependencies change.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: "What does an empty dependency array mean?"**
+
+The common answer: "it runs once on mount." The correct answer: "it means the effect depends on nothing — no props, no state — so it never needs to re-sync after the initial sync." The distinction matters. If an effect with `[]` uses a prop, the answer is wrong on both counts: it should depend on that prop, and it will not re-sync when the prop changes, causing stale behavior.
+
+**Trap 2: "I need to run some code when the component unmounts. Do I use `[]` with a cleanup?"**
+
+This framing is still timing-based. The correct framing: "I need an effect that syncs something for the lifetime of the component and stops syncing when it unmounts." The result is the same code, but the framing prevents the error of forgetting that "runs on mount" effects still need correct cleanup — not because unmounting is a lifecycle event, but because the external thing being synced needs to be stopped when synchronization is no longer needed.
+
+---
+
+### Self-Test
+
+**Q1.** A developer writes `useEffect(() => { document.title = name; }, [])`. `name` comes from props. What is wrong, and what does it reveal about their mental model?
+
+<details>
+<summary>Answer</summary>
+
+The effect will set `document.title` once using the initial value of `name` and never update it when `name` changes. The title and the prop are immediately out of sync after any update.
+
+The mental model error: the developer is thinking in timing — "run once on mount" — rather than synchronization. The question they answered was "when should this run?" The question they should have answered was "what external thing should reflect `name`?" The answer to that question — `document.title` should always reflect the current `name` — immediately reveals that `name` must be in the dependency array. The correct effect is `useEffect(() => { document.title = name; }, [name])`.
+
+</details>
+
+---
+
+**Q2.** Reframe the following timing-based descriptions as synchronization-based descriptions: (a) "Run this fetch when the component mounts." (b) "Run this analytics call once." (c) "Update the chart when data changes."
+
+<details>
+<summary>Answer</summary>
+
+(a) Timing: "run when the component mounts." Synchronization: "the server data should reflect the current component state — fetch it after render so the local state matches what the server has."
+
+(b) Timing: "run once." Synchronization: "the analytics system should know this component was shown — sync it once after initial render, as it has no props or state to re-sync with." This reframing also reveals that `[]` is correct here, but for the right reason: there is genuinely nothing to re-sync with, not because "once" was the goal.
+
+(c) Timing: "run when data changes." Synchronization: "the chart — an external imperative system — should always reflect the current `data`. Re-sync the chart whenever `data` changes." `data` belongs in the dependency array not because it is the change trigger, but because it is what the chart must reflect.
+
+</details>
+
+---
+
+**Q3.** Two `useEffect` calls: one with `[userId]`, one with `[userId, theme]`. The user changes their theme. Which effects run, and why?
+
+<details>
+<summary>Answer</summary>
+
+Only the effect with `[userId, theme]` runs. React compares each dep in the array using `Object.is`. For the effect with `[userId]`: `userId` did not change, so the dep array is equal, so the effect is skipped. For the effect with `[userId, theme]`: `theme` changed, so the dep array is not equal, so React runs the cleanup from the previous render and then runs the new setup.
+
+This demonstrates that effects run not based on which state change happened, but based on whether their specific dependencies changed. Each effect independently checks its own deps.
+
+</details>

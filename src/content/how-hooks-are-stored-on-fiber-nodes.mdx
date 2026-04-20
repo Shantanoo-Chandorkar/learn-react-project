@@ -1,1 +1,771 @@
-﻿# How hooks are stored on the Fiber node
+﻿# How Hooks Are Stored on the Fiber Node
+
+### 1. The Problem
+
+You call `useState(0)` inside a function. The function returns. The function is called again on the next render. You call `useState(0)` again. React returns `1`, not `0`. The initializer is ignored. The previous value is remembered.
+
+You call `useEffect(() => { ... }, [count])`. React knows not to re-run it unless `count` changed. It compares the new dependency array to the previous one. But where did it store the previous one? The function has no memory. There is no instance. There is no `this`.
+
+And then there is `useState`, `useReducer`, `useEffect`, `useMemo`, `useCallback`, `useRef`, all called in the same function, all returning different things, all persisting different data across renders. How does React know which call corresponds to which stored data, given that the function gives it no names, no keys, nothing but a sequence of calls?
+
+Every one of these questions has the same answer: the Fiber node's `memoizedState` linked list, the dispatcher, and the alternate tree. Understanding this precisely means understanding not just how hooks work, but why they are the only reasonable way to implement stateful logic in a function-based system.
+
+---
+
+### 2. The Naive Attempt
+
+You want to implement hooks yourself. You need persistent storage for each hook call. Your first instinct is a Map keyed by something stable.
+
+```js
+const hookStorage = new Map();
+
+function useState(initialValue) {
+  const key = ??? // what is the key?
+  if (!hookStorage.has(key)) {
+    hookStorage.set(key, initialValue);
+  }
+  const value = hookStorage.get(key);
+  const setter = (newValue) => {
+    hookStorage.set(key, newValue);
+    rerender();
+  };
+  return [value, setter];
+}
+```
+
+The key problem is immediate: what do you use as the key? You have no component name (functions are anonymous at runtime). You have no hook name (every `useState` call looks identical). You have no position (JavaScript gives you no call-site information).
+
+You could use a string name: `useState('count', 0)`. React's team considered this and rejected it. Names collide. Refactoring is fragile. Two hooks with the same name in the same component would clobber each other. And you now have a string-based API where the string must be unique per component, which is worse than what you started with.
+
+You could use a WeakMap keyed by the function itself: `functionRef → hookData`. But one function is called for multiple component instances. `UserCard` is one function but renders 100 times. The WeakMap would give all 100 instances the same storage, conflating their state.
+
+You could key by both the function and an instance identifier. But function components have no instance identifier. That is the point. That is why class components existed: `this` was the instance identifier.
+
+The only option that works without any developer-provided key, supports multiple instances of the same function, and correctly scopes state per instance is: store hook data on a per-render-instance data structure that React already has one of per component instance. That structure is the Fiber node.
+
+---
+
+### 3. Why That Breaks
+
+The precise failure mode of any key-based approach: **in a function-based component model, there is no natural key for hook storage that is both automatically available and unique per hook call per component instance.**
+
+String keys require developer discipline and collide. Object identity keys cannot distinguish multiple instances of the same component. Call-site information (file name, line number) is not available at runtime in production JavaScript.
+
+The solution React chose, position-based identification via a linked list on the Fiber, requires no developer input, scales to any number of instances, scopes perfectly per instance, and has exactly one constraint: call order must be stable. This constraint is not a limitation arbitrarily imposed. It is the mathematical consequence of choosing position as the identifier.
+
+---
+
+### 4. React's Mental Model
+
+Every component instance has a Fiber node. Every Fiber node has a `memoizedState` field. For function components, this field points to the head of a linked list where each node stores the data for one hook call, in the order the hooks were called. React maintains a cursor (a pointer to the current node in the list) that advances with each hook call. On mount, the cursor creates new nodes. On update, the cursor reads existing nodes. The cursor resets to the head at the start of each render.
+
+The dispatcher is a global pointer that switches the implementation of every hook function between the mount version (creates a new node) and the update version (reads an existing node). Your `useState` call hits the dispatcher. The dispatcher routes it to the right implementation. The implementation advances the cursor.
+
+One sentence: hooks are a linked list on the Fiber node, threaded by call order, accessed via a global dispatcher that switches behavior between mount and update, with the list cursor advancing in lockstep with your hook calls.
+
+---
+
+### 5. React's Solution
+
+**The linked list structure.**
+
+After mounting a component with three hooks, the Fiber's `memoizedState` linked list looks like this:
+
+```
+fiber.memoizedState
+      ↓
+┌─────────────────────────────┐
+│ Hook Node 0 (useState)       │
+│   memoizedState: 0           │
+│   queue: { pending, dispatch }│
+│   next: ──────────────────────┼──→ Hook Node 1 (useEffect)
+└─────────────────────────────┘        │
+                                       ↓
+                               ┌─────────────────────────────┐
+                               │ Hook Node 1 (useEffect)      │
+                               │   memoizedState: {           │
+                               │     create: () => {...},     │
+                               │     deps: [count],           │
+                               │     destroy: undefined       │
+                               │   }                          │
+                               │   next: ──────────────────────┼──→ Hook Node 2
+                               └─────────────────────────────┘
+                                                                        ↓
+                                                               ┌─────────────────────────────┐
+                                                               │ Hook Node 2 (useMemo)        │
+                                                               │   memoizedState: {           │
+                                                               │     value: 42,               │
+                                                               │     deps: [a, b]             │
+                                                               │   }                          │
+                                                               │   next: null                 │
+                                                               └─────────────────────────────┘
+```
+
+Each node stores whatever that specific hook needs to persist:
+
+```js
+// useState / useReducer node
+{
+  memoizedState: currentValue,
+  baseState: valueBeforeOptimisticUpdates,
+  queue: {
+    pending: updateObject | null,
+    dispatch: setterFunction,
+    lastRenderedReducer: basicStateReducer,
+    lastRenderedState: currentValue,
+  },
+  next: nextHookNode,
+}
+
+// useEffect / useLayoutEffect node
+{
+  memoizedState: {
+    tag: HookHasEffect | HookPassive,
+    create: effectCallback,
+    destroy: cleanupFunction | undefined,
+    deps: dependencyArray | null,
+    next: nextEffectInCircularList,
+  },
+  queue: null,
+  next: nextHookNode,
+}
+
+// useMemo / useCallback node
+{
+  memoizedState: [cachedValue, depsArray],
+  // useCallback stores [fn, depsArray]
+  // useMemo stores [result, depsArray]
+  queue: null,
+  next: nextHookNode,
+}
+
+// useRef node
+{
+  memoizedState: { current: initialValue },
+  // the ref object itself, same reference across all renders
+  queue: null,
+  next: nextHookNode,
+}
+```
+
+**The dispatcher.**
+
+React maintains a module-level dispatcher object. Before calling your component function, React sets this dispatcher to the correct implementation:
+
+```js
+// ReactCurrentDispatcher.js
+const ReactCurrentDispatcher = {
+  current: null,
+};
+
+// Before first render of a component:
+ReactCurrentDispatcher.current = HooksDispatcherOnMount;
+
+// Before subsequent renders:
+ReactCurrentDispatcher.current = HooksDispatcherOnUpdate;
+
+// During a re-render triggered within render:
+ReactCurrentDispatcher.current = HooksDispatcherOnRerender;
+
+// In development, wrapped versions that add extra checks:
+ReactCurrentDispatcher.current = HooksDispatcherOnMountWithHookTypesInDEV;
+```
+
+When your component calls `React.useState(0)`, this call routes to `ReactCurrentDispatcher.current.useState(0)`. The dispatcher is different per render type. Mount vs update vs rerender each have their own implementation.
+
+The `useState` call you write is actually:
+
+```js
+// What you write:
+const [count, setCount] = React.useState(0);
+
+// What React.useState is:
+function useState(initialState) {
+  const dispatcher = ReactCurrentDispatcher.current;
+  return dispatcher.useState(initialState);
+}
+```
+
+**The mount dispatcher: creating nodes.**
+
+```js
+// HooksDispatcherOnMount.useState
+function mountState(initialState) {
+  // Create a new hook node and append to the list
+  const hook = mountWorkInProgressHook();
+
+  // Handle lazy initializer
+  if (typeof initialState === 'function') {
+    initialState = initialState();
+  }
+
+  hook.memoizedState = hook.baseState = initialState;
+
+  const queue = {
+    pending: null,
+    lanes: NoLanes,
+    dispatch: null,
+    lastRenderedReducer: basicStateReducer,
+    lastRenderedState: initialState,
+  };
+  hook.queue = queue;
+
+  // Bind dispatch to this specific fiber and queue
+  const dispatch = (queue.dispatch = dispatchSetState.bind(
+    null,
+    currentlyRenderingFiber,
+    queue,
+  ));
+
+  return [hook.memoizedState, dispatch];
+}
+
+function mountWorkInProgressHook() {
+  const hook = {
+    memoizedState: null,
+    baseState: null,
+    baseQueue: null,
+    queue: null,
+    next: null,
+  };
+
+  if (workInProgressHook === null) {
+    // First hook: attach to fiber
+    currentlyRenderingFiber.memoizedState = workInProgressHook = hook;
+  } else {
+    // Subsequent hooks: append to list
+    workInProgressHook = workInProgressHook.next = hook;
+  }
+
+  return workInProgressHook;
+}
+```
+
+`workInProgressHook` is the cursor. It starts as `null` before the first hook call. `mountWorkInProgressHook` creates a node and advances the cursor to it. The second hook call creates another node and links it via `next`. The third does the same. After three hook calls, you have a three-node list.
+
+**The update dispatcher: reading nodes.**
+
+```js
+// HooksDispatcherOnUpdate.useState
+function updateState(initialState) {
+  // initialState is ignored
+  return updateReducer(basicStateReducer, initialState);
+}
+
+function updateWorkInProgressHook() {
+  // Read the next node from the existing list
+  let nextCurrentHook;
+
+  if (currentHook === null) {
+    // First hook call of this render: start from the list head
+    const current = currentlyRenderingFiber.alternate;
+    if (current !== null) {
+      nextCurrentHook = current.memoizedState; // head of the list
+    } else {
+      nextCurrentHook = null;
+    }
+  } else {
+    // Subsequent hook calls: advance cursor
+    nextCurrentHook = currentHook.next;
+  }
+
+  // currentHook is the "current tree" cursor
+  // workInProgressHook is the "work in progress tree" cursor
+  currentHook = nextCurrentHook;
+
+  const newHook = {
+    memoizedState: currentHook.memoizedState,
+    baseState: currentHook.baseState,
+    baseQueue: currentHook.baseQueue,
+    queue: currentHook.queue,
+    next: null,
+  };
+
+  if (workInProgressHook === null) {
+    currentlyRenderingFiber.memoizedState = workInProgressHook = newHook;
+  } else {
+    workInProgressHook = workInProgressHook.next = newHook;
+  }
+
+  return workInProgressHook;
+}
+```
+
+The update dispatcher reads from `fiber.alternate.memoizedState`, the current committed tree's hook list, and copies nodes into the new work-in-progress list. It advances `currentHook` (cursor in the current tree) in lockstep with hook calls. Hook call 1 reads node 0. Hook call 2 reads node 1. Hook call 3 reads node 2. The order must match. This is the mechanical foundation of the Rules of Hooks.
+
+**The alternate tree and hook state persistence.**
+
+The Fiber tree has two versions: current (committed, on screen) and work-in-progress (being built for next render). Each Fiber has an `alternate` pointer to its counterpart in the other tree.
+
+```
+Current Tree                    Work-In-Progress Tree
+─────────────────               ────────────────────────
+App Fiber                       App Fiber (WIP)
+  memoizedState: →Hook0           memoizedState: →Hook0 (copy)
+  alternate: ───────────────────→ alternate: ────────────────→ (back to current)
+
+Hook0 (current)                 Hook0 (WIP, being built)
+  memoizedState: 0                memoizedState: 1 (new value)
+  next: →Hook1                    next: →Hook1 (WIP)
+```
+
+During a render, the update dispatcher reads from the current tree's hook nodes (via `fiber.alternate.memoizedState`) and writes into the work-in-progress tree's hook nodes. The work-in-progress nodes are either reused (if the value did not change) or new objects. When the render commits, the work-in-progress tree becomes current, and the old current tree becomes the new work-in-progress base for the next render. The hook list is always preserved on whichever tree is current.
+
+This is why hook state survives renders: it is not in the function's scope. It is in the Fiber node's linked list, which persists in the heap for the component's lifetime.
+
+**Effect hooks: the circular effect list.**
+
+`useEffect` and `useLayoutEffect` store their data differently from state hooks. Instead of just a simple value, they store an effect object that is also part of a circular linked list of all effects on the Fiber:
+
+```js
+// useEffect hook node's memoizedState:
+{
+  tag: HookPassive | HookHasEffect,  // HookPassive = useEffect, HookLayout = useLayoutEffect
+  create: () => { /* your effect */ },
+  destroy: undefined,    // filled in after effect runs
+  deps: [count],
+  next: /* circular: points back to first effect on this fiber */
+}
+```
+
+The `tag` field uses bitmasks:
+
+```js
+const HookNoFlags   = 0b000;
+const HookHasEffect = 0b001; // this effect needs to run
+const HookPassive   = 0b010; // useEffect (passive = after paint)
+const HookLayout    = 0b100; // useLayoutEffect (layout = before paint)
+```
+
+During the render phase, React compares the new deps array to the previous one using `Object.is` for each element. If any dep changed, the effect is tagged with `HookHasEffect`. If deps are the same, `HookHasEffect` is not set. During the commit phase, React walks the effect list and only runs effects that have `HookHasEffect` set. This is how `useEffect`'s dependency array prevents re-runs.
+
+```js
+function updateEffectImpl(fiberFlags, hookFlags, create, deps) {
+  const hook = updateWorkInProgressHook();
+  const nextDeps = deps === undefined ? null : deps;
+  let destroy = undefined;
+
+  if (currentHook !== null) {
+    const prevEffect = currentHook.memoizedState;
+    destroy = prevEffect.destroy; // preserve cleanup from previous render
+
+    if (nextDeps !== null) {
+      const prevDeps = prevEffect.deps;
+      if (areHookInputsEqual(nextDeps, prevDeps)) {
+        // deps unchanged: do NOT set HookHasEffect
+        hook.memoizedState = pushEffect(hookFlags, create, destroy, nextDeps);
+        return; // effect will not run this commit
+      }
+    }
+  }
+
+  // deps changed or no prev effect: set HookHasEffect
+  currentlyRenderingFiber.flags |= fiberFlags;
+  hook.memoizedState = pushEffect(
+    HookHasEffect | hookFlags,
+    create,
+    destroy,
+    nextDeps,
+  );
+}
+
+function areHookInputsEqual(nextDeps, prevDeps) {
+  for (let i = 0; i < prevDeps.length && i < nextDeps.length; i++) {
+    if (Object.is(nextDeps[i], prevDeps[i])) {
+      continue;
+    }
+    return false;
+  }
+  return true;
+}
+```
+
+**Why every Rule of Hooks is a mechanical consequence.**
+
+Rule 1: only call hooks at the top level. Not inside conditionals, loops, or nested functions.
+
+Consequence of: position-based identification. If you call `useState` in an `if` block that is sometimes skipped, the cursor advances past that position on some renders but not others. All subsequent hooks read from the wrong node. Hook N reads node N-1's data. The entire list from the skipped hook onward is corrupted.
+
+```
+Mount (condition true):           Update (condition false):
+cursor → Hook0 (useState)         cursor → Hook0 (useState) ✓
+cursor → Hook1 (useState, skipped)  Hook1 SKIPPED
+cursor → Hook2 (useEffect)        cursor → Hook1 ← reads Hook1's data
+                                    expecting useEffect data, gets useState data
+```
+
+Rule 2: only call hooks from React function components or custom hooks.
+
+Consequence of: the dispatcher. `ReactCurrentDispatcher.current` is only set to a valid hook dispatcher when React is in the process of rendering a component. Outside a render (in a plain function, a class method, a setTimeout), `ReactCurrentDispatcher.current` is either `null` or an "invalid" dispatcher that throws. Calling hooks outside React's render context has no Fiber to attach the hook list to. There is nowhere to store the state.
+
+```js
+// Outside render: dispatcher is null or throws
+const dispatcher = ReactCurrentDispatcher.current;
+// dispatcher.useState → throws "Invalid hook call"
+```
+
+Rule 3: only call hooks from custom hooks (not regular functions called from non-React contexts).
+
+Consequence of: the same dispatcher rule applied transitively. A custom hook is valid only if it is called from within a component render (directly or transitively). The call chain must originate from React's render invocation of a component function. Any break in that chain (calling a custom hook from a class method, from an event handler directly, from a module initialization) breaks the dispatcher invariant.
+
+---
+
+### 6. Internals
+
+**The dev-only hook type checking.**
+
+In development, React records the type of each hook call on mount using a separate `_debugHookTypes` array on the Fiber:
+
+```js
+// In development, HooksDispatcherOnMountInDEV wraps mountState:
+function useState(initialState) {
+  currentHookNameInDev = 'useState';
+  mountHookTypesDev(); // records 'useState' in _debugHookTypes[currentIndex]
+  return mountState(initialState);
+}
+```
+
+On update renders, React checks:
+
+```js
+function updateState(initialState) {
+  currentHookNameInDev = 'useState';
+  updateHookTypesDev(); // checks _debugHookTypes[currentIndex] === 'useState'
+  return updateState(initialState);
+}
+```
+
+If the hook type at a given position changed between mount and update (e.g., hook 2 was `useEffect` on mount but is `useState` on update due to a conditional), React throws a descriptive error: "React has detected a change in the order of Hooks." This is only possible because the types are recorded during mount and checked during updates. In production, this check is removed and the silent corruption (reading the wrong node) occurs instead.
+
+**The `currentlyRenderingFiber` global.**
+
+The entire hook system depends on a global variable `currentlyRenderingFiber` that points to the Fiber currently being rendered:
+
+```js
+// Module-level globals in ReactFiberHooks.js
+let currentlyRenderingFiber = null;
+let workInProgressHook = null;
+let currentHook = null;
+```
+
+These are set at the start of rendering a component and cleared at the end:
+
+```js
+function renderWithHooks(current, workInProgress, Component, props) {
+  currentlyRenderingFiber = workInProgress;
+  workInProgress.memoizedState = null; // clear for remount
+  workInProgress.updateQueue = null;
+
+  // set dispatcher based on whether this is mount or update
+  ReactCurrentDispatcher.current =
+    current === null || current.memoizedState === null
+      ? HooksDispatcherOnMount
+      : HooksDispatcherOnUpdate;
+
+  // Call the component function
+  let children = Component(props);
+
+  // Reset globals
+  currentlyRenderingFiber = null;
+  workInProgressHook = null;
+  currentHook = null;
+  ReactCurrentDispatcher.current = ContextOnlyDispatcher; // invalidate outside render
+
+  return children;
+}
+```
+
+After `renderWithHooks` returns, `ReactCurrentDispatcher.current` is set to `ContextOnlyDispatcher`, which throws for every hook call. Any hook called after the component function returns (in an async callback, a timeout, a native event listener) hits the invalid dispatcher and throws "Invalid hook call." This is a safety mechanism, not a fundamental constraint, but it prevents the most common mistake of calling hooks asynchronously.
+
+**The complete hook lifecycle for one `useState`.**
+
+```
+MOUNT:
+  renderWithHooks sets currentlyRenderingFiber = newFiber
+  dispatcher = HooksDispatcherOnMount
+  Component() called
+    useState(0) called
+      → mountState(0)
+      → mountWorkInProgressHook():
+          creates { memoizedState: null, queue: null, next: null }
+          fiber.memoizedState = hook  (first hook, attach to head)
+          workInProgressHook = hook   (advance cursor)
+      → hook.memoizedState = 0
+      → queue = { pending: null, dispatch: null, ... }
+      → dispatch = dispatchSetState.bind(null, fiber, queue)
+      → queue.dispatch = dispatch
+      → returns [0, dispatch]
+  count = 0, setCount = dispatch
+  JSX returned
+  globals reset
+
+CLICK (setCount(1)):
+  dispatchSetState(fiber, queue, 1)
+  update = { action: 1, lane: SyncLane, next: null }
+  queue.pending = update
+  fiber.lanes |= SyncLane
+  scheduleUpdateOnFiber(fiber)
+
+UPDATE RENDER:
+  renderWithHooks sets currentlyRenderingFiber = workInProgressFiber
+  workInProgressFiber.alternate = previousFiber (the mounted fiber)
+  dispatcher = HooksDispatcherOnUpdate
+  Component() called
+    useState(0) called  ← 0 is IGNORED
+      → updateState(0)
+      → updateWorkInProgressHook():
+          currentHook = fiber.alternate.memoizedState  (reads mount-time hook)
+          creates new WIP hook node copying from currentHook
+          workInProgressHook = wipHook
+      → processUpdateQueue:
+          queue.pending = { action: 1 }
+          newState = basicStateReducer(0, 1) = 1
+          hook.memoizedState = 1
+          queue.pending = null
+      → returns [1, dispatch]  ← same dispatch function (bound to same fiber+queue)
+  count = 1
+  JSX returned with count=1
+  globals reset
+
+COMMIT:
+  <p>1</p> DOM write
+  fiber.memoizedState.memoizedState = 1 (persisted)
+  workInProgressFiber becomes current
+  previousFiber becomes new work-in-progress base
+```
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: Why does this throw in development, and what exact internal check catches it?**
+
+```jsx
+function useConditionalEffect(condition) {
+  if (condition) {
+    React.useEffect(() => {
+      console.log('effect ran');
+    }, []);
+  }
+}
+
+function App({ show }) {
+  useConditionalEffect(show);
+  const [count, setCount] = React.useState(0);
+  return <button onClick={() => setCount(c => c + 1)}>{count}</button>;
+}
+```
+
+First render: `show = true`. Second render: `show = false`.
+
+<details>
+<summary>Answer</summary>
+
+On the first render with `show = true`, the hooks execute in this order:
+
+Hook 0: `useEffect` (from `useConditionalEffect`)
+Hook 1: `useState`
+
+`_debugHookTypes` in development records: `['useEffect', 'useState']`.
+
+On the second render with `show = false`, hooks execute in this order:
+
+Hook 0: `useState` (useEffect skipped because condition is false)
+
+The update dispatcher's `updateHookTypesDev` checks: hook at position 0 should be `'useEffect'` (from the recorded types), but the current call is `useState`. Type mismatch detected. React throws: "React has detected a change in the order of Hooks called by App. This will lead to bugs and errors if not fixed."
+
+In production without the type check, `updateWorkInProgressHook` at position 0 reads the hook node that was created for `useEffect` on mount. It has `memoizedState` containing an effect object, not a state value. `useState` processes this as its state, getting an object instead of `0`. `setCount` is undefined or wrong. The component behaves incorrectly without any error message.
+
+The internal check that catches it in development is the `_debugHookTypes` array comparison in `updateHookTypesDev`, which verifies that the hook type name at each position matches the type recorded during mount.
+
+</details>
+
+---
+
+**Trap 2: Two instances of the same component are mounted. Do they share hook state? Trace exactly why or why not.**
+
+```jsx
+function Counter() {
+  const [count, setCount] = React.useState(0);
+  return <button onClick={() => setCount(c => c + 1)}>{count}</button>;
+}
+
+function App() {
+  return (
+    <>
+      <Counter />  {/* instance A */}
+      <Counter />  {/* instance B */}
+    </>
+  );
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+They do not share hook state. Each instance has its own Fiber node.
+
+When React mounts `<Counter />` the first time (instance A), it creates a Fiber node with a `memoizedState` linked list. `mountState(0)` creates a hook node on that Fiber: `fiberA.memoizedState = { memoizedState: 0, queue: queueA, next: null }`. The `dispatch` function is bound to `fiberA` and `queueA`.
+
+When React mounts `<Counter />` the second time (instance B), it creates a separate Fiber node. `mountState(0)` creates a separate hook node: `fiberB.memoizedState = { memoizedState: 0, queue: queueB, next: null }`. The `dispatch` function is bound to `fiberB` and `queueB`.
+
+`queueA` and `queueB` are different objects. `fiberA` and `fiberB` are different objects. The `memoizedState` linked lists are on different Fibers. Clicking button A calls the dispatch function bound to `fiberA.queueA`, which marks `fiberA` as having pending work and schedules a re-render of `fiberA`. `fiberB` is untouched. Clicking button B does the reverse.
+
+State is scoped per Fiber instance, not per component function. `Counter` is one function but can have thousands of independent Fiber instances, each with their own isolated hook state.
+
+</details>
+
+---
+
+**Trap 3: What is wrong with this custom hook? What specific internal mechanism does it break?**
+
+```jsx
+function useAsyncData(url) {
+  const [data, setData] = React.useState(null);
+
+  // call inside a promise callback
+  fetch(url).then(res => res.json()).then(json => {
+    React.useState(null); // trying to "re-initialize" state
+    setData(json);
+  });
+
+  return data;
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+The `React.useState(null)` call inside the `.then` callback will throw "Invalid hook call."
+
+After `renderWithHooks` completes (after the component function returns), React sets `ReactCurrentDispatcher.current = ContextOnlyDispatcher`. The `ContextOnlyDispatcher` is an object where every hook method throws: "Hooks can only be called inside of the body of a function component."
+
+The `.then` callback runs asynchronously, after the component function has returned and `renderWithHooks` has reset the dispatcher to `ContextOnlyDispatcher`. When the callback attempts `React.useState(null)`, it hits the invalid dispatcher and throws.
+
+Even if it did not throw, calling `useState` in a `.then` callback would have no valid `currentlyRenderingFiber` to attach to. There is no Fiber being rendered at that point. The hook list cursor (`workInProgressHook`) is `null`. There is nowhere to store the hook node.
+
+The correct pattern: call `useState` only in the synchronous function body. Use `setData` (the setter from the already-mounted hook) inside the `.then` callback. The setter is bound to the Fiber and queue at mount time and remains valid for the lifetime of the component instance.
+
+```jsx
+function useAsyncData(url) {
+  const [data, setData] = React.useState(null); // correct: synchronous
+
+  React.useEffect(() => {
+    fetch(url)
+      .then(res => res.json())
+      .then(json => setData(json)); // correct: uses setter, not hook call
+  }, [url]);
+
+  return data;
+}
+```
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** React uses position-based identification for hooks instead of string keys. What are the two concrete advantages of position-based identification, and what is the one constraint it imposes?
+
+<details>
+<summary>Answer</summary>
+
+Advantage 1: zero developer overhead. No keys to invent, no collision risk, no naming convention required. The developer writes `useState(0)` and React handles the rest. String keys would require `useState('count', 0)` and the developer would be responsible for ensuring uniqueness per component. In large components with many hooks, key management would be a significant source of bugs.
+
+Advantage 2: per-instance scoping is automatic. Multiple instances of the same component each have their own Fiber and their own hook list. Position 0 in instance A's list is completely independent of position 0 in instance B's list, without any additional mechanism. String keys would require namespacing by instance, requiring either an instance identifier (which does not exist for function components) or global unique keys (which would prevent reuse of components).
+
+The one constraint: hook call order must be stable across renders. The same hook must be called in the same position on every render. Any variation in call count or order corrupts the list cursor alignment from that point forward, causing all subsequent hooks to read the wrong node. This is enforced by the Rules of Hooks.
+
+</details>
+
+---
+
+**Q2.** What is `currentlyRenderingFiber`, when is it set and cleared, and what would happen if hooks were called after it is cleared?
+
+<details>
+<summary>Answer</summary>
+
+`currentlyRenderingFiber` is a module-level variable in `ReactFiberHooks.js` that holds a reference to the Fiber node currently being rendered. It is the "instance identifier" that hooks use to know which Fiber's linked list to attach to or read from.
+
+It is set at the beginning of `renderWithHooks`, before the component function is called: `currentlyRenderingFiber = workInProgress`. It is cleared at the end of `renderWithHooks`, after the component function returns: `currentlyRenderingFiber = null`.
+
+Simultaneously, `ReactCurrentDispatcher.current` is set to `ContextOnlyDispatcher` after the component function returns. `ContextOnlyDispatcher` throws for every hook call.
+
+If hooks were called after `currentlyRenderingFiber` is cleared (in async callbacks, timers, event handlers), `mountWorkInProgressHook` or `updateWorkInProgressHook` would try to attach to or read from `null`. Before reaching that point, the dispatcher throws "Invalid hook call." The dispatcher check is the guard. `currentlyRenderingFiber` being null is what makes the guard necessary: there is no Fiber to attach to, so the call must be rejected.
+
+</details>
+
+---
+
+**Q3.** `useRef` stores its data as `{ current: initialValue }` in the hook node's `memoizedState`. Why does mutating `ref.current` not trigger a re-render, even though the hook node's data changed?
+
+<details>
+<summary>Answer</summary>
+
+`useRef` returns the object stored in `memoizedState` directly. It is the same object reference on every render. When you write `ref.current = newValue`, you are mutating a property of that object. You are not calling any setter. You are not calling `dispatchSetState`. No update is enqueued. No Fiber is marked dirty. The Scheduler is not notified. React has no awareness that `ref.current` changed.
+
+This is intentional. A ref is explicitly designed to be a mutable container that persists across renders without triggering them. It is the escape hatch for values that need to persist (previous state, DOM node references, timer IDs, any imperative handle) but whose changes do not represent UI state.
+
+React's re-render trigger is `dispatchSetState` (or `dispatchReducerAction` for `useReducer`). Only these functions mark a Fiber as having pending work. Mutating an object in the heap, however that object was created, never triggers a re-render unless you went through one of these dispatch functions. `ref.current = x` is a plain property assignment. It is invisible to React's scheduling system.
+
+</details>
+
+---
+
+**Q4.** During an update render, the update dispatcher reads from `fiber.alternate.memoizedState` rather than `fiber.memoizedState`. Why does it read from the alternate, and what would go wrong if it read from `fiber.memoizedState` directly?
+
+<details>
+<summary>Answer</summary>
+
+During the render phase, React is building a new work-in-progress Fiber tree. The current Fiber (`workInProgress`) is a new or recycled node being constructed for this render. Its `memoizedState` is either `null` (freshly created for this render) or being populated by the current render's hook calls. It does not yet contain the previous render's hook data.
+
+The previous render's hook data lives on the current committed Fiber, which is `workInProgress.alternate`, the corresponding node in the current (on-screen) tree. `fiber.alternate.memoizedState` is the linked list from the last committed render, containing the actual current values of all state, refs, and effect deps.
+
+If the update dispatcher read from `fiber.memoizedState` (the work-in-progress node being built), it would find either null (first hook of this render, list not yet started) or partial data from the current render's earlier hook calls. It would be reading data that has not been committed, from the render currently in progress, rather than the stable committed state. This would produce incorrect state values, broken effect dep comparisons, and corrupted memoization caches. The alternate tree provides the stable, committed baseline that updates are computed against.
+
+</details>
+
+---
+
+**Q5.** React's `useEffect` dependency comparison uses `Object.is` for each element. A developer passes an object as a dependency: `useEffect(() => { ... }, [config])`. The `config` object's contents never change but it is recreated on every render. What happens, and how should this be fixed?
+
+<details>
+<summary>Answer</summary>
+
+On every render, `config` is a new object with a new reference (e.g., `const config = { timeout: 5000 }` defined in the render body). `areHookInputsEqual` compares `Object.is(prevConfig, newConfig)`. Two distinct objects are not `Object.is`-equal regardless of their contents. The comparison returns `false`. The `HookHasEffect` flag is set on the effect hook node. The effect runs on every render.
+
+This defeats the purpose of the dependency array entirely. The effect is supposed to run only when `config` meaningfully changes. Instead it runs on every render because the reference always changes.
+
+Three fixes in order of correctness.
+
+First, move `config` outside the component if it is a constant:
+```js
+const CONFIG = { timeout: 5000 }; // module-level, stable reference
+function Component() {
+  useEffect(() => { ... }, [CONFIG]);
+}
+```
+
+Second, memoize `config` if it depends on props or state:
+```js
+const config = React.useMemo(() => ({ timeout }), [timeout]);
+useEffect(() => { ... }, [config]);
+```
+
+Third, depend on the primitive values instead of the object:
+```js
+useEffect(() => { ... }, [config.timeout, config.retries]);
+```
+
+The third is often the simplest and most robust: primitive values (`number`, `string`, `boolean`) are compared by value under `Object.is`, so they change only when their actual content changes. Depending on object properties directly avoids the reference stability problem entirely.
+
+</details>
+
+---
+
+## React Internals section is Complete!
+
+You now have the full React internals stack, from the synchronous rendering problem that necessitated a rewrite, through the Fiber data structure that enables interruptibility, to the two-phase architecture that separates pure computation from DOM mutation, the Scheduler that cooperates with the browser's main thread via time-sliced macrotasks, the Lanes system that expresses priority as a bitmask enabling concurrent work and starvation prevention, the Concurrent Mode features that expose this to developers as Transitions and deferred values, and finally the linked list hook storage mechanism that makes stateful function components possible without instances, keys, or magic.
+
+The complete picture: React is a cooperative multitasking system that describes UI as a pure function of state, executes that function in interruptible chunks using a linked list traversal, batches state updates by priority using a bitmask lane system, and applies the minimum set of DOM mutations atomically after each render cycle completes. Every API choice, every rule, every constraint traces back to one of these mechanical requirements.

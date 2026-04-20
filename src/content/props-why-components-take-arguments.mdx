@@ -236,7 +236,7 @@ function UserCard({ user }) {
 }
 ```
 
-There's one more internal detail worth knowing. When you pass a function as a prop, like `onDismiss`, you are passing a reference to a function object. On every render of the parent, a new function object is created unless you use `useCallback`. This means `memoizedProps.onDismiss !== pendingProps.onDismiss` on every parent re-render, even if the function's behavior hasn't changed. For memoized children, this silently defeats `React.memo`. This is the exact problem `useCallback` solves, and we will trace it precisely in Phase 7.
+There's one more internal detail worth knowing. When you pass a function as a prop, like `onDismiss`, you are passing a reference to a function object. On every render of the parent, a new function object is created unless you use `useCallback`. This means `memoizedProps.onDismiss !== pendingProps.onDismiss` on every parent re-render, even if the function's behavior hasn't changed. For memoized children, this silently defeats `React.memo`. This is the exact problem `useCallback` solves.
 
 ---
 

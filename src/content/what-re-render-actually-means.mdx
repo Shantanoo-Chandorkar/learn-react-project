@@ -282,7 +282,7 @@ Passive effects phase (asynchronous):
   Asynchronous, scheduled via MessageChannel macrotask
 ```
 
-Understanding this sequence is why `useLayoutEffect` and `useEffect` have different timing. `useLayoutEffect` fires after DOM mutations but before browser paint, so it can read updated layout without the user seeing an intermediate state. `useEffect` fires after paint, so it does not block the browser from showing the committed DOM to the user. We cover this precisely in Phase 5.
+Understanding this sequence is why `useLayoutEffect` and `useEffect` have different timing. `useLayoutEffect` fires after DOM mutations but before browser paint, so it can read updated layout without the user seeing an intermediate state. `useEffect` fires after paint, so it does not block the browser from showing the committed DOM to the user.
 
 ---
 

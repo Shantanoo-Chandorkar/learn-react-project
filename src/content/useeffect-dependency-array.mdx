@@ -1,1 +1,170 @@
-﻿# The dependency array, what it actually means
+﻿# The Dependency Array: Not "When to Run," It's "What to Sync With"
+
+### 1. The Problem
+
+The dependency array is the most misunderstood part of `useEffect`. Developers treat it as a trigger list — "put the things that should cause this effect to re-run." This produces code that works by accident when the trigger list happens to match the dependencies, and breaks silently when it does not.
+
+The array is not a trigger list. It is a declaration of what the effect synchronizes with. The distinction is subtle in easy cases and critical in hard ones. Get it wrong and you have stale closures, infinite loops, or effects that never re-run when they should.
+
+---
+
+### 2. The Naive Attempt
+
+A component fetches posts for the current user and re-fetches when a "refresh" button is clicked:
+
+```jsx
+function UserPosts({ userId }) {
+  const [posts, setPosts] = React.useState([]);
+  const [refreshCount, setRefreshCount] = React.useState(0);
+
+  useEffect(() => {
+    fetch(`/api/posts/${userId}`)
+      .then(r => r.json())
+      .then(setPosts);
+  }, [refreshCount]); // "re-run when refresh is clicked"
+
+  return (
+    <div>
+      <button onClick={() => setRefreshCount(c => c + 1)}>Refresh</button>
+      {posts.map(p => <div key={p.id}>{p.title}</div>)}
+    </div>
+  );
+}
+```
+
+The developer put `refreshCount` in the array because "that's what triggers the re-fetch." They omitted `userId` because "the fetch should only re-run on refresh, not on userId change."
+
+Two bugs: if `userId` changes, the posts do not re-fetch. The component shows posts for the old user. If `userId` changes and the user then clicks refresh, the fetch uses the current `userId` — but only because the refresh happened to trigger it. The effect is accidentally correct in that case, not correctly correct.
+
+---
+
+### 3. Why That Breaks
+
+The dependency array is checked by React to answer one question: **does the external world still accurately reflect what this effect would produce for the current inputs?**
+
+When `userId` changes, the answer is no — the posts being displayed belong to the old user. The external thing (the posts state) no longer reflects the current `userId`. The effect must re-run. But because `userId` is not in the dep array, React does not know to re-run it.
+
+The trigger-list mental model causes the developer to ask "what should cause this to re-run?" and answer with `refreshCount` — the user-visible trigger. The synchronization mental model causes the developer to ask "what values does this effect read, and therefore what must stay in sync?" The effect reads `userId` inside the fetch URL. `userId` is a dependency. It must be in the array.
+
+The ESLint rule `react-hooks/exhaustive-deps` exists precisely to catch this. It statically analyzes the effect body, finds every reactive value the effect reads, and warns if any are missing from the dep array. It is enforcing the synchronization contract mechanically, because the timing mental model leads developers to omit deps routinely.
+
+---
+
+### 4. React's Mental Model
+
+The dependency array is a snapshot of every reactive value the effect reads. A reactive value is any value that can change between renders: props, state, anything derived from props or state, and any function defined inside the component.
+
+The rule has no exceptions and no judgment calls: **if the effect reads it, it goes in the array.**
+
+This is not a performance optimization. It is a correctness requirement. An effect that reads `userId` but does not list `userId` in its deps is an effect that will silently use a stale `userId` after the prop changes. The stale closure problem: the effect function captured `userId` from the render in which it was created. If React does not re-run the effect when `userId` changes, the effect function from the old render is still the active one — still using the old `userId`. The dep array is React's mechanism for knowing when to replace the old effect with a new one.
+
+---
+
+### 5. React's Solution
+
+Every value the effect reads is a dependency. No exceptions.
+
+```jsx
+function UserPosts({ userId }) {
+  const [posts, setPosts] = React.useState([]);
+
+  useEffect(() => {
+    fetch(`/api/users/${userId}/posts`)
+      .then(r => r.json())
+      .then(setPosts);
+  }, [userId]); // userId is what this effect syncs with
+
+  // refresh is an event, not a dep — handle it differently
+  function handleRefresh() {
+    fetch(`/api/users/${userId}/posts`)
+      .then(r => r.json())
+      .then(setPosts);
+  }
+
+  return (
+    <div>
+      <button onClick={handleRefresh}>Refresh</button>
+      {posts.map(p => <div key={p.id}>{p.title}</div>)}
+    </div>
+  );
+}
+```
+
+The "refresh" behavior is moved to an event handler. Event handlers are not effects — they respond to user input, not to render output. The effect synchronizes posts with `userId`. The event handler triggers a manual re-fetch. These are separate concerns and belong in separate places.
+
+When you find yourself adding a dummy state variable to the dep array just to trigger an effect, that is a signal the refresh logic belongs in an event handler, not in the effect's dependency list.
+
+---
+
+### 6. Internals
+
+React stores the dependency array from the previous render on the Fiber's effect record. After each commit, React walks the effect list and for each effect performs element-wise `Object.is` comparison between the previous deps and the current deps.
+
+`Object.is` is stricter than `===` in one case (`Object.is(NaN, NaN)` is true; `NaN === NaN` is false) and equivalent in all others. Importantly, objects and functions are compared by reference. `Object.is({a: 1}, {a: 1})` is false because these are two different object references.
+
+This is why inline objects and functions in dep arrays cause effects to re-run on every render:
+
+```jsx
+useEffect(() => {
+  // ...
+}, [{ id: userId }]); // new object reference every render → effect re-runs every render
+```
+
+The object `{ id: userId }` is created fresh on every render. `Object.is` compares references. Previous render's object !== current render's object. Effect re-runs. Every time. The fix is to put the primitive value in the array directly: `[userId]`.
+
+Functions defined inside the component have the same problem — new reference on every render. This is why functions used inside effects should either be defined inside the effect itself, or stabilized with `useCallback` before being listed as a dep.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: "When should you use an empty dependency array?"**
+
+Only when the effect genuinely reads no reactive values — no props, no state, nothing derived from them. Not "when you want it to run once." The emptiness of the array must be truthful. If the effect reads a prop and you pass `[]`, you have a stale closure bug. The correct question to ask is: "does this effect read anything that can change between renders?" If no, `[]` is correct. If yes, every value it reads belongs in the array.
+
+**Trap 2: "I added everything to the dep array and now I have an infinite loop."**
+
+This means the effect produces a new value on every run that is itself listed as a dependency, and that value changes reference on every render. Common causes: a state setter is called unconditionally in the effect (state changes, effect re-runs, state changes...), or an object/function created in the component body is listed as a dep and recreated on every render. The fix is never to remove deps to stop the loop — that reintroduces stale closures. The fix is to identify why the dep changes on every render and stabilize it: move the object creation inside the effect, use `useMemo` for derived objects, use `useCallback` for functions.
+
+---
+
+### Self-Test
+
+**Q1.** What is the difference between a reactive value and a non-reactive value? Give two examples of each, and explain which ones belong in the dependency array.
+
+<details>
+<summary>Answer</summary>
+
+A reactive value is any value that can change between renders and whose change should cause the effect to re-sync. A non-reactive value is one that is stable across renders — the same reference every time.
+
+Reactive values: props (they change when the parent re-renders with new props), state (changes on every `setState` call), and anything derived from props or state inside the component body. These belong in the dependency array.
+
+Non-reactive values: `setState` setter functions (React guarantees stable references), `useRef` ref objects (the `.current` may change but the ref object itself is stable), values defined outside the component (module-level constants, imported functions). These do not need to be in the dependency array because they never change between renders — listing them is harmless but unnecessary.
+
+</details>
+
+---
+
+**Q2.** An effect reads three values: a prop `userId`, a state variable `filter`, and `console.log`. Which go in the dependency array and why?
+
+<details>
+<summary>Answer</summary>
+
+`userId` and `filter` go in the dependency array. Both are reactive: `userId` can change when the parent re-renders with a new prop, and `filter` can change when the state setter is called. If either changes, the effect reads a different value than it did in the previous render, so it must re-run to stay in sync.
+
+`console.log` does not go in the array. It is a stable, non-reactive value — the same function reference across every render, defined outside the component in the global scope. It cannot change between renders. Including it would be harmless but misleading, implying it could change.
+
+</details>
+
+---
+
+**Q3.** Why does putting an inline object literal `{ id: userId }` in a dependency array cause the effect to re-run on every render, even if `userId` has not changed?
+
+<details>
+<summary>Answer</summary>
+
+React compares dependency array elements using `Object.is`, which compares objects by reference, not by value. An inline object literal `{ id: userId }` creates a new object in memory on every render. Even if `userId` is identical between renders, the object that wraps it is a different reference — a new allocation each time. `Object.is(prevObj, currObj)` is false because these are two distinct objects in memory, even though their contents are equal. React sees a changed dependency and re-runs the effect.
+
+The fix is to put the primitive value directly in the array: `[userId]`. Primitive values like strings and numbers are compared by value with `Object.is`, so `Object.is('abc', 'abc')` is true. The effect only re-runs when `userId` actually changes.
+
+</details>

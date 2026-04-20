@@ -1,1 +1,329 @@
-﻿# The diffing algorithm, O(n) heuristics
+﻿# The Diffing Algorithm: O(n) Heuristics
+
+### 1. The Problem
+
+You have a Virtual DOM tree from the last render. You have a new one from this render. You need to figure out the *minimum* set of real DOM operations to go from one to the other.
+
+What do you do?
+
+---
+
+### 2. The Naive Attempt
+
+Compare every node in the old tree against every node in the new tree. Find the smallest edit distance. Apply it.
+
+This is the computer science–correct answer. It's what you'd write in an algorithms course.
+
+```js
+function diff(oldTree, newTree) {
+  // Compare every old node to every new node
+  // Find minimum insertions, deletions, moves
+  // Return optimal patch set
+}
+```
+
+---
+
+### 3. Why That Breaks
+
+The theoretically optimal tree diff algorithm is **O(n³)**.
+
+For a tree with 1000 nodes, that's **1,000,000,000 operations** per render. On every keystroke. On every state change. On every prop update.
+
+That's not a performance concern. That's a non-starter.
+
+---
+
+### 4. React's Mental Model
+
+React makes a bet: **the optimal general-case algorithm is too expensive, but your UI probably follows predictable patterns.**
+
+Specifically, two heuristics that are almost always true in practice:
+
+**Heuristic 1: Elements of different types produce completely different trees.**
+
+If `<div>` became `<section>`, don't try to reconcile the children. Throw away the old subtree entirely. Mount a fresh one.
+
+**Heuristic 2: The developer knows which list items are stable across renders.**
+
+React can't guess which `<li>` is which after a sort. But you can tell it — with a `key`.
+
+These two assumptions collapse the problem from O(n³) to **O(n)**.
+
+---
+
+### 5. React's Solution
+
+React walks both trees simultaneously, node by node, in a single pass.
+
+**Step 1: Compare the root elements.**
+
+```jsx
+// Before
+<div className="card">
+  <h1>Title</h1>
+</div>
+
+// After
+<div className="card">
+  <h2>Title</h2>
+</div>
+```
+
+Same type (`div`). React keeps the DOM node, diffs the props, then recurses into children.
+
+```jsx
+// Before
+<div className="card" />
+
+// After
+<section className="card" />
+```
+
+Different type. React **unmounts the entire old subtree** — runs all `useEffect` cleanups, destroys DOM nodes — and mounts the new subtree from scratch. No diffing of children. No mercy.
+
+This is why wrapping a component in a different container tag is a full remount, not a tweak.
+
+---
+
+**Step 2: Same type — diff the props.**
+
+```jsx
+// Before
+<input type="text" className="old" value="hi" />
+
+// After
+<input type="text" className="new" value="hi" />
+```
+
+React sees same type, same `type` prop, different `className`. It issues exactly one DOM operation:
+
+```js
+node.setAttribute('className', 'new')
+```
+
+Everything else is untouched.
+
+---
+
+**Step 3: Recurse into children.**
+
+```jsx
+// Before
+<ul>
+  <li>A</li>
+  <li>B</li>
+</ul>
+
+// After
+<ul>
+  <li>A</li>
+  <li>B</li>
+  <li>C</li>
+</ul>
+```
+
+React walks child by child. First `<li>` matches. Second `<li>` matches. Third is new — insert it. Cost: O(n) where n is the number of children.
+
+---
+
+**Step 4: The list problem — where the heuristic breaks down.**
+
+```jsx
+// Before
+<ul>
+  <li>B</li>
+  <li>C</li>
+</ul>
+
+// After
+<ul>
+  <li>A</li>  {/* inserted at front */}
+  <li>B</li>
+  <li>C</li>
+</ul>
+```
+
+React compares position by position. Position 0: `B` vs `A` — different text, update. Position 1: `C` vs `B` — different text, update. Position 2: nothing vs `C` — insert.
+
+React mutated two nodes and inserted one. The correct answer was: insert one node at the front. This is exactly what `key` fixes — but that's 4.4.
+
+---
+
+### 6. Internals
+
+What React is actually doing during reconciliation is maintaining a **work-in-progress fiber tree** alongside the current fiber tree.
+
+Each fiber is a JS object roughly shaped like:
+
+```js
+{
+  type: 'div',           // or MyComponent
+  key: null,
+  stateNode: domNode,    // the actual DOM node (for host elements)
+  child: fiber,          // first child
+  sibling: fiber,        // next sibling
+  return: fiber,         // parent
+  pendingProps: {},
+  memoizedProps: {},
+  memoizedState: {},
+  flags: Update | Placement | Deletion,  // what needs to happen
+}
+```
+
+During reconciliation, React doesn't touch the real DOM at all. It just marks fibers with **flags**: `Placement` (new node), `Update` (props changed), `Deletion` (removed).
+
+Then, in a separate **commit phase**, it walks the fiber tree once more and flushes those flagged operations to the real DOM in one synchronous pass.
+
+The **render phase** (diffing) is interruptible. The **commit phase** (DOM writes) is not.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: "React diffs the real DOM."**
+
+No. React diffs the Virtual DOM — two JS object trees. The real DOM is only touched in the commit phase, after diffing is complete.
+
+---
+
+**Trap 2: "The Virtual DOM makes React fast."**
+
+This is backwards. The VDOM isn't a performance optimization — it's an abstraction layer. The diffing *on top of it* enables batched, minimal DOM updates. The VDOM itself has overhead. React is fast because of *how it uses* the VDOM, not the VDOM itself.
+
+---
+
+**Trap 3: "Different type means React updates the props and re-renders."**
+
+No — different type means **full unmount and remount**. State is destroyed. Effects are cleaned up and re-run. This is one of the most common sources of accidental state resets in real apps.
+
+```jsx
+// This destroys and recreates <Input /> every time isLoggedIn flips
+return isLoggedIn ? <AdminInput /> : <UserInput />
+
+// If both are structurally the same component, consider using the same
+// type and passing props instead
+```
+
+---
+
+**Trap 4: "O(n) means React compares n total nodes."**
+
+O(n) means React makes one pass over the tree. But the constant factors matter — every node comparison involves type checks, prop iteration, key lookups. The heuristics keep it linear, but that doesn't mean it's free.
+
+---
+
+### Self-Test
+
+**Q1.** React encounters this change between renders. Walk through exactly what it does, step by step.
+
+```jsx
+// Before
+<form>
+  <input type="text" placeholder="Name" />
+  <button className="primary">Submit</button>
+</form>
+
+// After
+<div>
+  <input type="text" placeholder="Full Name" />
+  <button className="primary">Submit</button>
+</div>
+```
+
+<details>
+<summary>Answer</summary>
+
+React compares the root element first. Before: `form`. After: `div`. Different types. React unmounts the entire old subtree — the `form`, the `input`, and the `button` are all destroyed, their DOM nodes removed, and any effects cleaned up. React then mounts the new subtree from scratch: a new `div`, a new `input` DOM node with `placeholder="Full Name"`, and a new `button` DOM node. The changed `placeholder` is irrelevant to this decision — the type mismatch at the root triggers a full remount before React ever looks at the children. Any state inside the `input` (cursor position, uncontrolled value) is lost.
+
+</details>
+
+---
+
+**Q2.** This change happens between renders. What is the minimum set of DOM operations React performs?
+
+```jsx
+// Before
+<ul>
+  <li className="active">Home</li>
+  <li>About</li>
+  <li>Contact</li>
+</ul>
+
+// After
+<ul>
+  <li>Home</li>
+  <li className="active">About</li>
+  <li>Contact</li>
+</ul>
+```
+
+<details>
+<summary>Answer</summary>
+
+React walks children by position. Position 0: same type (`li`), `className` changed from `"active"` to `undefined` — one DOM attribute update. Position 1: same type (`li`), `className` changed from `undefined` to `"active"` — one DOM attribute update. Position 2: same type (`li`), no prop changes — no DOM operation. Total: two attribute updates. The text content of each `li` is unchanged, so no text node updates occur either.
+
+</details>
+
+---
+
+**Q3.** A developer refactors a component by wrapping it in a different container element. Users report that form inputs lose their values after the refactor. What is the likely cause?
+
+```jsx
+// Before
+<div className="wrapper">
+  <UserForm />
+</div>
+
+// After
+<section className="wrapper">
+  <UserForm />
+</section>
+```
+
+<details>
+<summary>Answer</summary>
+
+The container type changed from `div` to `section`. React's first heuristic triggers: different element types produce completely different trees. React unmounts the entire old subtree, including `UserForm` and all its children. All internal state in `UserForm` is destroyed — including any `useState` hooks tracking input values. React then mounts a completely fresh `UserForm` instance. The inputs start from their initial state, which is why the values are gone.
+
+The fix: use the same container type, or if the semantic change is intentional, lift the form state up to a parent component that survives the remount, or use a URL/external store to persist the values.
+
+</details>
+
+---
+
+**Q4.** What is the difference between the render phase and the commit phase in React's reconciliation process? Why is one interruptible and the other not?
+
+<details>
+<summary>Answer</summary>
+
+The render phase is where React builds the work-in-progress fiber tree and determines what changed — it diffs the old and new trees, marks fibers with flags (`Placement`, `Update`, `Deletion`), and computes the full set of required DOM mutations. This phase is interruptible because it only touches JavaScript objects. If higher-priority work arrives (a user interaction, a more urgent state update), React can pause mid-render, discard the in-progress work, and start over. No real DOM has been touched, so there is no visible inconsistency to clean up.
+
+The commit phase takes the flagged fiber tree and applies all mutations to the real DOM in a single synchronous pass. This phase is not interruptible because the DOM must never be left in a partially-updated state. If React paused mid-commit, the user could see an inconsistent UI — some nodes updated, others not. Synchronous completion guarantees the DOM transitions from one consistent state to another atomically.
+
+</details>
+
+---
+
+**Q5.** A teammate says: "I optimized our app by switching from `<AdminDashboard />` to `<UserDashboard />` based on a role prop, instead of rendering the same `<Dashboard role={role} />` component and switching behavior inside it. Now the page flashes on role change." Explain why this happens and what the correct fix is.
+
+```jsx
+// Current approach — causes flash
+function App({ role }) {
+  return role === 'admin' ? <AdminDashboard /> : <UserDashboard />
+}
+
+// Proposed fix
+function App({ role }) {
+  return <Dashboard role={role} />
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+`AdminDashboard` and `UserDashboard` are different component types. When `role` changes, React sees a different element type at the same position. It applies the first heuristic: unmount the entire old subtree, mount the new one from scratch. The unmount destroys all DOM nodes, runs all cleanup effects, and removes everything from the screen. The mount builds new DOM nodes and inserts them. Between the removal and insertion there is a frame — or more, if the new component has async work on mount — where nothing is shown. That gap is the flash.
+
+`<Dashboard role={role} />` is the same component type regardless of the role value. When `role` changes, React keeps the existing Fiber, updates the `role` prop, and re-renders. The DOM nodes that are structurally unchanged survive. There is no unmount, no blank frame, no flash. The component adjusts its output in place. This is also more correct architecturally: the two dashboards represent the same conceptual UI element with different permissions, not two fundamentally different things.
+
+</details>

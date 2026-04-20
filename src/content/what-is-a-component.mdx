@@ -284,7 +284,7 @@ function Feed({ users }) {
 <details>
 <summary>Answer</summary>
 
-`React.memo` wraps `UserCard` to skip re-renders when props haven't changed. But it will never actually skip re-renders here, because `handleFollow` is defined inside `Feed`. Every time `Feed` re-renders (when `filter` changes), a new `handleFollow` function is created with a new reference. `React.memo` does a shallow equality check on props. The `user` prop hasn't changed, but `onFollow` has a new reference, so the check fails and `UserCard` re-renders anyway. `React.memo` is effectively useless here. The fix is `useCallback` wrapping `handleFollow`, which we'll cover in Phase 7. This trap is the exact reason `React.memo` alone is often not enough, and why functions being recreated on every render is a meaningful problem.
+`React.memo` wraps `UserCard` to skip re-renders when props haven't changed. But it will never actually skip re-renders here, because `handleFollow` is defined inside `Feed`. Every time `Feed` re-renders (when `filter` changes), a new `handleFollow` function is created with a new reference. `React.memo` does a shallow equality check on props. The `user` prop hasn't changed, but `onFollow` has a new reference, so the check fails and `UserCard` re-renders anyway. `React.memo` is effectively useless here. The fix is `useCallback` wrapping `handleFollow`. This trap is the exact reason `React.memo` alone is often not enough, and why functions being recreated on every render is a meaningful problem.
 
 </details>
 

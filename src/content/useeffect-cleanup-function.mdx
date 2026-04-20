@@ -1,1 +1,236 @@
-﻿# The cleanup function
+﻿# The Cleanup Function: Preventing Memory Leaks and Stale Subscriptions
+
+### 1. The Problem
+
+Your effect starts something. Opens a connection. Starts a timer. Adds an event listener. Subscribes to a data stream. These are all things with a lifecycle — they have a beginning and they must have an end.
+
+In plain JavaScript you manage this yourself, explicitly. You store the timer ID and call `clearInterval`. You store the event listener reference and call `removeEventListener`. You do this because you know that not doing it means the timer keeps firing after you no longer care, or the listener keeps receiving events for a component that no longer exists.
+
+In React, components appear and disappear. Props change. The same effect may need to be torn down and re-set-up multiple times within the lifetime of one component. React gives you one mechanism for this: the cleanup function. Return it from your effect. React calls it at the right time.
+
+Understanding when "the right time" is — and what goes wrong when cleanup is missing — is what separates effects that work from effects that slowly corrupt application state.
+
+---
+
+### 2. The Naive Attempt
+
+A component subscribes to a WebSocket feed to display live prices:
+
+```jsx
+function PriceFeed({ symbol }) {
+  const [price, setPrice] = React.useState(null);
+
+  useEffect(() => {
+    const socket = new WebSocket(`wss://prices.example.com/${symbol}`);
+    socket.onmessage = (event) => {
+      setPrice(JSON.parse(event.data).price);
+    };
+  }, [symbol]);
+
+  return <div>{symbol}: {price ?? 'Loading...'}</div>;
+}
+```
+
+When `symbol` changes from `"AAPL"` to `"GOOG"`:
+
+1. React re-renders with `symbol = "GOOG"`
+2. `symbol` changed, so React re-runs the effect
+3. A new WebSocket opens to `wss://prices.example.com/GOOG`
+4. The component now shows GOOG prices
+
+The AAPL socket is never closed. It is still open. It is still receiving messages. Its `onmessage` handler still calls `setPrice`. The component is now receiving price updates from two sockets simultaneously — AAPL and GOOG — and displaying whichever message arrives last. The price display is a race between two feeds.
+
+If the user navigates away entirely, the component unmounts. The socket is still open. The `onmessage` handler still calls `setPrice` on a component that no longer exists. A React warning fires: cannot update state on an unmounted component. The socket keeps running, consuming server resources and browser memory, until the page is closed.
+
+---
+
+### 3. Why That Breaks
+
+The effect creates a resource — the WebSocket — that exists outside React's control. React has no visibility into it. React does not know the socket exists. React cannot close it. Only your code can close it, and your code must close it at the right moment.
+
+The right moment is: immediately before React runs the effect again with new deps, and immediately when the component unmounts.
+
+Without cleanup, effects that create external resources accumulate those resources silently. Each re-run of the effect adds another socket, another timer, another listener, without removing the previous one. The resources are invisible. The bugs they cause are timing-dependent — a stale socket fires a message at the wrong moment, a stale timer updates state that has moved on, a stale listener calls a handler that references outdated values.
+
+These bugs are among the hardest to reproduce because they depend on the exact sequence of renders, prop changes, and async resolutions. And they worsen over time — the longer the user uses the app, the more accumulated resources, the more likely a stale one fires at a bad moment.
+
+---
+
+### 4. React's Mental Model
+
+Every effect that creates something must destroy it. The cleanup function is the destructor for the effect.
+
+React calls the cleanup function in two situations:
+
+1. **Before re-running the effect.** When deps change, React runs the previous cleanup first, then runs the new effect setup. Tear down the old. Set up the new.
+2. **When the component unmounts.** React runs the last cleanup function. Tear down everything.
+
+The cleanup function is not "what to do on unmount." It is "how to undo what this effect did." The same cleanup logic that handles prop changes also handles unmount, because both situations require the same thing: stop the previous effect's resources before starting fresh or stopping entirely.
+
+Think of it as a symmetric pair. Setup creates. Cleanup destroys. Every `useEffect` that creates a resource is incomplete without its corresponding cleanup.
+
+---
+
+### 5. React's Solution
+
+Return a cleanup function from the effect:
+
+```jsx
+function PriceFeed({ symbol }) {
+  const [price, setPrice] = React.useState(null);
+
+  useEffect(() => {
+    const socket = new WebSocket(`wss://prices.example.com/${symbol}`);
+
+    socket.onmessage = (event) => {
+      setPrice(JSON.parse(event.data).price);
+    };
+
+    // cleanup: close the socket when symbol changes or component unmounts
+    return () => {
+      socket.close();
+    };
+  }, [symbol]);
+
+  return <div>{symbol}: {price ?? 'Loading...'}</div>;
+}
+```
+
+Now when `symbol` changes from `"AAPL"` to `"GOOG"`:
+
+1. React re-renders with `symbol = "GOOG"`
+2. React runs the previous cleanup: `socket.close()` on the AAPL socket
+3. React runs the new effect: opens a WebSocket for GOOG
+4. Only one socket is ever open at a time
+
+When the component unmounts, React runs the last cleanup: the GOOG socket is closed. No lingering connections.
+
+Other cleanup patterns:
+
+```jsx
+// Timer cleanup
+useEffect(() => {
+  const id = setInterval(() => setCount(c => c + 1), 1000);
+  return () => clearInterval(id);
+}, []);
+
+// Event listener cleanup
+useEffect(() => {
+  window.addEventListener('resize', handleResize);
+  return () => window.removeEventListener('resize', handleResize);
+}, [handleResize]);
+
+// Fetch cancellation cleanup
+useEffect(() => {
+  const controller = new AbortController();
+
+  fetch(`/api/data/${id}`, { signal: controller.signal })
+    .then(r => r.json())
+    .then(setData)
+    .catch(err => {
+      if (err.name !== 'AbortError') throw err;
+    });
+
+  return () => controller.abort();
+}, [id]);
+```
+
+Each cleanup is the exact inverse of its setup. Open → close. Start → stop. Add → remove. Fetch → abort.
+
+---
+
+### 6. Internals
+
+React stores the cleanup function — the return value of your effect setup — on the Fiber's effect record as the `destroy` field. When React needs to clean up an effect, it calls `destroy()` if it is defined.
+
+The sequencing within a single component on re-render is:
+
+```
+render (new output computed)
+  ↓
+commit (DOM updated)
+  ↓
+cleanup of previous effects (destroy() called for effects whose deps changed)
+  ↓
+setup of new effects (create() called, new destroy() stored)
+```
+
+Across multiple components, React processes all cleanups for all components before processing any new setups. This prevents a situation where a new effect in component B reads state that a cleanup in component A was supposed to reset.
+
+In Strict Mode in development, React deliberately runs each effect's setup, then its cleanup, then its setup again. This is not a bug. It is React verifying that your cleanup correctly undoes your setup. If your cleanup is correct, the double-run is invisible — the component ends up in the same state as a single run. If your cleanup is incorrect, the double-run surfaces the bug: a doubled subscription, a doubled event listener, state corruption.
+
+The practical implication: if your effect behaves differently in Strict Mode development than in production, your cleanup is incomplete. The Strict Mode behavior is the test. Production skips the extra cycle but the missing cleanup will eventually matter when props change.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: "I added a cleanup function but I'm still seeing the React warning about updating state on an unmounted component."**
+
+The cleanup is running, but too late or incorrectly. For async effects like `fetch`, the cleanup must prevent the async callback from calling `setState` — not just close a socket. Closing the socket does not cancel an in-flight `fetch`. The fix is an `AbortController` whose signal is passed to the fetch, and whose `abort()` method is called in the cleanup. The fetch's promise rejects with an `AbortError`, which you catch and ignore. Without the abort, the fetch resolves after unmount and calls `setState` even though the cleanup ran.
+
+**Trap 2: "My cleanup is a no-op — I just return `() => {}`. Is that fine?"**
+
+It is only fine if the effect genuinely creates nothing that persists. If the effect calls `fetch` without an abort controller, sets a timer without storing the ID, or adds an event listener without storing the reference, the no-op cleanup is silently wrong. The correct test: manually trigger the cleanup by changing the deps or unmounting the component during the effect. Does anything leak? Does the async operation still complete and call `setState`? If yes, the no-op cleanup is a bug waiting to surface.
+
+**Trap 3: "What is the order of operations when a component with three `useEffect` calls re-renders and all three deps changed?"**
+
+React runs all three cleanup functions first, in the order the effects are defined. Then runs all three setup functions, in the order the effects are defined. It is not: cleanup 1 → setup 1 → cleanup 2 → setup 2. It is: cleanup 1 → cleanup 2 → cleanup 3 → setup 1 → setup 2 → setup 3. This guarantees that no new effect setup observes a partially-cleaned-up state.
+
+---
+
+### Self-Test
+
+**Q1.** A component adds a `keydown` event listener in a `useEffect` with no cleanup. Describe every failure mode this produces as the component re-renders and eventually unmounts.
+
+<details>
+<summary>Answer</summary>
+
+Three failure modes accumulate over time.
+
+First, listener duplication on re-render. Every time the effect re-runs — because its deps changed — a new event listener is added without removing the old one. After three re-renders, three listeners are active for the same event. Each keydown fires the handler three times. The duplication is invisible until behavior becomes obviously wrong, and the count grows with every re-render.
+
+Second, stale closure values. The listeners added in earlier renders captured the props and state values from those renders. When the handler fires, it uses those stale values — an old `userId`, a previous `filter`. The handler appears to work but operates on data that no longer matches what is displayed.
+
+Third, post-unmount execution. When the component unmounts, the listener remains on `window`. Every subsequent keydown in the application fires the handler. The handler calls `setState` on an unmounted component, producing a React warning. If the handler has other side effects — navigation, API calls — they fire inappropriately on every keydown for the rest of the session.
+
+</details>
+
+---
+
+**Q2.** In Strict Mode, React runs your effect's setup, then cleanup, then setup again. Your effect opens a WebSocket. After Strict Mode runs, how many WebSocket connections exist if your cleanup is correct? How many if your cleanup is missing?
+
+<details>
+<summary>Answer</summary>
+
+If cleanup is correct: one connection. Strict Mode runs setup (connection 1 opens), then cleanup (connection 1 closes), then setup again (connection 2 opens). Net result: one open connection, which is the same state the component would be in without Strict Mode. The double-run is invisible.
+
+If cleanup is missing: two connections. Strict Mode runs setup (connection 1 opens), skips cleanup (nothing closes connection 1), then runs setup again (connection 2 opens). Both connections remain open. Both receive messages. Both call `setPrice`. The component receives interleaved updates from two connections. Strict Mode has surfaced the missing cleanup as a visible duplication bug in development — exactly its purpose.
+
+</details>
+
+---
+
+**Q3.** What is the execution order of cleanups and setups when a component has two effects and both re-run on a re-render? Why does React use this order instead of interleaving cleanup and setup per effect?
+
+<details>
+<summary>Answer</summary>
+
+React runs all cleanups first, then all setups. For two effects: cleanup 1 → cleanup 2 → setup 1 → setup 2.
+
+React uses this order to prevent partially-cleaned-up state from being visible to new effect setups. If the order were interleaved — cleanup 1 → setup 1 → cleanup 2 → setup 2 — then setup 1 could observe state that cleanup 2 has not yet reset. The new effect would start from a partially torn-down baseline. By running all cleanups before any setups, React ensures that every new setup starts from a fully cleaned state. No effect sees the residue of another effect's previous run.
+
+</details>
+
+---
+
+**Q4.** A fetch inside `useEffect` completes after the component unmounts. There is no cleanup. What exactly happens in React, and how does an `AbortController` fix it?
+
+<details>
+<summary>Answer</summary>
+
+Without cleanup: the fetch is in flight when the component unmounts. React unmounts the component and removes its Fiber from the tree. The fetch's `.then()` callback is still registered in the browser's network stack. When the response arrives, the callback fires and calls `setState`. React attempts to process the state update, finds the component is no longer mounted, and logs a warning: "Can't perform a React state update on an unmounted component." The state update is silently dropped, but the warning fires and any side effects inside the callback — logging, further API calls — still execute.
+
+With an `AbortController`: the cleanup function calls `controller.abort()`. This signals the fetch to cancel. The fetch's promise rejects with an `AbortError`. The `.catch()` handler checks for `AbortError` and ignores it. The `.then()` callback never fires. `setState` is never called on the unmounted component. No warning. No leaked callbacks. The browser stops the network request if it has not yet received a response.
+
+</details>
