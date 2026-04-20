@@ -1,1 +1,337 @@
-﻿# What is a side effect
+﻿# What Is a Side Effect
+
+### 1. The Problem
+
+You are writing a function. It takes some input and returns some output. Clean, simple, predictable. Call it a hundred times with the same input, you get the same output a hundred times. Nothing else in the world changes.
+
+Now your function needs to do something else. Save data to localStorage. Start a timer. Subscribe to a WebSocket. Update the browser tab title. Fetch data from a server. Log something to the console.
+
+These things have something in common: they reach outside the function's own scope and change or read something in the world. The function is no longer self-contained. It has a *side effect*.
+
+In plain JavaScript, this is not a problem you think about. You call `document.title = "New Title"` wherever you want. You set up a `setInterval` wherever it's convenient. There are no rules. There's also no system. You manage it all yourself, or you don't manage it at all, and things break in ways that are hard to trace.
+
+React introduces rules. Strict ones. Understanding side effects is the prerequisite for understanding why those rules exist.
+
+---
+
+### 2. The Naive Attempt
+
+Build a page that shows how many times the user has clicked a button, and also updates the browser tab title to match.
+
+In plain JavaScript, you'd write this:
+
+```js
+let count = 0;
+const button = document.querySelector('#btn');
+const display = document.querySelector('#display');
+
+button.addEventListener('click', () => {
+  count++;
+  display.textContent = `Clicked ${count} times`;
+  document.title = `Clicked ${count} times`; // side effect: touches the browser tab
+});
+```
+
+Straightforward. The click handler does two things: updates the DOM display, and updates the tab title. Both happen in the same place. You don't think of them as different categories of work. They're both just "things that happen when the button is clicked."
+
+Now bring this instinct into React. You have a component with a count. You want the tab title to update whenever count changes. The instinct is to just do it inline, during render:
+
+```jsx
+function ClickCounter() {
+  const [count, setCount] = React.useState(0);
+
+  // instinct: just do it here
+  document.title = `Clicked ${count} times`;
+
+  return (
+    <button onClick={() => setCount(c => c + 1)}>
+      Clicked {count} times
+    </button>
+  );
+}
+```
+
+This actually seems to work. The title updates. The button increments. Everything looks fine.
+
+But you have made a mistake you cannot see yet.
+
+---
+
+### 3. Why That Breaks
+
+React renders your component function more often than you think, for reasons that have nothing to do with your state changing. Strict Mode renders components twice in development on purpose. Concurrent Mode can render a component without committing it to the DOM at all — a speculative render that gets thrown away. A parent re-rendering causes every child to re-render by default.
+
+When you put a side effect directly in the render function body, you are saying: *every time React calls this function for any reason, execute this side effect.* That is almost never what you mean.
+
+The specific failure modes:
+
+**Execution count mismatch.** Your render function might run twice (Strict Mode) but you expected `document.title` to be set once. For `document.title` this is benign. For an analytics event tracking "page viewed," you just logged it twice. For an API call, you just made it twice.
+
+**Execution without commitment.** React may call your component function during a render that never results in visible DOM changes. You've done the work — the external world is now different — but React's view of the world wasn't actually updated. Your side effect fired when it shouldn't have.
+
+**No cleanup.** Render functions run and return. There is no signal for "this render is being replaced by a new one." If your render function starts a timer or opens a WebSocket, there is no mechanism to stop the timer or close the socket when the component re-renders or unmounts. You accumulate timers. You accumulate connections. They all fire.
+
+**Ordering violation.** React needs to control when side effects happen relative to the DOM update cycle. Effects that run during render are outside React's control. React cannot batch them, defer them, or cancel them.
+
+The root issue: **render must be a pure calculation.** Given the same props and state, it must return the same JSX and change nothing outside itself. Any function that reaches outside and changes the world violates this contract.
+
+---
+
+### 4. React's Mental Model
+
+A side effect is any operation that:
+
+1. Reads from or writes to something outside the component's own scope, or
+2. Is not safe to run multiple times with the same inputs and get the same result
+
+The line between pure computation and a side effect:
+
+```
+Pure (safe in render):
+  - Computing a derived value from props/state
+  - Formatting a string
+  - Filtering an array
+  - Conditional JSX
+
+Side effects (not safe in render):
+  - document.title = ...
+  - fetch(...)
+  - localStorage.setItem(...)
+  - setInterval(...)
+  - addEventListener(...)
+  - console.log(...)   ← technically a side effect, though benign
+  - new WebSocket(...) 
+```
+
+React's mental model for dealing with this is a clear separation of two phases:
+
+- **Render phase**: Pure. Calculate what the UI should look like. No external changes.
+- **Effect phase**: Impure allowed. After the DOM is updated, sync external things with the new state.
+
+The render phase is React's domain. The effect phase is where you are allowed to escape into the outside world — but only after React has finished its work.
+
+---
+
+### 5. React's Solution
+
+`useEffect` is the gate between React's world and the outside world.
+
+```jsx
+function ClickCounter() {
+  const [count, setCount] = React.useState(0);
+
+  // render is now pure: no side effects
+  // just: given this count, what should the UI look like?
+
+  useEffect(() => {
+    // this runs AFTER React has updated the DOM
+    // safe to reach outside now
+    document.title = `Clicked ${count} times`;
+  }, [count]); // only re-run when count changes
+
+  return (
+    <button onClick={() => setCount(c => c + 1)}>
+      Clicked {count} times
+    </button>
+  );
+}
+```
+
+The render function is now pure. It only describes the UI. After React updates the DOM with that description, React then runs your effect. Your effect reaches outside React's world and synchronizes `document.title` with the current `count`.
+
+The separation is the point. Not just "where to put the code." The categories matter:
+
+- **Render**: what to show
+- **Effect**: what to sync with the outside world after showing it
+
+Every `useEffect` is an answer to: "After React updates the UI, what external thing needs to reflect that update?"
+
+```jsx
+// Document title should reflect the current count
+useEffect(() => {
+  document.title = `Clicked ${count} times`;
+}, [count]);
+
+// A WebSocket should be open while this component is mounted
+useEffect(() => {
+  const socket = new WebSocket('wss://...');
+  return () => socket.close(); // cleanup when done
+}, []);
+
+// A server should be queried when userId changes
+useEffect(() => {
+  fetch(`/api/users/${userId}`).then(/* ... */);
+}, [userId]);
+```
+
+Each effect answers one question. Each effect manages one external thing. The API enforces the pattern.
+
+---
+
+### 6. Internals
+
+React's rendering pipeline has two distinct phases. Understanding where side effects fit requires knowing both.
+
+**Render phase (synchronous, potentially interruptible in Concurrent Mode):**
+
+React calls your component function. You return JSX. React converts that JSX into a new Fiber tree and diffs it against the existing one, computing what DOM mutations are needed. This phase may be interrupted, restarted, or executed speculatively. This is why it must be pure. React cannot safely undo or replay a side effect the way it can restart a pure render.
+
+**Commit phase (synchronous, never interrupted):**
+
+React takes the computed mutations and applies them to the actual DOM. This is the moment the user sees the update. React then moves into the post-commit phase:
+
+1. Calls cleanup functions from the *previous* render's effects
+2. Calls the effect functions from the *current* render's effects
+
+This ordering is deliberate. Your effect runs after the browser has painted the new UI. When your effect reads from the DOM (measuring a layout, for example), it reads the committed, current DOM — not a stale snapshot.
+
+The Fiber node for a component with effects carries an `updateQueue` that stores pending effects. Each effect is an object containing:
+
+```
+{
+  tag: HookEffect,        // flags: HasEffect, Passive, etc.
+  create: () => {...},    // your effect function
+  destroy: () => {...},   // your cleanup function (return value of create)
+  deps: [count],          // the dependency array
+  next: ...               // linked list to next effect
+}
+```
+
+After commit, React walks the effect list. For each effect marked `HasEffect` (meaning its deps changed), it runs `destroy` from the previous render, then runs `create` from the current render and stores the return value as the new `destroy`.
+
+Effects marked `Passive` (which is what `useEffect` uses) are scheduled asynchronously via the scheduler — they do not block the browser from painting. This is why `useEffect` does not block rendering. `useLayoutEffect` uses a different tag that causes it to run synchronously after DOM mutation but before paint. That distinction matters for layout measurements and is covered in 5.7.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: "Is `console.log` in a render function a side effect?"**
+
+Yes. `console.log` writes to an external output stream. It is not a pure operation — calling it changes the state of the console, and calling it ten times is different from calling it once. In practice, `console.log` in render is tolerated for debugging, but in Strict Mode you will see it logged twice, which is React demonstrating exactly why render must be pure: it re-runs your render function to verify the same output comes back, and the double-log is evidence that something external was touched.
+
+The correct answer demonstrates understanding of the definition, not just memorized examples. A side effect is anything that touches the world outside the function. `console.log` qualifies.
+
+---
+
+**Trap 2: "This code works fine. What's wrong with it?"**
+
+```jsx
+function UserProfile({ userId }) {
+  const [user, setUser] = React.useState(null);
+
+  fetch(`/api/users/${userId}`)
+    .then(r => r.json())
+    .then(data => setUser(data));
+
+  return <div>{user?.name ?? 'Loading...'}</div>;
+}
+```
+
+Three things are wrong:
+
+First, `fetch` is called on every render. `setUser` triggers a re-render. The re-render calls `fetch` again. `fetch` resolves and calls `setUser` again. Infinite loop.
+
+Second, there is no cleanup. If `userId` changes before the first fetch resolves, the first fetch will still call `setUser` with stale data, overwriting the correct result for the new `userId`. This is a race condition.
+
+Third, there is no handling for the component unmounting before the fetch resolves. `setUser` will be called on an unmounted component, producing a React warning and potentially a runtime error.
+
+The fix is `useEffect` with `userId` as a dependency, and an abort controller for cleanup. All three problems are solved by putting the fetch in an effect where React can manage its lifecycle.
+
+---
+
+**Trap 3: "What's the difference between a side effect and an event handler? Both reach outside React."**
+
+An event handler is not a side effect in the `useEffect` sense, even though it does impure work.
+
+Side effects in the `useEffect` sense are operations that need to happen *as a consequence of the component rendering* — they synchronize external systems with the current state of the component. They are triggered by React's render cycle, not by user interaction.
+
+Event handlers are triggered by user interaction. React has a clear, synchronous moment to run them (the user clicked), they run to completion, and they're done. React controls their lifecycle through the event delegation system. They do not need the lifecycle management that `useEffect` provides.
+
+The confusion collapses when you look at what `useEffect` is actually for: syncing things with render output. Event handlers are not syncing anything with render output — they are responding to external input. These are opposite directions of data flow.
+
+---
+
+### Self-Test — 5.1
+
+---
+
+**Q1.** Give the precise definition of a side effect. Using that definition, classify each of the following as a side effect or pure computation: filtering an array, writing to `localStorage`, deriving a formatted date string from a prop, opening a WebSocket connection, computing a total price from a cart array.
+
+<details>
+<summary>Answer</summary>
+
+A side effect is any operation that reads from or writes to something outside the function's own scope, or is not safe to run multiple times with the same inputs and produce the same result without consequence.
+
+- Filtering an array: pure. The array is passed in, a new array is returned, nothing outside the function changes.
+- Writing to `localStorage`: side effect. `localStorage` is external to the component. Writing to it changes the state of the browser's storage regardless of whether React committed anything.
+- Deriving a formatted date string from a prop: pure. Same prop in, same string out, nothing external touched.
+- Opening a WebSocket connection: side effect. A connection to an external server is established. The outside world is now different. Running it twice opens two connections.
+- Computing a total price from a cart array: pure. Same array in, same number out, nothing external touched.
+
+</details>
+
+---
+
+**Q2.** A teammate puts a `fetch` call directly in a component's render body and says "it works in development, the data loads correctly." Explain the specific failure modes that will appear, and why they may not be immediately visible.
+
+<details>
+<summary>Answer</summary>
+
+Three failure modes:
+
+First, infinite loop risk. The fetch resolves and calls a state setter. The state setter triggers a re-render. The re-render runs the fetch again. This loops until the component unmounts or the browser tab crashes. In development this may appear intermittently if the component only renders once before user interaction, masking the loop until a state change occurs.
+
+Second, race conditions. If a prop that the fetch depends on changes before the previous fetch resolves, both fetches are in flight simultaneously. Whichever resolves last wins and sets state, even if it was the stale request. The UI may briefly show correct data and then revert to stale data. This is invisible in development on fast local APIs.
+
+Third, setting state on unmounted components. If the component unmounts before the fetch resolves — navigating away, conditional rendering — the fetch still calls the state setter on a component that no longer exists. React produces a warning and in some cases a runtime error. This is invisible unless the user navigates quickly.
+
+All three are timing-dependent and may not appear in simple local development scenarios, which is exactly why the pattern feels like it works until it is in production.
+
+</details>
+
+---
+
+**Q3.** React's rendering pipeline has two phases. Name them, describe what happens in each, and explain why side effects are prohibited in one but permitted in the other.
+
+<details>
+<summary>Answer</summary>
+
+The two phases are the render phase and the commit phase.
+
+In the render phase, React calls your component function and computes what the UI should look like. It diffs the new output against the previous Fiber tree to determine what DOM mutations are needed. In Concurrent Mode this phase can be interrupted, restarted, or executed speculatively and discarded. Because of this, it must be pure: React may call your component function multiple times for a single visible update, and any side effect would fire multiple times with no mechanism to undo it.
+
+In the commit phase, React applies the computed DOM mutations. This phase is synchronous and never interrupted. After the DOM is updated, React runs effect cleanup from the previous render and then effect setup from the current render. Side effects are permitted here because React has finished its work and is now in a controlled, sequential handoff to the outside world. The timing is guaranteed: effects always see the committed, current DOM.
+
+</details>
+
+---
+
+**Q4.** What is the distinction between a side effect managed by `useEffect` and work done inside an event handler? Both are impure. Why does one require `useEffect` and the other does not?
+
+<details>
+<summary>Answer</summary>
+
+The distinction is what triggers the work and what lifecycle it needs.
+
+`useEffect` is for work that must happen as a consequence of the component rendering — synchronizing an external system with the current render output. It is triggered by React's render cycle. Because it is tied to the render cycle, it needs React to manage when it runs (after commit), when it re-runs (when deps change), and when it cleans up (before the next effect or on unmount). Without `useEffect`, there is no mechanism for any of this.
+
+Event handlers are triggered by user interaction, not by the render cycle. React dispatches them at a specific, synchronous moment in response to a DOM event. They run to completion. There is no "previous handler to clean up" and no "re-run when deps change" because they are not tied to the render cycle at all. React manages their lifecycle through the event delegation system automatically.
+
+The directional difference: effects synchronize React's output to the outside world. Event handlers bring the outside world's input into React. They are opposite directions and need different lifecycle management.
+
+</details>
+
+---
+
+**Q5.** In React Strict Mode, a component's render function runs twice. A developer notices their `useEffect` only runs once in Strict Mode, but a `console.log` inside the render body prints twice. Explain precisely why this happens and what React is trying to demonstrate with each behavior.
+
+<details>
+<summary>Answer</summary>
+
+The `console.log` prints twice because Strict Mode intentionally double-invokes the render function to verify it is pure. If the render function is pure, running it twice produces the same output. The double log is a side effect of that double invocation — it is React demonstrating that something in your render body is reaching outside the function. The second invocation is the signal: your render has a side effect, and React is surfacing it by showing you the consequence of running it twice.
+
+`useEffect` runs once because Strict Mode does not double-invoke effects the same way. In React 18 Strict Mode, effects are actually mounted, unmounted, and remounted once — simulating a component being hidden and shown again — but the effect setup function still runs once per committed render from the developer's perspective. The purpose here is different: React is testing that your cleanup function correctly undoes your setup function, not testing that the effect is pure (effects are explicitly allowed to be impure).
+
+Together the two behaviors demonstrate React's two-phase contract: render must be pure (double-invoke to expose violations), effects are the designated escape hatch (one run, but with forced cleanup to verify correctness).
+
+</details>

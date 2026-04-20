@@ -1,1 +1,514 @@
-﻿# Common useEffect mistakes
+﻿# Common useEffect Mistakes
+
+### 1. The Problem
+
+`useEffect` is the most misused hook in React. Not because developers do not understand what it does at the surface level, most know it "runs after render" and takes a dependency array. The misuse comes from operating with an incomplete mental model of what effects are for, when they run, and what the dependency array actually means.
+
+The result is a predictable set of recurring bugs: effects that run in infinite loops, effects that use stale data because of missing dependencies, effects that are used for work that does not belong in effects at all, and effects whose cleanup is absent or wrong. These bugs are often subtle, sometimes latent (they exist but only trigger under specific conditions), and occasionally catastrophic (the infinite loop variant).
+
+Understanding these mistakes precisely requires returning to the correct mental model for `useEffect`: it exists to synchronize React state with an external system. Every correct effect can be described as "when X in React changes, sync Y in the external world." If you cannot describe your effect in those terms, it probably should not be an effect.
+
+---
+
+### 2. The Naive Attempt
+
+A developer builds a user profile page. They need to: fetch user data on load, update the document title when the user's name changes, log every render for analytics, and reset a form when the user navigates to a different profile.
+
+```jsx
+function UserProfile({ userId }) {
+  const [user, setUser] = React.useState(null);
+  const [formData, setFormData] = React.useState({ bio: '' });
+
+  // Fetch user
+  React.useEffect(() => {
+    fetchUser(userId).then(data => {
+      setUser(data);
+      setFormData({ bio: data.bio }); // also update form
+    });
+  }); // no dependency array
+
+  // Update document title
+  React.useEffect(() => {
+    if (user) {
+      document.title = user.name;
+      setUser(prev => ({ ...prev, lastViewed: Date.now() })); // update state in effect
+    }
+  }, [user]);
+
+  // Analytics
+  React.useEffect(() => {
+    logRender('UserProfile', userId);
+  });
+
+  // Reset form on userId change
+  React.useEffect(() => {
+    setFormData({ bio: user?.bio || '' });
+  }, [userId]);
+
+  return (
+    <div>
+      <h1>{user?.name}</h1>
+      <textarea
+        value={formData.bio}
+        onChange={e => setFormData({ bio: e.target.value })}
+      />
+    </div>
+  );
+}
+```
+
+This component has at least four distinct bugs. Some cause infinite loops. Some cause stale data. Some are just wasteful. Each maps to a specific, nameable mistake.
+
+---
+
+### 3. Why That Breaks
+
+Four failure modes, each precise.
+
+**Failure mode 1: No dependency array causes the effect to run on every render.**
+
+`React.useEffect(() => { fetchUser(userId).then(...) })` with no array runs after every single render. Not just when `userId` changes. After every render. The fetch completes, calls `setUser`, which causes a re-render, which runs the effect again, which starts another fetch, which will call `setUser`, which causes another re-render. Infinite loop.
+
+**Failure mode 2: Setting state unconditionally in an effect creates a render loop.**
+
+`useEffect(() => { if (user) { setUser(prev => ...) } }, [user])` reads `user` and then calls `setUser`. The effect runs when `user` changes. `setUser` changes `user`. The effect runs again. `setUser` changes `user` again. Infinite loop, though `Object.is` may save you if the update produces the same reference.
+
+**Failure mode 3: Missing dependencies cause stale closures.**
+
+`useEffect(() => { setFormData({ bio: user?.bio || '' }) }, [userId])` depends on `user` inside the effect but `user` is not in the dependency array. When `userId` changes, the effect runs. But `user` at the time the effect runs is the old user's data (the new `userId` triggered a fetch in the first effect, but if the fetch has not completed, `user` is still the previous user). The form is reset with stale data.
+
+**Failure mode 4: Using effects for work that is not synchronization.**
+
+`useEffect(() => { logRender('UserProfile', userId) })` is not synchronizing anything external. It is running a side effect in response to a render. This works but is conceptually wrong: logging a render is something that happens as part of the render event, not something that needs to happen after the DOM is committed. More importantly, with no dependency array, it runs on every render unnecessarily.
+
+---
+
+### 4. React's Mental Model
+
+An effect is for synchronizing React with the outside world. The test for whether something belongs in an effect:
+
+> "When the render output is committed to the DOM, is there an external system (network, DOM API, timer, subscription, browser API) that needs to be updated to match React's state?"
+
+If yes: effect. If no: probably not an effect.
+
+The dependency array answers: "which pieces of React state or props does this synchronization depend on?" Every value from the component scope that the effect uses must be in the array. The array is not "when to run the effect." It is "what inputs does this synchronization depend on." If those inputs have not changed, the synchronization is already correct and does not need to re-run.
+
+One sentence: an effect is a pure synchronization description, "sync this external thing with these React values," and the dependency array is the complete set of those React values.
+
+---
+
+### 5. React's Solution
+
+**Mistake 1: Missing dependency array entirely.**
+
+```jsx
+// Wrong: runs after every render
+React.useEffect(() => {
+  fetchUser(userId).then(setUser);
+});
+
+// Correct: runs only when userId changes
+React.useEffect(() => {
+  fetchUser(userId).then(setUser);
+}, [userId]);
+```
+
+The mental model check: "sync the user data fetch with `userId`." The input is `userId`. When `userId` changes, re-run the sync. When nothing changed, the external system (the network response) is already correct.
+
+**Mistake 2: Setting state in an effect that depends on that state.**
+
+```jsx
+// Wrong: reading user and setting user creates a loop
+React.useEffect(() => {
+  if (user) {
+    document.title = user.name;
+    setUser(prev => ({ ...prev, lastViewed: Date.now() }));
+  }
+}, [user]);
+
+// Correct: separate the two concerns
+// Title synchronization: depends on user.name
+React.useEffect(() => {
+  if (user?.name) {
+    document.title = user.name;
+  }
+}, [user?.name]);
+
+// If lastViewed must be tracked, do it at the point of state change,
+// not in a separate effect
+function handleUserLoaded(data) {
+  setUser({ ...data, lastViewed: Date.now() });
+}
+```
+
+The rule: if an effect sets state that is also in its dependency array, you have a potential loop. The fix is to set state at the event that causes the change (the fetch callback), not in a reactive effect triggered by the state change.
+
+**Mistake 3: Missing dependencies causing stale closures.**
+
+```jsx
+// Wrong: user is used but not in deps
+React.useEffect(() => {
+  setFormData({ bio: user?.bio || '' });
+}, [userId]);
+
+// Correct option 1: add user to deps
+React.useEffect(() => {
+  if (user) {
+    setFormData({ bio: user.bio });
+  }
+}, [userId, user]);
+
+// Correct option 2: derived state is better here
+// formData is derived from user, so compute it during render
+const initialBio = user?.bio || '';
+// Use this as the controlled input's fallback, manage form state separately
+```
+
+But actually, the deeper fix here is recognizing that `formData.bio` initialized from `user.bio` is a case of storing derived state as state. The effect is a symptom. The root cause is the architecture.
+
+**Mistake 4: Effects for non-synchronization work.**
+
+```jsx
+// Wrong: logging a render is not external synchronization
+React.useEffect(() => {
+  logRender('UserProfile', userId);
+});
+
+// Also wrong: this is an event, not synchronization
+React.useEffect(() => {
+  if (user) {
+    analytics.track('profile_viewed', { userId: user.id });
+  }
+}, [user]);
+```
+
+The second example tracks a profile view whenever `user` changes. But "user changed in React" is not the same event as "user viewed a profile." If the component re-renders with the same user (parent state change), the effect does not re-run (deps unchanged). If the component mounts and immediately unmounts (React Strict Mode), the effect runs twice. The tracking is coupled to React's rendering lifecycle rather than to the actual user action.
+
+```jsx
+// Correct: track at the event, not in an effect
+React.useEffect(() => {
+  if (userId) {
+    fetchUser(userId).then(data => {
+      setUser(data);
+      analytics.track('profile_viewed', { userId }); // at the data load event
+    });
+  }
+}, [userId]);
+```
+
+Or even better: track in the event handler for the navigation action that brought the user to this page, not in an effect at all.
+
+**The infinite loop patterns, catalogued.**
+
+```jsx
+// Pattern 1: no deps array + state setter
+React.useEffect(() => {
+  setCount(c => c + 1); // triggers re-render, effect runs again, forever
+});
+
+// Pattern 2: object/array in deps that is recreated every render
+React.useEffect(() => {
+  fetchData(options);
+}, [options]); // options = { page: 1 } created in render body
+// options is a new reference every render, effect runs every render
+
+// Pattern 3: state update that triggers the effect's own deps
+React.useEffect(() => {
+  if (data) {
+    setProcessed(transform(data));
+  }
+}, [data, setProcessed]); // setProcessed is stable, but if transform
+// changes data in a way that re-triggers the dep, loop
+
+// Pattern 4: function dep that is recreated every render
+React.useEffect(() => {
+  subscribe(onMessage);
+}, [onMessage]); // onMessage is () => {} defined in render body
+// new function reference every render, effect runs every render
+```
+
+The fixes:
+
+```jsx
+// Fix pattern 2: stabilize the object
+const options = React.useMemo(() => ({ page }), [page]);
+
+// Fix pattern 3: compute during render instead of in an effect
+const processed = React.useMemo(() => data ? transform(data) : null, [data]);
+
+// Fix pattern 4: stabilize the function
+const onMessage = React.useCallback((msg) => { ... }, [stableDeps]);
+```
+
+**Over-use of effects: the most common misuse.**
+
+The most pervasive mistake is using effects for things that are not synchronization at all:
+
+```jsx
+// Wrong: initializing state from a prop
+React.useEffect(() => {
+  setInternalValue(externalProp);
+}, [externalProp]);
+// This is derived state stored as state. Covered in dedicated topic.
+// Fix: compute during render or initialize once with useState
+
+// Wrong: transforming data for display
+React.useEffect(() => {
+  setDisplayItems(items.map(formatItem));
+}, [items]);
+// This is derived state. Fix: const displayItems = items.map(formatItem)
+
+// Wrong: notifying a parent of a state change
+React.useEffect(() => {
+  onChange(internalValue);
+}, [internalValue, onChange]);
+// Fix: call onChange directly in the event handler that changes internalValue
+
+// Wrong: subscribing to a prop-provided observable and setting state
+React.useEffect(() => {
+  const sub = observable.subscribe(setValue);
+  return () => sub.unsubscribe();
+}, [observable]);
+// This is valid IF using useSyncExternalStore is not possible
+// But useSyncExternalStore is the correct API for external subscriptions
+```
+
+The litmus test: could this effect be replaced with a computation during render or a direct call in an event handler? If yes, it should not be an effect.
+
+---
+
+### 6. Internals
+
+**How React detects dependency changes.**
+
+On each render, `updateEffectImpl` runs `areHookInputsEqual` on the current and previous dependency arrays:
+
+```js
+function areHookInputsEqual(nextDeps, prevDeps) {
+  if (prevDeps === null) return false; // first render: always run
+  for (let i = 0; i < prevDeps.length && i < nextDeps.length; i++) {
+    if (Object.is(nextDeps[i], prevDeps[i])) continue;
+    return false; // any mismatch: re-run the effect
+  }
+  return true; // all match: skip the effect
+}
+```
+
+`Object.is` is used, not deep equality. An object `{ page: 1 }` created in render body fails `Object.is` against the previous render's `{ page: 1 }` because they are different references. The effect re-runs even though nothing logically changed.
+
+This is why missing a dep causes a stale closure (the effect never updates, it captured an old value) and why an unstable dep causes an infinite or too-frequent loop (the dep fails `Object.is` every render, the effect re-runs every render).
+
+**The two modes of running effects.**
+
+Effects run in two different situations:
+
+Mount: `prevDeps === null`. `areHookInputsEqual` returns `false` immediately. The effect always runs on mount.
+
+Update: `prevDeps` is the previous dep array. `areHookInputsEqual` compares element by element.
+
+The cleanup function (the function returned by the effect) runs:
+- Before the effect runs again (to clean up the previous effect's work)
+- When the component unmounts
+
+```js
+// Effect lifecycle:
+// 1. Component mounts
+//    → effect runs, cleanup = effect's return value stored on hook node
+// 2. Component re-renders, deps changed
+//    → previous cleanup runs
+//    → effect runs again, new cleanup stored
+// 3. Component unmounts
+//    → cleanup runs
+//    → effect does not run again
+```
+
+The absence of a cleanup when one is needed, forgetting to unsubscribe, forgetting to clear a timer, forgetting to abort a fetch, is a separate category of mistake that leads to memory leaks and operations on unmounted components.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: Will this cause an infinite loop? If yes, why exactly?**
+
+```jsx
+function App() {
+  const [user, setUser] = React.useState(null);
+
+  React.useEffect(() => {
+    fetchCurrentUser().then(data => setUser(data));
+  }, [user]);
+
+  return <div>{user?.name}</div>;
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+Yes, infinite loop. Here is the precise sequence.
+
+On mount: `user` is `null`. Effect runs (deps array contains `null` on first render, treated as changed). `fetchCurrentUser()` starts.
+
+Fetch completes: `setUser(data)` is called with the fetched user object. React re-renders. `user` is now the fetched object.
+
+Re-render: `useEffect` processes its deps. Previous dep: `null`. Current dep: the user object. `Object.is(null, userObject)` is `false`. The effect is marked to run again.
+
+After commit: effect cleanup runs (none here), then effect runs. `fetchCurrentUser()` starts again.
+
+Fetch completes: `setUser(newData)` is called. The new data is a new object (even if the fields are identical, each API call produces a new object). `user` has a new reference. `Object.is(prevUser, newUser)` is `false`. Effect marked to run again. Another fetch starts.
+
+The loop: every fetch produces a new object reference. The dep changes on every fetch completion. The effect runs again. Another fetch. Another new object. Another dep change. Forever.
+
+The fix: the dep array should be `[]` (run once on mount) or `[userId]` if the user to fetch is identified by a changing ID. The effect should not depend on the result of the fetch it is performing.
+
+</details>
+
+---
+
+**Trap 2: This effect has a missing dependency. What specific behavior does the user experience?**
+
+```jsx
+function SearchResults({ query, userId }) {
+  const [results, setResults] = React.useState([]);
+
+  React.useEffect(() => {
+    fetchResults(query, userId).then(setResults);
+  }, [query]); // userId missing
+
+  return <ul>{results.map(r => <li key={r.id}>{r.name}</li>)}</ul>;
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+`userId` is used in the effect callback but not in the dependency array. The effect runs only when `query` changes. If `userId` changes (the user logs in, switches accounts, or the parent component changes which user's results to show) without `query` changing, the effect does not re-run. `results` shows data fetched with the previous `userId`. The search results are for the wrong user.
+
+More precisely: the effect closure captures `userId` from the render when the effect was last created. When `userId` changes and `query` stays the same, `areHookInputsEqual` compares `[query]` to `[query]`, finds them equal, and does not re-run the effect. The callback still references the old `userId` value from its closure. `fetchResults(query, userId)` is never called with the new `userId` until `query` also changes.
+
+The user experience: after switching user accounts, search results still show the previous user's data. The bug is invisible in normal testing because `query` is usually changed along with or after `userId` in tests. It surfaces in production when a user switches accounts without changing their search term.
+
+The fix: `[query, userId]`.
+
+</details>
+
+---
+
+**Trap 3: Is this effect correct? What could go wrong?**
+
+```jsx
+function Timer({ onTick }) {
+  React.useEffect(() => {
+    const id = setInterval(() => {
+      onTick();
+    }, 1000);
+    return () => clearInterval(id);
+  }, [onTick]);
+
+  return <div>Timer running</div>;
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+Syntactically correct: `onTick` is in the deps, the cleanup clears the interval. But there is a practical problem: if `onTick` is defined inline at the call site without `useCallback`, it is a new reference on every parent render.
+
+```jsx
+// Parent:
+<Timer onTick={() => setCount(c => c + 1)} />
+// inline function: new reference every parent render
+```
+
+Every time the parent re-renders, `Timer` receives a new `onTick` reference. `areHookInputsEqual([prevOnTick], [newOnTick])` is `false`. The effect re-runs: the interval is cleared and a new one is created. The timer resets on every parent render. If the parent re-renders frequently, the interval never completes a full second.
+
+Two fixes. First: require the parent to stabilize `onTick` with `useCallback`. This is the caller's responsibility and should be documented. Second: use a ref pattern that avoids the dep entirely:
+
+```jsx
+function Timer({ onTick }) {
+  const onTickRef = React.useRef(onTick);
+
+  React.useLayoutEffect(() => {
+    onTickRef.current = onTick; // always current, no re-render
+  });
+
+  React.useEffect(() => {
+    const id = setInterval(() => {
+      onTickRef.current(); // reads latest callback via ref
+    }, 1000);
+    return () => clearInterval(id);
+  }, []); // stable: interval never recreated
+
+  return <div>Timer running</div>;
+}
+```
+
+The ref always holds the latest `onTick` without the interval being recreated. This is the "event handler ref" pattern for stable effects with changing callbacks.
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** What is the single litmus test for whether something belongs in a `useEffect`? Apply it to: fetching data when a userId changes, transforming a list for display, and updating the document title when a page name changes.
+
+<details>
+<summary>Answer</summary>
+
+The litmus test: "is this synchronizing an external system with React state?" If yes, it belongs in an effect. If no, it belongs either in a computation during render or in an event handler.
+
+Fetching data when userId changes: yes, this is synchronization. The external system is the network/server. The React state is `userId`. When `userId` changes, sync the external data source (fetch new user data). Belongs in `useEffect` with `[userId]` as deps.
+
+Transforming a list for display: no. Applying `items.map(formatItem)` is a pure computation that derives display data from React state. It has no external system to synchronize. The transformation runs during render and the result is used directly in JSX. Using an effect to compute it and store it in state introduces derived-state-as-state bugs, a stale render gap, and unnecessary complexity. Does not belong in `useEffect`.
+
+Updating document title when page name changes: yes, this is synchronization. The external system is the browser's document API. The React state is `pageName`. When `pageName` changes, sync the document title. `React.useEffect(() => { document.title = pageName; }, [pageName])` is correct.
+
+</details>
+
+---
+
+**Q2.** What is the precise mechanical reason an unstable dependency causes an effect to run on every render?
+
+<details>
+<summary>Answer</summary>
+
+`areHookInputsEqual` uses `Object.is` to compare each element of the previous and current dependency arrays. `Object.is` for objects and functions is reference equality: two distinct objects with identical contents are not equal. A function defined in a component's render body is a new object on every render. An object literal in a component's render body is a new object on every render.
+
+When such a value is in the dependency array, every render produces a new reference for that dep. `Object.is(prevDep, newDep)` is `false` on every render. `areHookInputsEqual` returns `false`. The effect is marked with `HookHasEffect`. The effect runs after every render.
+
+This is functionally equivalent to having no dependency array at all, with the additional overhead of the dependency comparison on every render. The fix is to stabilize the reference: move constants outside the component, use `useCallback` for functions, use `useMemo` for objects. With a stable reference, `Object.is` returns `true` across renders where the value logically has not changed, and the effect correctly runs only when it should.
+
+</details>
+
+---
+
+**Q3.** The "notify parent of state change via effect" pattern is wrong. What should you do instead, and why is the effect version problematic?
+
+<details>
+<summary>Answer</summary>
+
+The wrong pattern:
+
+```jsx
+React.useEffect(() => {
+  onChange(internalValue);
+}, [internalValue, onChange]);
+```
+
+The correct pattern: call `onChange` directly in the event handler that changes `internalValue`.
+
+```jsx
+function handleChange(newValue) {
+  setInternalValue(newValue);
+  onChange(newValue); // direct call, no effect needed
+}
+```
+
+The effect version is problematic for three reasons. First, timing: the effect runs after render and commit. The parent receives the notification after the child has already rendered with the new value. If the parent updates its own state in response, it triggers a second render cycle. The direct call in the event handler notifies the parent synchronously, and React batches both state updates into one render.
+
+Second, it is not synchronization: `onChange(internalValue)` is not syncing an external system. It is communicating between components. That communication belongs in the event model (callbacks), not in the effect model (external synchronization).
+
+Third, stale closure risk: `internalValue` in the effect closure could be stale if the dep array is wrong. In the event handler, `newValue` is the fresh value from the event, never stale.
+
+</details>

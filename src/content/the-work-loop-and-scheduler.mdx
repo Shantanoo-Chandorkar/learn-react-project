@@ -1,1 +1,438 @@
-﻿# The work loop and the Scheduler
+﻿# The Work Loop and the Scheduler
+
+### 1. The Problem
+
+React needs to render components. The browser needs to handle user input, run animations, and paint frames. Both compete for the same resource: the JavaScript main thread. There is only one.
+
+In the synchronous model, React takes the main thread and does not give it back until the entire tree is rendered. 200ms of React work means 200ms where the browser cannot respond to a click, cannot update an animation, cannot paint. The user experiences this as a frozen, unresponsive UI.
+
+The solution seems obvious: do React work in small chunks, giving the browser a chance to run between chunks. But this requires answering a question that is harder than it appears: how do you know when to stop? The browser does not tell JavaScript "I need the thread back now." There is no preemption mechanism in JavaScript. The main thread does not interrupt a running function. You have to voluntarily yield, and to yield, you need to know when it is time to do so.
+
+This is what the Scheduler solves. It is React's cooperative multitasking system, a mini operating system running inside the browser, managing time allocation between React's rendering work and the browser's own needs.
+
+---
+
+### 2. The Naive Attempt
+
+You want to break up a large render into chunks. First instinct: use `setTimeout(fn, 0)`.
+
+```js
+function renderChunk(fibers) {
+  fibers.slice(0, 10).forEach(fiber => processWork(fiber));
+  const remaining = fibers.slice(10);
+  if (remaining.length > 0) {
+    setTimeout(() => renderChunk(remaining), 0);
+  }
+}
+```
+
+Process 10 Fibers, yield, process 10 more. This looks right. It is wrong for three reasons.
+
+**Problem 1: `setTimeout(fn, 0)` does not mean "run immediately."**
+Browsers clamp `setTimeout` to a minimum of 1ms delay, and in nested calls or background tabs, it is clamped to 4ms. Processing 1000 Fibers in chunks of 10 takes 100 `setTimeout` calls, each adding at least 1ms of delay. Total: 100ms of artificial latency added to the render. A render that would take 50ms of actual computation now takes 150ms of wall time.
+
+**Problem 2: The chunk size is fixed.**
+Rendering 10 Fibers might take 0.5ms or might take 50ms, depending on component complexity. A fixed chunk size either yields too often (overhead dominates) or not enough (long chunks still block the browser).
+
+**Problem 3: It does not cooperate with the browser's frame budget.**
+The browser targets 60fps, meaning 16.6ms per frame. You do not want to yield every 1ms (too much overhead) or every 100ms (too little responsiveness). You want to yield when you have used up most of the current frame's budget and the browser needs time for its own work. `setTimeout` gives you none of this information.
+
+The correct approach requires knowing how much time has elapsed in the current frame, and yielding when that time exceeds a threshold. This requires `performance.now()` and a time-slicing mechanism. But even with those, the question of how to resume after yielding (how to pick up the Fiber tree traversal where you left off) is a separate architectural problem. That is solved by Fiber's linked list structure.
+
+---
+
+### 3. Why That Breaks
+
+The precise failure mode of naive chunking: **cooperative multitasking requires a precise time budget, not a fixed work quantum.**
+
+The unit of "how much work to do before yielding" must be time, not item count. Because component renders have variable cost, a fixed item count produces variable time chunks. Variable time chunks cannot target a frame budget reliably. Sometimes you over-yield (wasting time on overhead), sometimes you under-yield (blocking the browser for too long).
+
+The correct unit is: "keep working until N milliseconds have elapsed, then yield." This requires a monotonic clock (`performance.now()`), a configurable budget, and a way to check the clock cheaply during the work loop.
+
+---
+
+### 4. React's Mental Model
+
+The Scheduler is a standalone package (`scheduler`) that implements cooperative multitasking via time-slicing. It assigns priorities to tasks, executes them in priority order, and yields to the browser when the current time slice is exhausted. React is one consumer of the Scheduler. The Scheduler does not know about React, Fibers, or components. It only knows about tasks, deadlines, and priorities.
+
+The work loop is React's innermost execution loop. It processes Fiber nodes one at a time using the Scheduler's time-slicing budget. On each iteration, it checks the clock. If time remains, process the next Fiber. If time is up, pause, tell the Scheduler to reschedule, and yield.
+
+One sentence: the Scheduler gives React time slices and a deadline, the work loop processes Fibers until the deadline, and then React hands the thread back to the browser.
+
+---
+
+### 5. React's Solution
+
+**The Scheduler package.**
+
+The Scheduler is independent of React. It can schedule any callback with a priority and will call it with a deadline. React passes its work loop as a callback to the Scheduler.
+
+```js
+// React asking the Scheduler to run its work loop
+import { scheduleCallback, NormalPriority } from 'scheduler';
+
+scheduleCallback(NormalPriority, performConcurrentWorkOnRoot);
+```
+
+The Scheduler has its own priority levels, separate from React's Lanes (though React maps between them):
+
+```js
+// scheduler/src/SchedulerPriorities.js
+const ImmediatePriority   = 1;  // synchronous, no deferral
+const UserBlockingPriority = 2; // 250ms expiry (user interactions)
+const NormalPriority      = 3;  // 5000ms expiry (default)
+const LowPriority         = 4;  // 10000ms expiry
+const IdlePriority        = 5;  // never expires, runs when idle
+```
+
+The Scheduler maintains a min-heap of tasks ordered by expiration time (priority + enqueue time). The task with the nearest expiration time is always at the top:
+
+```js
+// Task structure in the Scheduler's heap
+{
+  id: 1,
+  callback: performConcurrentWorkOnRoot,
+  priorityLevel: NormalPriority,
+  startTime: 1000,        // when the task was enqueued
+  expirationTime: 6000,   // startTime + priorityDelay
+  sortIndex: 6000,        // used for heap ordering
+}
+```
+
+**The MessageChannel mechanism.**
+
+The Scheduler uses a `MessageChannel` to schedule its host callbacks. A `MessageChannel` creates a pair of ports. Posting a message on one port enqueues a macrotask for the other port's `onmessage` handler. This macrotask runs after the current task completes and after all microtasks, but before the next `requestAnimationFrame`.
+
+```js
+// Simplified from scheduler/src/SchedulerHostConfig.js
+const channel = new MessageChannel();
+const port = channel.port2;
+
+channel.port1.onmessage = performWorkUntilDeadline;
+
+function requestHostCallback(callback) {
+  scheduledHostCallback = callback;
+  port.postMessage(null); // enqueue a macrotask
+}
+
+function performWorkUntilDeadline() {
+  if (scheduledHostCallback !== null) {
+    const currentTime = getCurrentTime();
+    // Give each task a 5ms slice by default
+    deadline = currentTime + 5; // yieldInterval = 5ms
+
+    const hasMoreWork = scheduledHostCallback(true, currentTime);
+
+    if (!hasMoreWork) {
+      scheduledHostCallback = null;
+    } else {
+      // More work remains: re-schedule another macrotask
+      port.postMessage(null);
+    }
+  }
+}
+```
+
+The 5ms time slice is the default yield interval. React processes Fibers for up to 5ms, then checks: did we exceed the deadline? If yes, yield. The browser gets a chance to run its rendering pipeline (style, layout, paint) between macrotasks, even if only briefly.
+
+Why `MessageChannel` and not `requestAnimationFrame`? `requestAnimationFrame` is tied to the display refresh rate (16.6ms). React does not need to synchronize work with frames. Work between frames is fine, as long as it yields frequently enough. `MessageChannel` macrotasks run as fast as the browser allows, without the frame-rate coupling. React can do multiple small work units between frames if the component tree is large but simple.
+
+Why not `Promise.then` (microtasks)? Microtasks run before the browser gets any chance to render. A chain of microtasks that schedules more microtasks would run to completion before the browser could paint, defeating the entire purpose of yielding.
+
+**The work loop.**
+
+The work loop is the inner loop that processes Fiber nodes using the Scheduler's time budget:
+
+```js
+// Simplified from ReactFiberWorkLoop.js
+function workLoopConcurrent() {
+  while (workInProgress !== null && !shouldYield()) {
+    performUnitOfWork(workInProgress);
+  }
+}
+
+function shouldYield() {
+  const currentTime = getCurrentTime();
+  return currentTime >= deadline;
+  // deadline was set by the Scheduler: currentTime + 5ms
+}
+```
+
+`workInProgress` is the current Fiber being processed. `performUnitOfWork` calls `beginWork` on the current Fiber, which returns the next Fiber to process (the child, if any). When a Fiber has no more children, `completeWork` is called and `workInProgress` is set to the sibling or parent.
+
+The traversal order is depth-first:
+
+```
+beginWork(A)      → returns A.child (B)
+beginWork(B)      → returns B.child (D)
+beginWork(D)      → returns null (no children)
+completeWork(D)   → workInProgress = D.sibling (E)
+beginWork(E)      → returns null
+completeWork(E)   → workInProgress = E.return.sibling... (back up to C)
+beginWork(C)      → ...
+```
+
+The crucial point: `workInProgress` is a pointer, not a call stack frame. When `shouldYield()` returns `true`, the work loop exits the `while` loop with `workInProgress` still pointing to the next Fiber to process. The current state is preserved in the heap (the Fiber tree and the `workInProgress` pointer). The browser gets the thread. When the Scheduler calls `performWorkUntilDeadline` again (next macrotask), the work loop resumes from `workInProgress`. Nothing is lost. This is the fundamental advantage of Fiber over the Stack reconciler.
+
+**The synchronous work loop.**
+
+For SyncLane updates (user events, `flushSync`), React does not use the Scheduler for time-slicing. Sync work must complete before the browser paints:
+
+```js
+function workLoopSync() {
+  while (workInProgress !== null) {
+    performUnitOfWork(workInProgress);
+  }
+  // no shouldYield() check: runs to completion
+}
+```
+
+The sync work loop processes the entire tree without yielding. This is appropriate for user input responses (where the user expects immediate feedback) but would cause jank if used for expensive background renders.
+
+**Putting it together: the full scheduling pipeline.**
+
+```
+User clicks button
+  → event handler fires (SyncLane)
+  → setState enqueued
+  → scheduleUpdateOnFiber called
+  → ensureRootIsScheduled called
+
+ensureRootIsScheduled:
+  → getNextLanes: what is the highest priority lane?
+  → SyncLane? → scheduleSyncCallback(performSyncWorkOnRoot)
+               → flushSyncCallbacks immediately (before browser paints)
+  → TransitionLane? → scheduleCallback(NormalPriority, performConcurrentWorkOnRoot)
+                     → Scheduler enqueues task, posts MessageChannel message
+
+[current task finishes]
+[microtasks run]
+[browser rendering: style, layout, paint if any pending]
+[MessageChannel macrotask fires: performWorkUntilDeadline]
+  → sets deadline = now + 5ms
+  → calls performConcurrentWorkOnRoot
+
+performConcurrentWorkOnRoot:
+  → prepareFreshStack: sets workInProgress to root Fiber
+  → workLoopConcurrent:
+      while (workInProgress !== null && !shouldYield()) {
+        performUnitOfWork(workInProgress)
+      }
+  → shouldYield() = true? → return true (hasMoreWork)
+  → Scheduler sees hasMoreWork: posts another MessageChannel message
+
+[browser rendering if needed]
+[next MessageChannel macrotask: performWorkUntilDeadline again]
+  → deadline = now + 5ms
+  → continues workLoopConcurrent from saved workInProgress
+
+...repeat until workInProgress === null (render phase complete)
+
+  → commitRoot: commit phase (synchronous, non-interruptible)
+  → scheduleCallback for passive effects (useEffect)
+```
+
+---
+
+### 6. Internals
+
+**The Scheduler's task heap.**
+
+The Scheduler's core data structure is a min-heap. Tasks are ordered by `sortIndex`, which is the expiration time for ready tasks and the start time for delayed tasks. The heap guarantees O(log n) insertion and O(1) peek at the highest-priority task:
+
+```js
+// Min-heap operations (simplified)
+function push(heap, node) {
+  const index = heap.length;
+  heap.push(node);
+  siftUp(heap, node, index);  // bubble up to maintain heap property
+}
+
+function peek(heap) {
+  return heap.length === 0 ? null : heap[0]; // O(1): top of heap
+}
+
+function pop(heap) {
+  // Remove and return the minimum element
+  const first = heap[0];
+  const last = heap.pop();
+  if (last !== first) {
+    heap[0] = last;
+    siftDown(heap, last, 0);  // bubble down
+  }
+  return first;
+}
+```
+
+The Scheduler has two heaps: `taskQueue` for tasks ready to run now, and `timerQueue` for delayed tasks (tasks with a `delay` option). A `requestAnimationFrame`-like mechanism periodically moves expired delayed tasks from `timerQueue` to `taskQueue`.
+
+**How `shouldYield` is implemented accurately.**
+
+The simple `currentTime >= deadline` check is accurate but requires a clock call on every Fiber. `performance.now()` is cheap (~microseconds) but not free. React checks it every iteration of the work loop:
+
+```js
+let deadline = 0;
+const yieldInterval = 5; // ms
+
+function shouldYieldToHost() {
+  const currentTime = getCurrentTime(); // performance.now()
+  if (currentTime >= deadline) {
+    // Time's up. But should we yield for a paint?
+    if (needsPaint) {
+      return true;
+    }
+    // Only yield if we are past the deadline
+    return currentTime >= deadline;
+  }
+  return false;
+}
+```
+
+`needsPaint` is a flag that becomes `true` when `requestAnimationFrame` fires, indicating the browser is about to paint and needs the thread. React can use this to yield even before the 5ms deadline if a frame is due. In practice, this means React will finish its current Fiber and then yield, giving the browser the frame it needs.
+
+**Priority inversion and entanglement.**
+
+A subtle problem: two state updates in different lanes may be entangled. Update A in SyncLane sets a value that Update B in TransitionLane also reads. If React renders B before A commits, B sees stale data. React solves this with entanglement: when updates to the same state queue exist in multiple lanes, the lanes are entangled. Processing either lane requires processing all entangled lanes together.
+
+```js
+// When enqueuing an update, check for entanglement
+function markRootEntangled(root, entangledLanes) {
+  root.entangledLanes |= entangledLanes;
+  const entanglements = root.entanglements;
+  let lanes = entangledLanes;
+  while (lanes > 0) {
+    const index = pickArbitraryLaneIndex(lanes);
+    const lane = 1 << index;
+    entanglements[index] |= entangledLanes;
+    lanes &= ~lane;
+  }
+}
+```
+
+This ensures that when React processes a lane, it also includes any lanes that are entangled with it, preventing renders that see partial state.
+
+**The 5ms time slice: why not smaller or larger?**
+
+The 5ms default is a deliberate balance. Human perception of input latency becomes noticeable at around 100ms (10 consecutive 10ms blocks without response). The browser needs roughly 6-8ms for style, layout, and paint when changes are present. With a 5ms React slice and ~6ms browser work, the total frame cost for a slice-and-paint cycle is ~11ms, within the 16.6ms budget. Smaller slices (1ms) would mean more context-switching overhead. Larger slices (15ms) would leave too little time for browser work and cause dropped frames under load.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: A developer wraps an expensive computation in `startTransition` expecting it to run off the main thread. It does not. Why?**
+
+```jsx
+function App() {
+  const [result, setResult] = React.useState(null);
+
+  function handleClick() {
+    startTransition(() => {
+      const computed = veryExpensiveComputation(); // takes 500ms
+      setResult(computed);
+    });
+  }
+
+  return <button onClick={handleClick}>Compute</button>;
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+`startTransition` does not move work off the main thread. It does not use Web Workers. It does not defer execution of the callback. It executes the callback synchronously, immediately, on the main thread when called.
+
+What `startTransition` does: it marks the state update (`setResult`) as belonging to a Transition lane instead of a Default or Sync lane. This affects when the resulting render is scheduled and whether it can be interrupted by higher-priority work.
+
+`veryExpensiveComputation()` runs synchronously inside the callback and takes 500ms regardless of `startTransition`. The button click handler blocks the main thread for 500ms. The user experiences 500ms of lag on the click, then a non-urgent state update that React processes in a Transition lane.
+
+`startTransition` only helps if the expensive work is the React render itself (reconciling a large tree), not arbitrary JavaScript computation inside the callback. To move a 500ms computation off the main thread, use a Web Worker. To prevent a large React render from blocking the UI, use `startTransition` so the render is interruptible and the browser can handle input between Fiber processing chunks.
+
+</details>
+
+---
+
+**Trap 2: Why does React use `MessageChannel` instead of `requestAnimationFrame` for scheduling, and what problem would `requestAnimationFrame` cause?**
+
+<details>
+<summary>Answer</summary>
+
+`requestAnimationFrame` fires once per display refresh, at approximately 60fps (16.6ms intervals). Using it for scheduling would mean React can only resume its work loop once per frame. For a large tree that requires 200ms of render work split into 5ms chunks, React needs to resume 40 times. With `requestAnimationFrame`, that would take 40 frames at 16.6ms each, approximately 660ms of wall time for 200ms of actual work. The frame-rate coupling introduces massive artificial latency.
+
+`MessageChannel` macrotasks run as fast as the browser's event loop allows between frames, not synchronized to the display refresh. React can perform multiple work units between frames if the component work is fast and the browser has no pending paint. This means a 200ms render does take roughly 200ms of wall time plus small scheduling overhead, not 660ms.
+
+`requestAnimationFrame` would also prevent React from doing any background work at all in the intervals between frames, since it only fires at frame boundaries. `MessageChannel` allows React to use every available macrotask slot, yielding periodically for browser work but not being constrained to frame-rate granularity.
+
+</details>
+
+---
+
+**Trap 3: The Scheduler uses a min-heap for its task queue. A developer proposes replacing it with a sorted array for "simplicity." What is the performance implication?**
+
+<details>
+<summary>Answer</summary>
+
+A sorted array requires O(n) insertion (finding the correct position and shifting elements) versus O(log n) for the min-heap. Peeking at the highest-priority task is O(1) for both. Removing the top element is O(n) for sorted array (shift operation) versus O(log n) for the heap.
+
+For the Scheduler, the critical operation is inserting new tasks as they arrive (state updates, effects, user events) and retrieving the highest-priority task efficiently. With many pending tasks (a busy application with many concurrent updates), the O(n) insertion cost of a sorted array becomes meaningful. The Scheduler processes tasks from the heap frequently: every 5ms yield potentially re-inserts the current task (if it has more work) and retrieves the next one. For n tasks, the heap makes this O(log n) per cycle. The sorted array would make it O(n) per cycle. At 60fps with many tasks, this difference compounds.
+
+More practically, the min-heap also correctly handles the case where a new high-priority task arrives while lower-priority work is in progress. The heap re-orders in O(log n). The sorted array would require O(n) insertion at the correct position. The heap is the correct data structure for a priority queue with frequent insertion and removal.
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** What are the three reasons `setTimeout(fn, 0)` is an inadequate scheduling mechanism for React's work loop?
+
+<details>
+<summary>Answer</summary>
+
+First, the minimum delay. Browsers clamp `setTimeout` to at least 1ms, and nested calls or background tabs clamp it to 4ms. Breaking a large render into 100 chunks of 10 Fibers with `setTimeout` introduces 100ms to 400ms of artificial latency, making renders slower than if they had run synchronously. The overhead of the scheduling mechanism exceeds the benefit of yielding.
+
+Second, fixed quantum problem. `setTimeout` cannot say "run until 5ms have elapsed." It runs the entire callback. If you put 10 Fibers in each callback, but 3 of them are expensive components, the callback might take 50ms, blocking the browser just as badly as the synchronous version. The work unit must be time-based, not count-based.
+
+Third, no cooperation with the browser frame budget. The browser targets 16.6ms frames. `setTimeout` has no knowledge of the current frame budget or how much time the browser needs for style, layout, and paint. React needs to yield with enough time remaining for the browser to complete its rendering work. `setTimeout` provides neither the timing information nor the mechanism to make this determination.
+
+</details>
+
+---
+
+**Q2.** The work loop checks `shouldYield()` on every iteration. What is `shouldYield` checking, and what happens to the work-in-progress Fiber when the loop exits?
+
+<details>
+<summary>Answer</summary>
+
+`shouldYield` checks whether the current wall clock time (`performance.now()`) has exceeded the deadline set by the Scheduler at the start of the current time slice (typically `currentTime + 5ms`). It may also check a `needsPaint` flag that signals the browser is about to render a frame and needs the thread.
+
+When `shouldYield()` returns `true`, the `while` loop condition `workInProgress !== null && !shouldYield()` becomes `false` and the loop exits. The `workInProgress` variable still holds a reference to the next Fiber that needs processing. This is a module-level variable in `ReactFiberWorkLoop.js`, stored in the heap, not on the call stack. The work loop function returns to `performConcurrentWorkOnRoot`, which returns `true` to the Scheduler indicating there is more work. The Scheduler schedules another `MessageChannel` macrotask. When that macrotask fires, `performConcurrentWorkOnRoot` is called again, which calls `workLoopConcurrent`, which resumes the `while` loop with `workInProgress` still pointing to where it left off. The traversal continues from the exact Fiber where it paused.
+
+</details>
+
+---
+
+**Q3.** Why must `useEffect` callbacks use `MessageChannel` macrotasks rather than `Promise.then` microtasks for their scheduling?
+
+<details>
+<summary>Answer</summary>
+
+Microtasks (Promise callbacks, `queueMicrotask`) run to exhaustion in the microtask checkpoint before the browser processes its rendering pipeline. If React scheduled `useEffect` callbacks as microtasks, and those effects called `setState`, which scheduled more microtask work, the entire chain would complete before the browser had any chance to paint. The user would not see the committed DOM until all effects had run and all their resulting state updates had been processed. This defeats the purpose of separating effects from the commit phase: the user should see the rendered output before effects run.
+
+`MessageChannel` macrotasks run after the current task completes, after all microtasks complete, and after the browser processes its rendering pipeline (style, layout, paint) if there is pending visual work. This guarantees the sequence: commit phase ends → browser paints the new DOM → MessageChannel fires → `useEffect` callbacks run. The user sees the committed UI before any effect runs. Effects that cause state updates trigger new renders that go through the full scheduling pipeline, subject to normal priority rules, not blocking the current frame.
+
+</details>
+
+---
+
+**Q4.** What is the difference between `workLoopSync` and `workLoopConcurrent`? When does React use each?
+
+<details>
+<summary>Answer</summary>
+
+`workLoopSync` processes the entire Fiber tree without yielding. It has no `shouldYield()` check. It runs from the root Fiber to the last leaf Fiber in one continuous synchronous execution, then calls the commit phase. It is used for SyncLane updates, which includes user event handlers (clicks, typing), `flushSync`-wrapped updates, and updates triggered in the legacy (non-`createRoot`) rendering mode. These updates require immediate completion because the user is waiting for direct feedback or because the update must be applied before the browser paints the current frame.
+
+`workLoopConcurrent` processes Fibers one at a time, checking `shouldYield()` after each one. When the deadline is exceeded, it exits, saves the `workInProgress` pointer, and returns control to the Scheduler. It resumes on the next Scheduler macrotask. It is used for all non-sync lanes: Transition lanes, Default lane updates that are not SyncLane, deferred work. These are updates where it is acceptable to take multiple frames to complete the render, as long as the user interface remains responsive between chunks.
+
+The key distinction: sync mode guarantees atomicity between state change and commit (no browser work happens between them) at the cost of potentially blocking. Concurrent mode guarantees responsiveness (browser can work between chunks) at the cost of the render potentially spanning multiple frames.
+
+</details>

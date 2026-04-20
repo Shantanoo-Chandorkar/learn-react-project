@@ -369,5 +369,187 @@
     "slug": "when-re-renders-are-a-problem",
     "category": "react",
     "subcategory": "re-renders"
+  },
+  {
+    "id": 56,
+    "title": "What is the Virtual DOM, actually",
+    "slug": "what-is-the-virtual-dom",
+    "category": "react",
+    "subcategory": "virtual-dom-and-reconciliation"
+  },
+  {
+    "id": 57,
+    "title": "Why not just re-render the whole real DOM",
+    "slug": "why-not-re-render-the-whole-real-dom",
+    "category": "react",
+    "subcategory": "virtual-dom-and-reconciliation"
+  },
+  {
+    "id": 58,
+    "title": "The diffing algorithm, O(n) heuristics",
+    "slug": "the-diffing-algorithm",
+    "category": "react",
+    "subcategory": "virtual-dom-and-reconciliation"
+  },
+  {
+    "id": 59,
+    "title": "Keys, why they exist and what breaks without them",
+    "slug": "keys-why-they-exist",
+    "category": "react",
+    "subcategory": "virtual-dom-and-reconciliation"
+  },
+  {
+    "id": 60,
+    "title": "Bailout conditions",
+    "slug": "bailout-conditions",
+    "category": "react",
+    "subcategory": "virtual-dom-and-reconciliation"
+  },
+  {
+    "id": 61,
+    "title": "What is a side effect",
+    "slug": "what-is-a-side-effect",
+    "category": "react",
+    "subcategory": "useeffect"
+  },
+  {
+    "id": 62,
+    "title": "Why you can't do side effects in render",
+    "slug": "why-side-effects-dont-belong-in-render",
+    "category": "react",
+    "subcategory": "useeffect"
+  },
+  {
+    "id": 63,
+    "title": "useEffect's mental model",
+    "slug": "useeffect-mental-model",
+    "category": "react",
+    "subcategory": "useeffect"
+  },
+  {
+    "id": 64,
+    "title": "The dependency array, what it actually means",
+    "slug": "useeffect-dependency-array",
+    "category": "react",
+    "subcategory": "useeffect"
+  },
+  {
+    "id": 65,
+    "title": "The cleanup function",
+    "slug": "useeffect-cleanup-function",
+    "category": "react",
+    "subcategory": "useeffect"
+  },
+  {
+    "id": 66,
+    "title": "Common useEffect mistakes",
+    "slug": "common-useeffect-mistakes",
+    "category": "react",
+    "subcategory": "useeffect"
+  },
+  {
+    "id": 67,
+    "title": "useEffect vs useLayoutEffect",
+    "slug": "useeffect-vs-uselayouteffect",
+    "category": "react",
+    "subcategory": "useeffect"
+  },
+  {
+    "id": 68,
+    "title": "What is prop drilling, why is it painful",
+    "slug": "what-is-prop-drilling",
+    "category": "react",
+    "subcategory": "context-api"
+  },
+  {
+    "id": 69,
+    "title": "Context is a broadcast channel",
+    "slug": "context-as-a-broadcast-channel",
+    "category": "react",
+    "subcategory": "context-api"
+  },
+  {
+    "id": 70,
+    "title": "Why Context re-renders everything that consumes it",
+    "slug": "why-context-re-renders-all-consumers",
+    "category": "react",
+    "subcategory": "context-api"
+  },
+  {
+    "id": 71,
+    "title": "When to use Context vs prop drilling vs a state lib",
+    "slug": "context-vs-prop-drilling-vs-state-lib",
+    "category": "react",
+    "subcategory": "context-api"
+  },
+  {
+    "id": 72,
+    "title": "React.memo and useCallback",
+    "slug": "react-memo-use-callback",
+    "category": "react",
+    "subcategory": "performance"
+  },
+  {
+    "id": 74,
+    "title": "useMemo, expensive computation caching",
+    "slug": "usememo-expensive-computation-caching",
+    "category": "react",
+    "subcategory": "performance"
+  },
+  {
+    "id": 75,
+    "title": "The memoization cost",
+    "slug": "the-memoization-cost",
+    "category": "react",
+    "subcategory": "performance"
+  },
+  {
+    "id": 76,
+    "title": "The React Compiler (React 19)",
+    "slug": "react-compiler-react-19",
+    "category": "react",
+    "subcategory": "performance"
+  },
+  {
+    "id": 77,
+    "title": "Why React needed to rewrite its core (pre-Fiber)",
+    "slug": "why-react-rewrote-its-core",
+    "category": "react",
+    "subcategory": "react-internals"
+  },
+  {
+    "id": 78,
+    "title": "What is Fiber, really",
+    "slug": "what-is-fiber",
+    "category": "react",
+    "subcategory": "react-internals"
+  },
+  {
+    "id": 79,
+    "title": "The two-phase render: Render phase vs Commit phase",
+    "slug": "render-phase-vs-commit-phase",
+    "category": "react",
+    "subcategory": "react-internals"
+  },
+  {
+    "id": 80,
+    "title": "The work loop and the Scheduler",
+    "slug": "the-work-loop-and-scheduler",
+    "category": "react",
+    "subcategory": "react-internals"
+  },
+  {
+    "id": 81,
+    "title": "Lanes, Concurrent Mode, and Priority-Based Rendering",
+    "slug": "lanes-concurrent-mode-priority-based-rendering",
+    "category": "react",
+    "subcategory": "react-internals"
+  },
+  {
+    "id": 83,
+    "title": "How hooks are stored on the Fiber node",
+    "slug": "how-hooks-are-stored-on-fiber-nodes",
+    "category": "react",
+    "subcategory": "react-internals"
   }
 ]

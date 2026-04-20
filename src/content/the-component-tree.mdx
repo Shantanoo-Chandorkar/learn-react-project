@@ -253,7 +253,7 @@ function App() {
 }
 ```
 
-`ExpensiveTree` is passed as `children` to `CounterWrapper`. `CounterWrapper` owns `count`. When `count` changes, `CounterWrapper` re-renders. But `children` is a prop, specifically the React element `<ExpensiveTree />` that was created by `App`. `App` is not re-rendering, so that element object is the same reference as before. React sees `children` prop unchanged, and `ExpensiveTree` does not re-render. We will revisit this pattern in Phase 7.
+`ExpensiveTree` is passed as `children` to `CounterWrapper`. `CounterWrapper` owns `count`. When `count` changes, `CounterWrapper` re-renders. But `children` is a prop, specifically the React element `<ExpensiveTree />` that was created by `App`. `App` is not re-rendering, so that element object is the same reference as before. React sees `children` prop unchanged, and `ExpensiveTree` does not re-render.
 
 ---
 

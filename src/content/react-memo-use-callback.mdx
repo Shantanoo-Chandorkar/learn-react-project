@@ -1,0 +1,545 @@
+﻿# React.memo and useCallback, Preventing Child Re-renders and Why Functions Break It
+
+### 1. The Problem
+
+React's default behavior: when a parent re-renders, every child re-renders. This is correct and safe. But it is not always efficient. A parent might re-render because of state that has nothing to do with a particular child. The child's output would be identical. The function call, the element tree creation, and the reconciliation are all wasted work.
+
+The question is: how do you tell React "this child does not need to re-render unless its specific inputs changed?" And once you have the answer, a second problem immediately surfaces: the mechanism you use to prevent re-renders is silently defeated by something every React developer does on every render without thinking. Understanding both problems together is what makes either solution actually work.
+
+---
+
+### 2. The Naive Attempt
+
+You have a dashboard. It has a counter and an expensive user profile panel. The counter changes frequently. The profile panel never needs to re-render when the counter changes.
+
+```jsx
+function UserProfile({ user, onFollow }) {
+  console.log('UserProfile rendered');
+
+  return (
+    <div className="profile">
+      <img src={user.avatar} alt={user.name} />
+      <h2>{user.name}</h2>
+      <p>{user.bio}</p>
+      <button onClick={() => onFollow(user.id)}>Follow</button>
+    </div>
+  );
+}
+
+function Dashboard() {
+  const [count, setCount] = React.useState(0);
+  const [user] = React.useState({
+    id: 1,
+    name: 'Shan',
+    bio: 'Developer',
+    avatar: 'https://example.com/shan.jpg',
+  });
+
+  function handleFollow(id) {
+    console.log('followed', id);
+  }
+
+  return (
+    <div>
+      <button onClick={() => setCount(c => c + 1)}>
+        Clicks: {count}
+      </button>
+      <UserProfile user={user} onFollow={handleFollow} />
+    </div>
+  );
+}
+```
+
+Click the counter button. Console shows "UserProfile rendered" on every click. The `user` object never changed. The `handleFollow` behavior never changed. But `UserProfile` re-renders every time because its parent does. This is trigger 2: parent re-render.
+
+The obvious fix: wrap `UserProfile` in `React.memo`.
+
+```jsx
+const UserProfile = React.memo(function UserProfile({ user, onFollow }) {
+  console.log('UserProfile rendered');
+  return (
+    <div className="profile">
+      <img src={user.avatar} alt={user.name} />
+      <h2>{user.name}</h2>
+      <p>{user.bio}</p>
+      <button onClick={() => onFollow(user.id)}>Follow</button>
+    </div>
+  );
+});
+```
+
+Click the counter button. Check the console. `UserProfile` still re-renders on every click.
+
+`React.memo` is doing nothing. The fix appears correct but is silently broken. The reason is `handleFollow`.
+
+---
+
+### 3. Why That Breaks
+
+Two failure modes, one structural and one mechanical. They are connected.
+
+**Failure mode 1: React.memo performs shallow prop equality.**
+
+`React.memo` compares `prevProps` to `nextProps` using `Object.is` for each key. For primitive values (`string`, `number`, `boolean`), `Object.is` compares by value. `Object.is('Shan', 'Shan')` is `true`. For objects and functions, `Object.is` compares by reference. Two different objects with identical contents are not equal.
+
+**Failure mode 2: Functions are recreated on every render.**
+
+`handleFollow` is defined inside `Dashboard`'s function body:
+
+```js
+function handleFollow(id) {
+  console.log('followed', id);
+}
+```
+
+Every time `Dashboard` renders, this line executes and creates a new function object in memory. The function body is identical. The behavior is identical. But the reference is new. It is a different object.
+
+`React.memo` checks `Object.is(prevProps.onFollow, nextProps.onFollow)`. Previous render's `handleFollow` is object A. Current render's `handleFollow` is object B. `Object.is(A, B)` is `false`. The prop changed by reference. `React.memo` re-renders `UserProfile`.
+
+The memo wrapper is present. The prop check runs. The prop check fails. The child re-renders anyway.
+
+The same problem applies to the `user` object. `React.useState` returns the same reference for `user` (because `setUser` is never called), so `user` passes the check. But `handleFollow` is always a new reference, always failing the check, always causing a re-render. One unstable prop defeats `React.memo` for all props.
+
+---
+
+### 4. React's Mental Model
+
+`React.memo` is a bailout mechanism at the component boundary. It says: "skip re-rendering this component if none of its props changed by reference." For this to work, every prop passed to a memoized component must have a stable reference across renders when its logical value has not changed.
+
+Primitive props are inherently stable. Object and function props are not, because JavaScript creates new references on every evaluation. The developer is responsible for stabilizing these references.
+
+`useCallback` is the mechanism for stabilizing function references. It stores a function in the hook's state slot and returns the same reference across renders until specified dependencies change.
+
+One sentence: `React.memo` prevents re-renders when props are reference-stable, and `useCallback` makes function props reference-stable so `React.memo` can do its job.
+
+---
+
+### 5. React's Solution
+
+**`React.memo`.**
+
+```jsx
+const UserProfile = React.memo(function UserProfile({ user, onFollow }) {
+  return (
+    <div className="profile">
+      <img src={user.avatar} alt={user.name} />
+      <h2>{user.name}</h2>
+      <p>{user.bio}</p>
+      <button onClick={() => onFollow(user.id)}>Follow</button>
+    </div>
+  );
+});
+```
+
+`React.memo` wraps a component and returns a new component type. The wrapper intercepts the render decision. Before calling the wrapped function, it compares the previous and next props. If all pass the equality check, it returns the previous render's output without calling the function.
+
+`React.memo` accepts an optional second argument: a custom comparison function.
+
+```jsx
+const UserProfile = React.memo(
+  function UserProfile({ user, onFollow }) { ... },
+  function arePropsEqual(prevProps, nextProps) {
+    // return true to SKIP re-render (props are equal)
+    // return false to RE-RENDER (props changed)
+    return prevProps.user.id === nextProps.user.id &&
+           prevProps.onFollow === nextProps.onFollow;
+  }
+);
+```
+
+Custom comparisons are rarely necessary and carry risk: getting the comparison wrong causes components to show stale data silently. The default shallow equality covers most correct use cases.
+
+**`useCallback`.**
+
+```jsx
+function Dashboard() {
+  const [count, setCount] = React.useState(0);
+  const [user] = React.useState({ id: 1, name: 'Shan', ... });
+
+  const handleFollow = React.useCallback((id) => {
+    console.log('followed', id);
+  }, []); // empty deps: function never needs to change
+
+  return (
+    <div>
+      <button onClick={() => setCount(c => c + 1)}>
+        Clicks: {count}
+      </button>
+      <UserProfile user={user} onFollow={handleFollow} />
+    </div>
+  );
+}
+```
+
+`useCallback(fn, deps)` stores the function in the hook's `memoizedState` slot. On the first render, it stores `fn`. On subsequent renders, it checks the dependency array using `Object.is` for each element. If all deps are unchanged, it returns the stored function (same reference). If any dep changed, it stores the new function and returns the new reference.
+
+With `useCallback`, `handleFollow` is the same object reference across renders when `Dashboard` re-renders for unrelated reasons. `React.memo`'s prop check now passes for `onFollow`. The check passes for `user` (stable reference from `useState`). All props pass. `UserProfile` bails out. Zero re-renders.
+
+**The dependency array: what belongs in it.**
+
+The dependency array tells React "when should this function be recreated?" Every value the function closes over that could change between renders must be in the deps array.
+
+```jsx
+function Dashboard() {
+  const [count, setCount] = React.useState(0);
+  const [userId, setUserId] = React.useState(1);
+
+  // Wrong: closes over userId but userId not in deps
+  const handleFollow = React.useCallback((id) => {
+    console.log('following from user', userId); // stale closure bug
+  }, []);
+
+  // Correct: userId in deps, function recreated when userId changes
+  const handleFollow = React.useCallback((id) => {
+    console.log('following from user', userId);
+  }, [userId]);
+
+  // Also correct: use functional update form to avoid needing count in deps
+  const handleReset = React.useCallback(() => {
+    setCount(0); // setCount is stable, no need for count in deps
+  }, []); // setCount setter is stable across renders
+}
+```
+
+The rule: if a value is used inside the callback and it could be different on a future render, it must be in deps. Omitting it creates a stale closure: the function captures the value from the render when it was created and never sees updates.
+
+Setter functions from `useState` and `useReducer` are stable by guarantee. React does not recreate them across renders. They do not need to be in dependency arrays.
+
+**Stabilizing object props: `useMemo` for reference stability.**
+
+`useCallback` is `useMemo` specialized for functions. When a memoized child receives an object prop (not just a function), the same problem applies: an inline object literal creates a new reference on every render, defeating `React.memo`.
+
+```jsx
+// Wrong: new config object on every Dashboard render
+<UserProfile user={user} config={{ theme: 'dark', size: 'large' }} />
+
+// Correct: stable config reference
+const config = React.useMemo(
+  () => ({ theme: 'dark', size: 'large' }),
+  [] // no deps: config never changes
+);
+<UserProfile user={user} config={config} />
+```
+
+This is the secondary use case for `useMemo`: reference stability for objects passed to memoized children. We cover `useMemo`'s primary use case (expensive computation caching) in Module 7.3.
+
+**The complete working pattern.**
+
+```jsx
+const UserProfile = React.memo(function UserProfile({ user, onFollow }) {
+  console.log('UserProfile rendered'); // only logs when user or onFollow actually change
+  return (
+    <div className="profile">
+      <img src={user.avatar} alt={user.name} />
+      <h2>{user.name}</h2>
+      <button onClick={() => onFollow(user.id)}>Follow</button>
+    </div>
+  );
+});
+
+function Dashboard() {
+  const [count, setCount] = React.useState(0);
+  const [user] = React.useState({ id: 1, name: 'Shan', avatar: '...' });
+
+  const handleFollow = React.useCallback((id) => {
+    // action
+  }, []); // stable: no closing-over of changing values
+
+  return (
+    <div>
+      <button onClick={() => setCount(c => c + 1)}>Clicks: {count}</button>
+      <UserProfile user={user} onFollow={handleFollow} />
+    </div>
+  );
+}
+```
+
+Counter clicks no longer re-render `UserProfile`. `React.memo` bails out every time because both `user` (stable state reference) and `handleFollow` (stable `useCallback` reference) pass the `Object.is` check.
+
+---
+
+### 6. Internals
+
+**`React.memo` in `beginWork`.**
+
+When React processes a Fiber whose type is a memo component, `beginWork` routes to `updateMemoComponent`:
+
+```js
+function updateMemoComponent(current, workInProgress, Component, nextProps, renderLanes) {
+  // Get the compare function (default: shallowEqual)
+  const compare = Component.compare;
+  const compareFn = compare !== null ? compare : shallowEqual;
+
+  // Get previous props from the current (committed) Fiber
+  const prevProps = current.memoizedProps;
+
+  // Run the comparison
+  if (compareFn(prevProps, nextProps)) {
+    // All props are equal: bail out
+    return bailoutOnAlreadyFinishedWork(current, workInProgress, renderLanes);
+  }
+
+  // Props changed: call the wrapped component
+  const type = Component.type;
+  const newChildren = renderWithHooks(
+    current, workInProgress, type, nextProps, renderLanes
+  );
+  reconcileChildren(current, workInProgress, newChildren, renderLanes);
+  return workInProgress.child;
+}
+```
+
+`bailoutOnAlreadyFinishedWork` is significant. It does not just skip calling the function. It clones the existing child Fibers from the current tree to the work-in-progress tree, skipping the entire reconciliation of the subtree. The children of a bailed-out component are not processed at all in this render pass. This is the full performance benefit: not just skipping one function call, but skipping the entire subtree's reconciliation.
+
+`shallowEqual` iterates over all keys in both prop objects and compares each value with `Object.is`:
+
+```js
+function shallowEqual(objA, objB) {
+  if (Object.is(objA, objB)) return true;
+  if (typeof objA !== 'object' || typeof objB !== 'object') return false;
+
+  const keysA = Object.keys(objA);
+  const keysB = Object.keys(objB);
+  if (keysA.length !== keysB.length) return false;
+
+  for (let i = 0; i < keysA.length; i++) {
+    const key = keysA[i];
+    if (!Object.prototype.hasOwnProperty.call(objB, key) ||
+        !Object.is(objA[key], objB[key])) {
+      return false;
+    }
+  }
+  return true;
+}
+```
+
+The cost of `React.memo`: on every parent render, `shallowEqual` runs regardless of whether it bails out. This is O(number of props) per render. For a component with 10 props, that is 10 `Object.is` comparisons. This cost is always paid. The benefit (skipping the subtree reconciliation) is only gained when all props are stable.
+
+**`useCallback` in the hook linked list.**
+
+`useCallback` is implemented as `useMemo` returning a function:
+
+```js
+// Simplified
+function mountCallback(callback, deps) {
+  const hook = mountWorkInProgressHook();
+  const nextDeps = deps === undefined ? null : deps;
+  hook.memoizedState = [callback, nextDeps]; // store [fn, deps]
+  return callback;
+}
+
+function updateCallback(callback, deps) {
+  const hook = updateWorkInProgressHook();
+  const nextDeps = deps === undefined ? null : deps;
+  const prevState = hook.memoizedState; // [prevFn, prevDeps]
+
+  if (prevState !== null && nextDeps !== null) {
+    const prevDeps = prevState[1];
+    if (areHookInputsEqual(nextDeps, prevDeps)) {
+      return prevState[0]; // deps unchanged: return SAME function reference
+    }
+  }
+
+  hook.memoizedState = [callback, nextDeps]; // deps changed: store new fn
+  return callback; // return new function reference
+}
+```
+
+The stored function reference is the same JavaScript object returned on every render where deps did not change. When `Dashboard` re-renders due to `count` changing, `updateCallback` checks `[]` against `[]`. All zero deps match. It returns `prevState[0]`, which is the same function object created on the first render. `handleFollow === prevHandleFollow` is `true`. `React.memo`'s `shallowEqual` passes for that prop.
+
+**The alternate tree and `useCallback` identity.**
+
+The function reference is stored in the hook node's `memoizedState` on the Fiber. The work-in-progress Fiber reads from `fiber.alternate.memoizedState` (the current committed Fiber's hook list) to get `prevState[0]`. The returned function is the exact object stored in the previous render's Fiber. This object is re-attached to the new work-in-progress Fiber's hook node. The identity is preserved across the tree swap.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: `React.memo` is applied. Will `UserProfile` re-render when `count` changes?**
+
+```jsx
+const UserProfile = React.memo(function UserProfile({ user, onFollow }) {
+  return <div>{user.name}</div>;
+});
+
+function Dashboard() {
+  const [count, setCount] = React.useState(0);
+  const user = { name: 'Shan', id: 1 }; // inline object
+
+  return (
+    <>
+      <button onClick={() => setCount(c => c + 1)}>{count}</button>
+      <UserProfile user={user} onFollow={() => {}} />
+    </>
+  );
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+Yes, `UserProfile` re-renders on every count change. Two props defeat the memo check.
+
+`user` is an object literal defined inline in `Dashboard`'s render body. Every render creates a new object with a new reference. `Object.is(prevUser, nextUser)` is `false` even though the contents are identical.
+
+`onFollow` is an inline arrow function `() => {}`. Same problem: new function object on every render. New reference. `Object.is` fails.
+
+`React.memo` checks all props. Both fail. The component re-renders.
+
+The fix requires stabilizing both props:
+
+```jsx
+// user: defined outside or wrapped in useMemo
+// onFollow: wrapped in useCallback
+
+const user = React.useMemo(() => ({ name: 'Shan', id: 1 }), []);
+const handleFollow = React.useCallback(() => {}, []);
+
+<UserProfile user={user} onFollow={handleFollow} />
+```
+
+Now `user` is the same object reference, `handleFollow` is the same function reference, both `Object.is` checks pass, and `UserProfile` bails out.
+
+</details>
+
+---
+
+**Trap 2: What is the stale closure bug here, and what does the user experience?**
+
+```jsx
+function ChatRoom({ roomId }) {
+  const [message, setMessage] = React.useState('');
+
+  const sendMessage = React.useCallback(() => {
+    console.log(`Sending "${message}" to room ${roomId}`);
+    // sendToServer(roomId, message);
+  }, [roomId]); // message missing from deps
+
+  return (
+    <div>
+      <input
+        value={message}
+        onChange={e => setMessage(e.target.value)}
+      />
+      <SendButton onSend={sendMessage} />
+    </div>
+  );
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+`sendMessage` closes over `message` but `message` is not in the dependency array. On the first render, `message` is `''`. `sendMessage` is created and stored in the hook node as `[fn, [roomId]]`. The function captures `message = ''` in its closure.
+
+The user types "Hello" into the input. Each keystroke calls `setMessage`, updating `message` state. `ChatRoom` re-renders. `useCallback` checks deps: `[roomId]`. `roomId` has not changed. It returns the same function from the first render. That function still closes over `message = ''`.
+
+The user clicks send. `sendMessage` executes. It logs `Sending "" to room X`. The message is empty. The function is stale. It never saw the user's typed input because it captured the initial empty string and was never updated.
+
+The fix: add `message` to deps.
+
+```jsx
+const sendMessage = React.useCallback(() => {
+  console.log(`Sending "${message}" to room ${roomId}`);
+}, [roomId, message]);
+```
+
+Now `sendMessage` is recreated whenever `message` changes. `SendButton` receives a new `onSend` reference on every keystroke (because `message` changes on every keystroke), which defeats `React.memo` on `SendButton` for keystrokes. This is the tradeoff: correctness vs. memoization effectiveness. If `SendButton` re-rendering on keystrokes is too expensive, the alternative is to use a ref for the latest message and read from the ref inside `useCallback`:
+
+```jsx
+const messageRef = React.useRef(message);
+messageRef.current = message; // always current, no re-render
+
+const sendMessage = React.useCallback(() => {
+  console.log(`Sending "${messageRef.current}" to room ${roomId}`);
+}, [roomId]); // stable, no stale closure
+```
+
+</details>
+
+---
+
+**Trap 3: Will this `React.memo` optimization work? What is the subtle issue?**
+
+```jsx
+const List = React.memo(function List({ items, renderItem }) {
+  return <ul>{items.map(renderItem)}</ul>;
+});
+
+function App() {
+  const [filter, setFilter] = React.useState('all');
+  const items = useItems(filter); // returns stable array from cache
+
+  const renderItem = React.useCallback((item) => (
+    <li key={item.id}>{item.name}</li>
+  ), []); // no deps
+
+  return (
+    <>
+      <FilterBar onChange={setFilter} />
+      <List items={items} renderItem={renderItem} />
+    </>
+  );
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+The `useCallback` on `renderItem` is correct: empty deps, stable reference, no closed-over changing values. `renderItem` passes the memo check.
+
+The issue is `items`. `useItems(filter)` is called on every render of `App`. If `useItems` returns a cached array reference when `filter` has not changed (i.e., it memoizes its output correctly), then `items` is stable and `List` bails out correctly.
+
+But if `useItems` returns a new array reference on every call even when `filter` is the same (which is a common implementation mistake with hooks that fetch or filter data), then `items` is a new reference on every parent re-render. `Object.is(prevItems, nextItems)` is `false`. `List` re-renders despite `React.memo`.
+
+The behavior depends entirely on the implementation of `useItems`. This is a trap that appears often in code review: the developer believes `React.memo` is working because `useCallback` is correct and visible, while the actual prop defeating the memo is an opaque hook whose reference stability is not inspected.
+
+The correct approach: verify reference stability of every prop passed to a memoized component, including values returned by custom hooks. If `useItems` does not guarantee stable references, wrap its result: `const items = React.useMemo(() => useItems(filter), [filter])`, though this requires `useItems` to be pure.
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** `React.memo` wraps a component with 5 props. On a parent re-render, 4 props are stable and 1 is a new inline arrow function. Does `React.memo` bail out?
+
+<details>
+<summary>Answer</summary>
+
+No. `shallowEqual` iterates over all prop keys. It calls `Object.is` on each. The four stable props pass. The inline arrow function is a new reference: `Object.is(prevFn, nextFn)` is `false`. `shallowEqual` returns `false` on the first failed comparison. The component re-renders. All five props are checked but one failure is enough. `React.memo`'s bailout requires all props to pass the equality check. A single unstable prop defeats the entire optimization.
+
+</details>
+
+---
+
+**Q2.** Why does `useCallback` with an empty dependency array not cause a stale closure for `setCount`, even though `setCount` is used inside the callback?
+
+<details>
+<summary>Answer</summary>
+
+Setter functions returned by `useState` and `useReducer` are guaranteed to be stable references across all renders of a component. React creates the setter once at mount time, binds it to the specific Fiber and update queue, and returns the same function object on every subsequent render. It never needs to be recreated. Because `setCount` is always the same reference regardless of how many times `Dashboard` re-renders, it does not need to be listed as a dependency. Listing a setter in deps is not wrong, it is just redundant. The ESLint `exhaustive-deps` rule knows about this guarantee and does not flag omitted setters.
+
+</details>
+
+---
+
+**Q3.** `bailoutOnAlreadyFinishedWork` is called when `React.memo` bails out. What specifically does this function do beyond skipping the wrapped component's function call?
+
+<details>
+<summary>Answer</summary>
+
+`bailoutOnAlreadyFinishedWork` clones the child Fibers from the current committed tree into the work-in-progress tree and marks them as complete without re-processing them. This means the entire subtree rooted at the memoized component is skipped during the render phase. React does not call any child component functions, does not reconcile any child element trees, and does not compute any child prop diffs. The work-in-progress subtree is populated by copying existing Fiber nodes, which is a pointer operation. The commit phase then sees no flagged Fibers in this subtree and does no DOM work for it. The performance benefit of a successful `React.memo` bailout is therefore proportional to the size of the skipped subtree, not just the cost of the memoized component's own function.
+
+</details>
+
+---
+
+**Q4.** A component is wrapped in `React.memo`. Its only prop is a number that changes every render. Is `React.memo` harmful here?
+
+<details>
+<summary>Answer</summary>
+
+Not harmful in the catastrophic sense, but it is wasted overhead. On every parent render, `shallowEqual` runs, compares the previous number to the new number using `Object.is`, finds them different (the number changed every render by assumption), and returns `false`. The component re-renders. The memo wrapper added one `shallowEqual` call and one conditional branch to every render cycle, without ever successfully bailing out. The developer gets the cognitive overhead of seeing `React.memo` in the code (implying "this is optimized") while getting zero benefit. This is the case where removing `React.memo` simplifies the code without any performance regression.
+
+</details>

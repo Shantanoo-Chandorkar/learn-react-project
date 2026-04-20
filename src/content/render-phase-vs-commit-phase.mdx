@@ -1,1 +1,460 @@
-﻿# The two-phase render: Render phase vs Commit phase
+﻿# The Two-Phase Render, Render Phase vs Commit Phase
+
+### 1. The Problem
+
+React calls your component function. It figures out what changed. It updates the DOM. Three things. But they cannot happen in one continuous, synchronous sequence if React wants to support interruptible rendering, concurrent work, and consistent UI updates.
+
+The reason is a fundamental tension. Figuring out what changed (diffing two trees) is safe to interrupt. The work is pure JavaScript, nothing visible to the user happens during it, and if you throw it away and restart, the result is identical. But updating the DOM is not safe to interrupt. If you apply half the changes and then pause, the user sees a partially updated UI: some nodes reflecting new state, others reflecting old state simultaneously. This is visually broken and potentially structurally invalid.
+
+These two operations have opposite requirements: one needs to be interruptible, one needs to be atomic. React handles this by making them two distinct phases with completely different guarantees. Understanding the boundary between them is understanding what React's concurrent mode actually does and why it is safe.
+
+---
+
+### 2. The Naive Attempt
+
+Before Fiber, React's original reconciler (the Stack reconciler) processed the entire tree in one synchronous pass. It would call every component function, diff every element, and write every DOM change in an uninterruptible synchronous function call.
+
+```js
+// Stack reconciler: one synchronous pass
+function performUpdate(component) {
+  const newOutput = component.render();         // call function
+  const changes = diff(component.output, newOutput); // diff output
+  applyChanges(changes);                        // write DOM
+  component.output = newOutput;
+
+  // recurse into children
+  newOutput.children.forEach(child => {
+    performUpdate(child);                       // recursive call
+  });
+}
+```
+
+The recursion is the problem. `performUpdate` calls itself for every child. For a tree with 1000 components, you get 1000 stack frames deep. JavaScript's call stack is synchronous. Once this starts, it cannot be paused. The browser's event loop is blocked for the entire duration.
+
+If the tree is large and the components are non-trivial, this takes 200ms. During those 200ms, the browser cannot respond to user input, cannot run animations, cannot paint. The UI is frozen.
+
+The only fix in this model is to make each individual component render faster. But you cannot control third-party components, and some work is inherently slow. The architecture itself is the constraint.
+
+---
+
+### 3. Why That Breaks
+
+The precise failure mode: **recursive synchronous tree traversal cannot be interrupted because execution state lives on the call stack.**
+
+The call stack is not a data structure you can pause and resume. When `performUpdate` is executing at stack depth 500 (halfway through a 1000-component tree), the state of the traversal (which node we are on, what work remains) is encoded in 500 stack frames. These are CPU registers and stack memory. You cannot save them to the heap and restore them later. You cannot yield to the browser and pick up where you left off.
+
+This is not a limitation of React specifically. It is a limitation of synchronous function call semantics in any language. To make tree traversal interruptible, you must not use the call stack to store traversal state. You must store it yourself, in a data structure you control, on the heap.
+
+This is exactly what Fiber is. And it is exactly why Fiber enables the two-phase architecture.
+
+---
+
+### 4. React's Mental Model
+
+React splits all work into two phases with different contracts.
+
+The render phase: pure computation, no observable side effects, can be interrupted at any point, restarted, or thrown away. The output is a description of what should change, not the change itself.
+
+The commit phase: applies the description from the render phase to the real world (DOM, refs, effects). Cannot be interrupted because it produces visible changes. Must be atomic to prevent inconsistent UI.
+
+One sentence: the render phase asks "what needs to change?" in interruptible JavaScript, and the commit phase answers "change it now" in synchronous, non-interruptible DOM operations.
+
+---
+
+### 5. React's Solution
+
+**The render phase.**
+
+React traverses the Fiber tree using the work loop. For each Fiber node, React calls `beginWork`, which does one of two things:
+
+For a function component: calls the component function, gets the new React element tree, creates or updates child Fibers, marks changed Fibers with flags.
+
+For a host component (div, span, etc.): computes the diff of old and new props, marks the Fiber with an Update flag and stores the changed props list.
+
+```js
+// Simplified beginWork dispatch
+function beginWork(current, workInProgress, renderLanes) {
+  switch (workInProgress.tag) {
+    case FunctionComponent:
+      return updateFunctionComponent(current, workInProgress, renderLanes);
+    case HostComponent:
+      return updateHostComponent(current, workInProgress, renderLanes);
+    case ClassComponent:
+      return updateClassComponent(current, workInProgress, renderLanes);
+    // ...
+  }
+}
+```
+
+After `beginWork`, React calls `completeWork` on the way back up the tree (after all children are processed). `completeWork` finalizes the Fiber: for host components, it either creates a real DOM node (mount) or records a list of prop diffs (update). The DOM node or prop diff list is stored on the Fiber, not applied yet.
+
+Critically: no DOM writes happen during the render phase. Every change is recorded as a flag on a Fiber and data on that Fiber. The actual DOM is untouched.
+
+The render phase can be interrupted at any `beginWork` or `completeWork` boundary. React checks a deadline: "do I still have time in this frame?" If not, it yields. The current Fiber pointer is saved. The work loop is exited. React schedules itself to resume via the Scheduler. When the Scheduler calls React back, the work loop restarts from the saved Fiber pointer.
+
+If a higher-priority update arrives while rendering (a user types in an input), React can throw away the current in-progress work entirely, start a fresh render for the higher-priority update, and then return to the lower-priority work later. Because the render phase has no side effects, throwing it away and restarting is safe. The only cost is wasted computation.
+
+**The commit phase.**
+
+Once the render phase completes (all Fibers processed, no more pending work for this render), the commit phase begins. At this point, React has a complete work-in-progress Fiber tree with flags marking everything that needs to change. The commit phase applies these changes.
+
+The commit phase has three sub-phases, all synchronous and non-interruptible:
+
+```
+Before Mutation Phase
+  ↓
+Mutation Phase
+  ↓
+Layout Phase
+```
+
+**Before mutation phase:**
+
+Calls `getSnapshotBeforeUpdate` on class components. This lifecycle runs before any DOM mutations and receives the previous DOM state. Its return value is passed to `componentDidUpdate`. This sub-phase allows reading DOM measurements (scroll position, element dimensions) before they are invalidated by upcoming mutations.
+
+For function components, this is also when React reads `useLayoutEffect` cleanups from the previous render and stores them for execution.
+
+```js
+// Before mutation: read current DOM before it changes
+function commitBeforeMutationEffects(root, firstEffect) {
+  let effect = firstEffect;
+  while (effect !== null) {
+    if (effect.flags & Snapshot) {
+      // class component: call getSnapshotBeforeUpdate
+      const snapshot = instance.getSnapshotBeforeUpdate(prevProps, prevState);
+      instance.__reactInternalSnapshotBeforeUpdate = snapshot;
+    }
+    effect = effect.nextEffect;
+  }
+}
+```
+
+**Mutation phase:**
+
+This is where the DOM is actually changed. React walks the list of Fibers with flags and applies each operation:
+
+```js
+function commitMutationEffects(root, firstEffect) {
+  let effect = firstEffect;
+  while (effect !== null) {
+    const flags = effect.flags;
+
+    if (flags & ContentReset) {
+      // Clear text content
+      effect.stateNode.textContent = '';
+    }
+
+    if (flags & Ref) {
+      // Detach old ref
+      commitDetachRef(effect);
+    }
+
+    if (flags & Placement) {
+      // Insert new DOM node
+      commitPlacement(effect);
+    }
+
+    if (flags & Update) {
+      // Apply prop diff to existing DOM node
+      commitWork(current, effect);
+    }
+
+    if (flags & Deletion) {
+      // Remove DOM node, run cleanup effects
+      commitDeletion(root, effect);
+    }
+
+    effect = effect.nextEffect;
+  }
+}
+```
+
+`commitWork` for a function component runs `useLayoutEffect` cleanups from the previous render. For a host component, it applies the prop diff computed during `completeWork`:
+
+```js
+// Applying prop updates to DOM
+function updateDOMProperties(domElement, updatePayload) {
+  // updatePayload is [propKey, propValue, propKey, propValue, ...]
+  // computed during completeWork, applied here
+  for (let i = 0; i < updatePayload.length; i += 2) {
+    const propKey = updatePayload[i];
+    const propValue = updatePayload[i + 1];
+    if (propKey === 'style') {
+      setValueForStyles(domElement, propValue);
+    } else if (propKey === 'children') {
+      setTextContent(domElement, propValue);
+    } else {
+      setValueForProperty(domElement, propKey, propValue);
+    }
+  }
+}
+```
+
+After the mutation phase, the work-in-progress tree becomes the current tree. The `root.current` pointer is swapped to point to the newly committed tree. This is the moment the two trees flip. Before this swap, `current` points to what is on screen. After this swap, `current` points to what just became the screen.
+
+**Layout phase:**
+
+Runs after all DOM mutations, before the browser paints. `useLayoutEffect` callbacks fire here synchronously. Because this runs before paint, `useLayoutEffect` can read updated DOM layout (element dimensions, scroll positions) and make synchronous DOM mutations that will be included in the same paint the user sees.
+
+```js
+function commitLayoutEffects(root, firstEffect) {
+  let effect = firstEffect;
+  while (effect !== null) {
+    if (effect.flags & Update) {
+      // class component: componentDidMount or componentDidUpdate
+      // function component: useLayoutEffect callbacks
+      commitLifeCycles(root, current, effect);
+    }
+    effect = effect.nextEffect;
+  }
+}
+```
+
+After the layout phase, the commit phase is complete. The browser is released to paint.
+
+**Passive effects phase (asynchronous):**
+
+After the browser paints, React runs `useEffect` callbacks. These are scheduled via a macrotask (MessageChannel), not inline. This is why `useEffect` fires after the user sees the updated UI. It does not block paint. If a `useEffect` calls `setState`, it schedules another render cycle starting from trigger 1.
+
+```
+Render phase (interruptible)
+    ↓ [render phase complete]
+Commit phase (synchronous, non-interruptible)
+    ├── Before mutation (read DOM, store snapshots)
+    ├── Mutation (write DOM: insertions, updates, deletions)
+    │       [work-in-progress tree becomes current tree]
+    └── Layout (useLayoutEffect callbacks, componentDidMount/Update)
+[Browser paints]
+Passive effects (useEffect callbacks, async via MessageChannel)
+```
+
+---
+
+### 6. Internals
+
+**Why the tree swap happens during mutation, not before or after.**
+
+The `root.current` pointer is swapped to the work-in-progress tree during the mutation phase, specifically after `commitBeforeMutationEffects` and before `commitLayoutEffects`. This precise timing matters.
+
+`getSnapshotBeforeUpdate` and `componentWillUnmount` (called during Deletion) need `current` to point to the old tree, because they are reading the current (about to be replaced) state.
+
+`componentDidMount`, `componentDidUpdate`, and `useLayoutEffect` need `current` to point to the new tree, because they are reading the just-committed state.
+
+If the swap happened before the before-mutation phase, `getSnapshotBeforeUpdate` would see the wrong tree. If it happened after the layout phase, `componentDidMount` would see the old tree. The placement inside the mutation phase is exact: just late enough that deletions and mounts have happened, just early enough that layout effects see the new state.
+
+**The effect list.**
+
+Before React 17, the commit phase used a linked list of "effects" (Fibers with non-zero flags) called the effect list. During the render phase, React built this list as it processed Fibers. The commit phase walked only this list, skipping Fibers with no flags entirely.
+
+React 17 moved to a "subtreeFlags" approach: each Fiber stores a bitmask of all flags in its subtree. During the commit phase, React recursively walks the tree but uses `subtreeFlags` to skip entire subtrees with no pending work:
+
+```js
+function commitMutationEffects(root, finishedWork) {
+  // walk tree
+  if (finishedWork.subtreeFlags !== NoFlags) {
+    // subtree has work, recurse into children
+    commitMutationEffects(root, finishedWork.child);
+  }
+  if (finishedWork.flags !== NoFlags) {
+    // this node has work, process it
+    commitMutationEffectsOnFiber(finishedWork, root);
+  }
+}
+```
+
+The subtreeFlags approach supports React 18's Offscreen component (used by Suspense and `<Activity>`), which can hide and show subtrees without unmounting them. The effect list approach could not represent "work that should be suspended."
+
+**Why `useLayoutEffect` before paint and `useEffect` after.**
+
+`useLayoutEffect` is synchronous with the commit phase, specifically the layout sub-phase. It fires before the browser's rendering pipeline runs. This means two things: it can make synchronous DOM mutations that the user never sees in their pre-mutation state (no visual flash), and it blocks paint until it completes. If `useLayoutEffect` is slow, the user sees the old UI for longer.
+
+`useEffect` is asynchronous, scheduled via `MessageChannel` post-message after the layout phase returns. `MessageChannel` creates a macrotask. The browser processes its rendering pipeline (style, layout, paint) in the microtask checkpoint between the current task (the commit phase) and the next macrotask (the effect callbacks). So the sequence is:
+
+```
+Commit phase (task)
+  └── layout phase completes
+      └── schedules MessageChannel message
+[browser rendering: style, layout, paint, composite] ← user sees new UI
+MessageChannel callback fires (next task)
+  └── useEffect callbacks run
+```
+
+This is why `useEffect` is the right place for side effects that do not need to block the user from seeing the rendered output. The user sees the committed DOM immediately. Effects run afterward without delaying the visual update.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: Why is this `useLayoutEffect` dangerous, and what should it be replaced with?**
+
+```jsx
+function Modal({ isOpen, onMeasure }) {
+  const ref = React.useRef(null);
+
+  React.useLayoutEffect(() => {
+    if (isOpen && ref.current) {
+      const height = ref.current.getBoundingClientRect().height;
+      onMeasure(height);  // calls setState in parent
+    }
+  }, [isOpen]);
+
+  return isOpen ? <div ref={ref}>Modal content</div> : null;
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+`useLayoutEffect` fires synchronously before paint. `onMeasure(height)` calls `setState` in the parent. This schedules another synchronous render inside the layout phase, before the browser has painted. React will process this new update immediately, in the same synchronous block. The user sees neither the first render nor the intermediate state, only the final result after all synchronous updates resolve. This is actually the intended use case for `useLayoutEffect`: reading DOM measurements and synchronously updating state to reflect them, preventing the user from ever seeing the un-measured state.
+
+However, there is a risk: if `onMeasure` triggers an expensive computation or a chain of state updates, all of this blocks paint. The user sees the old UI for the entire duration. For heavy operations, this is worse than using `useEffect` (which would show the first render briefly, then update), because `useLayoutEffect` holds the browser hostage.
+
+The dangerous case is when `onMeasure` triggers multiple renders or slow work. If it is cheap (one `setState` call that updates a height variable), `useLayoutEffect` is appropriate and correct. If it is expensive or triggers cascading updates, use `useEffect` and accept the brief visual flash, or restructure to avoid measuring.
+
+</details>
+
+---
+
+**Trap 2: In the commit phase, what does React do with the Fibers for deleted components, and in what order?**
+
+```jsx
+function App() {
+  const [show, setShow] = React.useState(true);
+
+  return (
+    <div>
+      {show && (
+        <Parent>
+          <Child />
+        </Parent>
+      )}
+      <button onClick={() => setShow(false)}>Remove</button>
+    </div>
+  );
+}
+```
+
+When the button is clicked and `show` becomes `false`, `Parent` and `Child` are deleted. In what order do their effects run?
+
+<details>
+<summary>Answer</summary>
+
+During the mutation phase, `commitDeletion` is called for the deleted subtree. React performs a depth-first traversal of the deleted subtree to run cleanup effects. The order is bottom-up: children before parents.
+
+Sequence for this example:
+
+1. `Child`'s `useLayoutEffect` cleanups run first (depth-first, deepest first)
+2. `Parent`'s `useLayoutEffect` cleanups run next
+3. `Child`'s `useEffect` cleanups are scheduled for the passive effects phase
+4. `Parent`'s `useEffect` cleanups are scheduled for the passive effects phase
+5. React removes the DOM nodes from the document
+6. After paint, passive effects phase runs: `Child`'s `useEffect` cleanup, then `Parent`'s `useEffect` cleanup
+
+The bottom-up order for `useLayoutEffect` cleanups ensures that a parent's layout effect cleanup does not depend on child DOM nodes that have already been cleaned up. The child's cleanup runs while the parent's DOM is still intact. The parent's cleanup runs after the child is fully cleaned up. This mirrors the mount order in reverse: components mount parent first (parent `useLayoutEffect` fires before child), and unmount child first.
+
+</details>
+
+---
+
+**Trap 3: A developer runs this code. The console shows "effect" before "layout effect" logged. Is this correct?**
+
+```jsx
+function App() {
+  React.useEffect(() => {
+    console.log('effect');
+  }, []);
+
+  React.useLayoutEffect(() => {
+    console.log('layout effect');
+  }, []);
+
+  return <div>Hello</div>;
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+No, this is incorrect output. The correct order is `'layout effect'` first, then `'effect'`.
+
+`useLayoutEffect` fires during the layout sub-phase of the commit, synchronously before the browser paints. It fires before `useEffect`.
+
+`useEffect` fires after the browser paints, scheduled via a `MessageChannel` macrotask.
+
+The correct sequence: mount → commit phase → layout phase fires `useLayoutEffect` callback (logs "layout effect") → commit completes → browser paints → MessageChannel task fires → `useEffect` callback runs (logs "effect").
+
+If the console shows "effect" before "layout effect", something is wrong: either the code is running in an environment where the distinction does not apply (server-side rendering, where `useLayoutEffect` is replaced with `useEffect`), the developer misread the output order, or there is a code error where the logs are in the wrong hooks. In a normal browser environment with `createRoot`, "layout effect" is always logged before "effect" on mount, and `useLayoutEffect` cleanups always run before `useEffect` cleanups on unmount.
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** What makes the render phase safe to interrupt, and what makes the commit phase unsafe to interrupt? Answer at the mechanical level.
+
+<details>
+<summary>Answer</summary>
+
+The render phase is safe to interrupt because it has no observable side effects. It operates entirely on the work-in-progress Fiber tree, which is a JavaScript data structure in heap memory. No DOM nodes are created, modified, or deleted during the render phase. No refs are attached. No effects fire. The current tree (what is visible on screen) is not touched. If React pauses mid-render and the user sees the old UI, the old UI is still fully consistent and correct. If React throws away the in-progress work and restarts, the render function is pure (same inputs produce same output) so the restart produces an identical result. The interruption has no user-visible consequence and no correctness consequence.
+
+The commit phase is unsafe to interrupt because it modifies the real DOM, which is immediately visible to the user. If React inserts 5 of 10 planned DOM nodes and then pauses, the user sees a partially updated UI: some components showing new state, others showing old state simultaneously. The DOM may be structurally invalid: a parent node might exist without its expected children, breaking layout and CSS rules. There is no "rollback": DOM operations are not transactional. The only safe option is to complete all planned mutations atomically. This is why the commit phase runs synchronously to completion once it starts.
+
+</details>
+
+---
+
+**Q2.** The `root.current` pointer swaps from the old tree to the new tree during the mutation phase, not before or after. Why is the exact timing of this swap important?
+
+<details>
+<summary>Answer</summary>
+
+The swap must happen after `getSnapshotBeforeUpdate` (before mutation) and before `componentDidMount`/`useLayoutEffect` (layout phase). `getSnapshotBeforeUpdate` is explicitly designed to read the current (old) DOM state before mutations occur. If `root.current` already pointed to the new tree when `getSnapshotBeforeUpdate` ran, it would read from the new (not yet committed) tree instead of the old one, producing incorrect snapshot values. Conversely, `componentDidMount` and `useLayoutEffect` are designed to read and interact with the newly committed DOM. If `root.current` still pointed to the old tree when they ran, any code that traverses the current tree (reading refs, checking component state) would see stale values. Placing the swap inside the mutation phase, after deletions and insertions but before layout effects, ensures each lifecycle sees the tree it was designed to see: before-mutation reads the old tree, layout reads the new tree.
+
+</details>
+
+---
+
+**Q3.** A developer needs to animate an element expanding from height 0 to its natural height immediately on mount, without the user seeing it at height 0 first. Which hook should they use and why?
+
+<details>
+<summary>Answer</summary>
+
+`useLayoutEffect`. The sequence with `useEffect` would be: commit (DOM inserted at height 0 or unset) → browser paints (user sees element at height 0) → `useEffect` fires (animation starts). The user would see a flash of the collapsed state before the animation begins.
+
+With `useLayoutEffect`: commit (DOM inserted) → `useLayoutEffect` fires synchronously (sets the starting animation state, triggers CSS transition or sets initial transform) → browser paints (user sees the element in its animated state from frame 1). The user never sees height 0 because `useLayoutEffect` runs before the browser gets a chance to paint.
+
+The implementation:
+
+```jsx
+React.useLayoutEffect(() => {
+  const el = ref.current;
+  const naturalHeight = el.scrollHeight;
+  el.style.height = '0px';
+  el.style.transition = 'height 300ms ease';
+  requestAnimationFrame(() => {
+    el.style.height = naturalHeight + 'px';
+  });
+}, []);
+```
+
+The `requestAnimationFrame` inside `useLayoutEffect` defers the actual height change to the next animation frame, but the transition setup (height 0, transition rule) is applied before paint. The user sees the element start at 0 and animate to its full height smoothly from the first frame.
+
+</details>
+
+---
+
+**Q4.** If `useEffect` fires after paint and a `useEffect` calls `setState`, the component re-renders. How many total renders happen on mount for a component with one `useState` and one `useEffect` that calls `setState`?
+
+<details>
+<summary>Answer</summary>
+
+Three renders, or two in React 18 with automatic batching in specific cases.
+
+In the general case: render 1 is the initial mount (state at initial value). The component function runs, JSX is returned, the Fiber tree is built and committed to the DOM. The browser paints. `useEffect` fires. `setState` is called inside the effect. React schedules a re-render. Render 2 is the re-render with the new state. The reconciler diffs the new output against the mounted output. Changes are committed. The browser paints again.
+
+In development with Strict Mode (React 18): the component function is called twice on mount to detect impurities (the double-invocation behavior). This does not produce two visible renders (React discards the first call's output), but you see the component function execute twice. This is development-only.
+
+The practical implication: if a `useEffect` unconditionally calls `setState` on mount, the user always experiences two renders: the initial mount and the post-effect update. This is why patterns that fetch data in `useEffect` show a loading state first (initial render with null data) and then update (second render after fetch completes). If the initial render shows a loading indicator, this two-render sequence is intentional and correct. If the initial render shows broken UI before the effect runs, the architecture should be reconsidered: perhaps initialize state to its correct value using a lazy initializer or a server-side data source.
+
+</details>

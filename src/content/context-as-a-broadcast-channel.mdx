@@ -1,1 +1,631 @@
-﻿# Context is a broadcast channel
+﻿# Context is a Broadcast Channel
+
+### 1. The Problem
+
+You have established that prop drilling is painful at scale. You need a mechanism to make data available at any depth in the component tree without threading it through every intermediate component. But the solution must be precise about what it is and what it is not.
+
+Context is frequently introduced as a "state management solution." This framing leads to systematic misuse: developers put all application state into Context, encounter performance problems, wonder why, and either blame Context or reach for a state library without understanding what went wrong. The misuse is a direct consequence of the wrong mental model.
+
+Context is not a state manager. It does not store state. It does not manage updates. It does not batch updates. It does not provide selectors. It is a transport. It takes a value that exists somewhere in your component tree and makes it directly accessible to any descendant without prop drilling. The state management is done by `useState` or `useReducer`. Context is the delivery mechanism.
+
+---
+
+### 2. The Naive Attempt
+
+You need the authenticated user available across the entire application. You know prop drilling does not scale. You reach for a module-level variable, the simplest possible "global":
+
+```js
+// userStore.js
+let currentUser = null;
+
+export function setUser(user) {
+  currentUser = user;
+}
+
+export function getUser() {
+  return currentUser;
+}
+```
+
+```jsx
+// In components:
+import { getUser, setUser } from './userStore';
+
+function CheckoutButton({ product }) {
+  const user = getUser();
+
+  function handleClick() {
+    if (!user) redirectToLogin();
+    else addToCart(product.id, user.id);
+  }
+
+  return (
+    <button onClick={handleClick}>
+      {user ? 'Add to cart' : 'Log in to buy'}
+    </button>
+  );
+}
+
+function LoginButton() {
+  function handleLogin() {
+    authenticateUser().then(user => {
+      setUser(user);
+      // now what? CheckoutButton still shows "Log in to buy"
+      // nothing told React to re-render
+    });
+  }
+  return <button onClick={handleLogin}>Log in</button>;
+}
+```
+
+User logs in. `setUser(user)` updates the module-level variable. `CheckoutButton` still shows "Log in to buy." Nothing told React to re-render. The module-level variable is outside React's awareness. `UI = f(state)` is broken: the state changed but the UI did not update.
+
+You patch it by forcing a re-render somehow, maybe a dummy state variable at the root, toggled on every `setUser` call. Now re-renders happen, but every component in the entire tree re-renders on every user change. You have traded the drilling problem for a performance problem and added architectural complexity. The module-level variable approach is genuinely broken as a React pattern.
+
+---
+
+### 3. Why That Breaks
+
+The precise failure mode: **data that lives outside React's state system cannot trigger React's rendering system.**
+
+React knows about changes only when `useState` setters, `useReducer` dispatchers, or context value changes occur through the Provider mechanism. A mutation to a JavaScript variable, a module export, a class property, or anything else outside these mechanisms is invisible to React. The component cannot update in response to something React cannot observe.
+
+Context solves this not by being a different kind of storage, but by being a bridge: it takes a value that is already in React's state system (owned by a component via `useState` or `useReducer`) and makes it observable by any descendant component. The state management is still React's normal mechanism. Context is only the distribution channel.
+
+---
+
+### 4. React's Mental Model
+
+A Context Provider is a component in the tree that broadcasts a value to any descendant that subscribes. The value is not stored in the Context itself. It is owned by the component that renders the Provider, managed by that component's normal state. When the state changes, the component re-renders with a new value, the Provider broadcasts the new value, and every subscriber (consumer) that called `useContext` with this Context re-renders to reflect the new value.
+
+One sentence: Context is a named broadcast channel scoped to a subtree, where the Provider is the transmitter and `useContext` calls are the receivers, with the actual data owned by the Provider component's state.
+
+---
+
+### 5. React's Solution
+
+**Creating a Context.**
+
+```jsx
+// ThemeContext.js
+const ThemeContext = React.createContext('light'); // 'light' is the default value
+```
+
+`createContext` creates a Context object. It has two properties: `ThemeContext.Provider` (a component that broadcasts the value) and `ThemeContext.Consumer` (a legacy render-prop API, superseded by `useContext`). The argument to `createContext` is the default value, used only when a component consumes the Context without a Provider above it in the tree.
+
+The default value is not the "initial" value. It is the fallback when no Provider exists. Its main use is testing components in isolation without wrapping them in a Provider.
+
+**Providing a value.**
+
+```jsx
+function App() {
+  const [theme, setTheme] = React.useState('light');
+
+  return (
+    <ThemeContext.Provider value={theme}>
+      <Layout />
+      <button onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')}>
+        Toggle theme
+      </button>
+    </ThemeContext.Provider>
+  );
+}
+```
+
+`App` owns `theme` state. `App` renders `ThemeContext.Provider` with `value={theme}`. The Provider makes `theme` available to any descendant that subscribes. When `setTheme` is called, `App` re-renders with the new `theme`, passes the new value to the Provider, and the Provider propagates the change to all consumers.
+
+The Provider is a component in the Fiber tree. It is not magic. It is a component whose job is to store the current context value and notify subscribers when it changes.
+
+**Consuming a value.**
+
+```jsx
+function ThemedButton({ children, onClick }) {
+  const theme = React.useContext(ThemeContext);
+
+  return (
+    <button
+      className={`btn btn-${theme}`}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+}
+```
+
+`useContext(ThemeContext)` reads the current value from the nearest `ThemeContext.Provider` above this component in the tree. If no Provider exists above it, it returns the default value from `createContext`. The component is now subscribed: when the Provider's value changes, this component re-renders automatically.
+
+`ThemedButton` can live anywhere in the tree, five levels deep, ten levels deep, in a completely different branch than where `App` renders other things. It does not matter. It always reads the current `theme` without any intermediate component knowing about `theme`.
+
+**The complete user authentication pattern.**
+
+```jsx
+// UserContext.js
+const UserContext = React.createContext(null);
+
+// Custom hook: encapsulates consumption
+function useUser() {
+  const user = React.useContext(UserContext);
+  return user;
+}
+
+// Provider component: owns state, provides value
+function UserProvider({ children }) {
+  const [user, setUser] = React.useState(null);
+
+  function login(credentials) {
+    return authenticate(credentials).then(userData => {
+      setUser(userData);
+    });
+  }
+
+  function logout() {
+    setUser(null);
+  }
+
+  // The value is an object containing both state and updaters
+  const value = { user, login, logout };
+
+  return (
+    <UserContext.Provider value={value}>
+      {children}
+    </UserContext.Provider>
+  );
+}
+
+// Usage in App
+function App() {
+  return (
+    <UserProvider>
+      <Header />
+      <Main />
+      <Footer />
+    </UserProvider>
+  );
+}
+
+// Consumption anywhere in the tree
+function CheckoutButton({ product }) {
+  const { user } = useUser();
+
+  function handleClick() {
+    if (!user) redirectToLogin();
+    else addToCart(product.id, user.id);
+  }
+
+  return (
+    <button onClick={handleClick}>
+      {user ? 'Add to cart' : 'Log in to buy'}
+    </button>
+  );
+}
+
+function LoginButton() {
+  const { login } = useUser();
+
+  return (
+    <button onClick={() => login({ email, password })}>
+      Log in
+    </button>
+  );
+}
+```
+
+`UserProvider` owns the state via `useState`. It provides both the state value and the update functions through the Context value. `CheckoutButton` and `LoginButton` consume `useUser()` and get the current user and the ability to trigger login. No `user` prop anywhere in the tree. No messenger components. The data travels directly from `UserProvider` to any consumer.
+
+**The custom hook pattern.**
+
+Wrapping `useContext` in a custom hook is standard practice for two reasons:
+
+```jsx
+// Without custom hook: direct consumption
+function CheckoutButton() {
+  const { user } = React.useContext(UserContext);
+  // ...
+}
+
+// With custom hook: encapsulated consumption
+function useUser() {
+  const context = React.useContext(UserContext);
+  if (context === undefined) {
+    throw new Error('useUser must be used within a UserProvider');
+  }
+  return context;
+}
+
+function CheckoutButton() {
+  const { user } = useUser();
+  // ...
+}
+```
+
+First, the error boundary: the custom hook can check whether a Provider exists above the consumer and throw a descriptive error if not. Without this, using `UserContext` outside a `UserProvider` returns the default value (`null`), which may produce confusing downstream errors instead of a clear message.
+
+Second, encapsulation: `CheckoutButton` depends on `useUser()`, not on `UserContext`. If you later change how user data is provided (switching from Context to a different mechanism), you change `useUser()` in one place, not every consumer.
+
+**Multiple contexts and nesting.**
+
+Context instances are independent. Multiple Providers can coexist and nest:
+
+```jsx
+function App() {
+  return (
+    <UserProvider>
+      <ThemeProvider>
+        <LocaleProvider>
+          <Layout />
+        </LocaleProvider>
+      </ThemeProvider>
+    </UserProvider>
+  );
+}
+
+function DeepComponent() {
+  const { user } = useUser();         // reads from UserProvider
+  const theme = useTheme();           // reads from ThemeProvider
+  const locale = useLocale();         // reads from LocaleProvider
+  // no props needed for any of these
+}
+```
+
+Each `useContext` call subscribes to exactly one Context. A component can subscribe to multiple Contexts by calling `useContext` multiple times. Each subscription is independent: a change to theme does not cause a re-render triggered by the user context, and vice versa. We will see why this independence has important performance implications in next section.
+
+**Context value stability.**
+
+A critical detail: the value passed to the Provider must be stable to avoid unnecessary re-renders.
+
+```jsx
+// Wrong: new object on every render
+function UserProvider({ children }) {
+  const [user, setUser] = React.useState(null);
+
+  return (
+    <UserContext.Provider value={{ user, login, logout }}>
+      {children}
+    </UserContext.Provider>
+  );
+}
+// Every time UserProvider re-renders for any reason,
+// { user, login, logout } is a new object.
+// Object.is(prevValue, nextValue) is false.
+// All consumers re-render.
+
+// Correct: stable value object
+function UserProvider({ children }) {
+  const [user, setUser] = React.useState(null);
+
+  const login = React.useCallback((credentials) => {
+    return authenticate(credentials).then(setUser);
+  }, []);
+
+  const logout = React.useCallback(() => {
+    setUser(null);
+  }, []);
+
+  const value = React.useMemo(
+    () => ({ user, login, logout }),
+    [user, login, logout]
+  );
+
+  return (
+    <UserContext.Provider value={value}>
+      {children}
+    </UserContext.Provider>
+  );
+}
+```
+
+With the stable value: when `user` changes, `value` changes (correctly, because `user` is in the `useMemo` deps). When `UserProvider` re-renders for some other reason (a parent re-render with no user change), `value` is the same reference. Consumers do not re-render. We cover the full mechanics of this in next section.
+
+---
+
+### 6. Internals
+
+**How the Provider stores and propagates its value.**
+
+`ThemeContext.Provider` is a special component type in the Fiber tree. Its Fiber tag is `ContextProvider`. When React processes it in `beginWork`, it calls `updateContextProvider`:
+
+```js
+function updateContextProvider(current, workInProgress, renderLanes) {
+  const providerType = workInProgress.type;
+  const context = providerType._context;
+
+  const newProps = workInProgress.pendingProps;
+  const oldProps = workInProgress.memoizedProps;
+
+  const newValue = newProps.value;
+  const oldValue = oldProps !== null ? oldProps.value : null;
+
+  // Push the new value onto the context stack
+  pushProvider(workInProgress, context, newValue);
+
+  if (oldProps !== null) {
+    // Check if the value changed
+    if (Object.is(oldValue, newValue)) {
+      // Value unchanged: no need to notify consumers
+      // bail out if children are also unchanged
+      if (oldProps.children === newProps.children) {
+        return bailoutOnAlreadyFinishedWork(current, workInProgress, renderLanes);
+      }
+    } else {
+      // Value changed: propagate to consumers
+      propagateContextChange(workInProgress, context, renderLanes);
+    }
+  }
+
+  reconcileChildren(current, workInProgress, newProps.children, renderLanes);
+  return workInProgress.child;
+}
+```
+
+`Object.is(oldValue, newValue)` is the critical check. If the value reference is the same as the previous render, React does not propagate the change to consumers. If it is different, `propagateContextChange` walks the subtree.
+
+**The context stack.**
+
+React maintains a context stack during the render phase. As React traverses the Fiber tree depth-first, each Provider pushes its value onto the stack and pops it on the way back up. This is how nested Providers of the same context type work: the innermost Provider's value shadows the outer one.
+
+```js
+// Simplified context stack mechanism
+let contextStack = [];
+
+function pushProvider(workInProgress, context, nextValue) {
+  context._currentValue = nextValue; // set the current readable value
+  contextStack.push({ context, previousValue: context._currentValue });
+}
+
+function popProvider(workInProgress, context) {
+  const { previousValue } = contextStack.pop();
+  context._currentValue = previousValue; // restore to outer provider's value
+}
+```
+
+When `useContext(SomeContext)` is called inside a component, it reads `SomeContext._currentValue`, which is whatever the nearest enclosing Provider set it to during the current render pass.
+
+**`propagateContextChange`: how consumers are found.**
+
+When a context value changes, React needs to find all consumers in the subtree and mark them for re-render:
+
+```js
+function propagateContextChange(workInProgress, context, renderLanes) {
+  let fiber = workInProgress.child;
+
+  while (fiber !== null) {
+    let nextFiber;
+
+    // Check if this fiber or its children consume this context
+    const list = fiber.dependencies;
+    if (list !== null) {
+      nextFiber = fiber.child;
+
+      let dependency = list.firstContext;
+      while (dependency !== null) {
+        if (dependency.context === context) {
+          // This fiber consumes this context: mark it for re-render
+          if (fiber.tag === ClassComponent) {
+            const update = { tag: ForceUpdate, ... };
+            enqueueUpdate(fiber, update);
+          }
+          fiber.lanes = mergeLanes(fiber.lanes, renderLanes);
+          // Also mark ancestors with childLanes
+          scheduleContextWorkOnParentPath(fiber.return, renderLanes);
+          break;
+        }
+        dependency = dependency.next;
+      }
+    } else if (fiber.tag === ContextProvider) {
+      // Nested Provider of SAME context: stop walking this branch
+      // (the nested provider overrides the value for its subtree)
+      nextFiber = fiber.type === workInProgress.type ? null : fiber.child;
+    } else {
+      nextFiber = fiber.child;
+    }
+
+    fiber = nextFiber;
+    // ... traverse siblings and up
+  }
+}
+```
+
+This is a linear walk of the entire subtree below the Provider. Every Fiber is checked for context dependencies. Fibers that consume the context are marked with their lanes. This is O(n) in the size of the subtree, not O(number of consumers). It visits every node even if only 2 out of 10,000 are consumers.
+
+**How a component registers as a consumer.**
+
+When `useContext(SomeContext)` is called during a component's render, React reads the current value and registers the component as a dependency:
+
+```js
+function readContext(context) {
+  const value = context._currentValue;
+
+  // Register this component as a consumer of this context
+  if (lastContextDependency === null) {
+    // First context dependency for this component
+    lastContextDependency = {
+      context: context,
+      memoizedValue: value,
+      next: null,
+    };
+    currentlyRenderingFiber.dependencies = {
+      lanes: NoLanes,
+      firstContext: lastContextDependency,
+    };
+  } else {
+    // Add to the dependency list
+    lastContextDependency = lastContextDependency.next = {
+      context: context,
+      memoizedValue: value,
+      next: null,
+    };
+  }
+
+  return value;
+}
+```
+
+The component's Fiber accumulates a `dependencies` list of every Context it consumed during its render. This list is what `propagateContextChange` checks when walking the subtree. The first time a component renders with `useContext`, it registers itself. On subsequent renders, the dependencies are updated.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: What does this print when the button is clicked, and why?**
+
+```jsx
+const CountContext = React.createContext(0);
+
+function Display() {
+  const count = React.useContext(CountContext);
+  console.log('Display rendered, count:', count);
+  return <p>{count}</p>;
+}
+
+function App() {
+  const [count, setCount] = React.useState(0);
+
+  return (
+    <div>
+      <CountContext.Provider value={count}>
+        <Display />
+      </CountContext.Provider>
+      <button onClick={() => setCount(c => c + 1)}>+</button>
+    </div>
+  );
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+On mount: `Display rendered, count: 0`.
+
+On each button click: `Display rendered, count: N` where N is the new count.
+
+The sequence: the button click calls `setCount`, which enqueues an update on `App`'s state. `App` re-renders with the new `count`. `App` passes `count` as the `value` prop to `CountContext.Provider`. The Provider processes this in `updateContextProvider`. `Object.is(oldValue, newValue)` checks `0 === 1` (first click): `false`. `propagateContextChange` walks the subtree, finds `Display`'s Fiber (which has `CountContext` in its dependencies), and marks it with a `ForceUpdate` lane. React renders `Display`, which calls `useContext(CountContext)`, reads the new value `1`, and returns new JSX. DOM updates to show `1`.
+
+`Display` re-renders for two simultaneous reasons: it is a child of `App` (trigger 2: parent re-render) and it is a consumer of a context whose value changed (trigger 3: context change). In practice both triggers fire but the component only renders once. React does not double-render a component that has both trigger 2 and trigger 3 in the same pass.
+
+</details>
+
+---
+
+**Trap 2: Context with no Provider. What does `Display` render?**
+
+```jsx
+const ThemeContext = React.createContext('light');
+
+function Display() {
+  const theme = React.useContext(ThemeContext);
+  return <div className={theme}>Themed content</div>;
+}
+
+function App() {
+  return (
+    // No ThemeContext.Provider anywhere
+    <Display />
+  );
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+`Display` renders `<div className="light">Themed content</div>`.
+
+When no Provider exists above a consumer in the tree, `useContext` returns the default value provided to `createContext`. Here, `React.createContext('light')` sets the default to `'light'`. `Display` reads `'light'` from `ThemeContext._currentValue`, which is initialized to the default and never overridden by a Provider.
+
+The default value is not an "initial" value that gets replaced by a Provider. It is specifically the fallback for consumers with no Provider ancestor. This distinction matters: if `Display` is rendered inside a `ThemeContext.Provider value="dark"`, it reads `'dark'`. If it is rendered outside any Provider, it reads `'light'`. Both cases are intentional uses of Context. The default value enables components to be used in testing or storybook environments without wrapping them in a Provider.
+
+A common mistake: setting the default to `null` or `undefined` when the component is always meant to be used inside a Provider. This makes the error confusing ("cannot read property of null") instead of explicit. The custom hook pattern with an existence check, `if (context === undefined) throw new Error(...)`, is the correct way to enforce Provider requirement.
+
+</details>
+
+---
+
+**Trap 3: Why does this not trigger a consumer re-render even though the Provider re-renders?**
+
+```jsx
+const ConfigContext = React.createContext(null);
+
+function App() {
+  const [unrelated, setUnrelated] = React.useState(0);
+
+  const config = React.useMemo(
+    () => ({ timeout: 5000, retries: 3 }),
+    [] // stable: never changes
+  );
+
+  return (
+    <ConfigContext.Provider value={config}>
+      <button onClick={() => setUnrelated(u => u + 1)}>
+        Unrelated: {unrelated}
+      </button>
+      <ConfigConsumer />
+    </ConfigContext.Provider>
+  );
+}
+
+const ConfigConsumer = React.memo(function ConfigConsumer() {
+  const config = React.useContext(ConfigContext);
+  console.log('ConfigConsumer rendered');
+  return <div>{config.timeout}</div>;
+});
+```
+
+<details>
+<summary>Answer</summary>
+
+When the button is clicked, `unrelated` changes. `App` re-renders. The Provider processes the new props. `updateContextProvider` compares `oldValue` and `newValue` using `Object.is`. `config` is the `useMemo` result: same object reference across `App` re-renders because `useMemo` with empty deps returns the same cached object. `Object.is(config, config)` is `true`. The value did not change. `propagateContextChange` is not called. No consumer is marked for re-render.
+
+`ConfigConsumer` would normally re-render due to trigger 2 (parent `App` re-rendered). But `ConfigConsumer` is wrapped in `React.memo`. It has no props (zero props to compare). `shallowEqual({}, {})` returns `true`. `React.memo` bails out. Trigger 2 is blocked.
+
+The context change check (`Object.is` on the Provider value) also passes, so trigger 3 does not fire. Both possible re-render triggers are blocked. `ConfigConsumer` does not render. The console does not log.
+
+This is the pattern for high-performance Context: stable value references prevent context propagation, and `React.memo` on propless consumers prevents parent re-render propagation.
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** Context is described as a "transport" not a "state manager." What is the precise distinction, and what component actually manages the state when using Context?
+
+<details>
+<summary>Answer</summary>
+
+A state manager stores data, manages updates to that data, and provides a mechanism for components to subscribe to specific slices of the data. Context does none of these things independently. Context has no storage of its own. It has no update mechanism. It has no subscription selectors.
+
+What Context does: it takes a value that already exists in a component's state and makes it readable by any descendant without prop drilling. The Provider component receives `value` as a prop and makes it available to consumers. The Provider does not own the value. The component rendering the Provider owns the value via `useState` or `useReducer`.
+
+The precise distinction: `useState` (or `useReducer`) is the state manager. It stores the value, handles updates, and schedules re-renders. Context is the delivery mechanism. It takes the value that `useState` manages and broadcasts it to consumers. If you remove `useState` from the Provider component and try to manage state in Context itself, you cannot: Context has no setter, no update queue, no scheduler integration.
+
+</details>
+
+---
+
+**Q2.** What is `propagateContextChange`, when does it run, and what is its time complexity?
+
+<details>
+<summary>Answer</summary>
+
+`propagateContextChange` is the function React calls when a Context Provider's value changes between renders. It runs during the render phase when `updateContextProvider` detects `Object.is(oldValue, newValue)` is `false`.
+
+It performs a depth-first walk of the entire Fiber subtree below the Provider. For each Fiber, it checks whether the Fiber's `dependencies` list contains the changed Context. If it does, it marks the Fiber with a force-update lane, scheduling a re-render regardless of props or `React.memo`. It also marks all ancestors of the consumer with `childLanes` to ensure the work loop visits them.
+
+The time complexity is O(n) where n is the number of Fibers in the subtree below the Provider, not the number of consumers. Every Fiber is visited to check for context dependency, even Fibers that do not consume the context. For a Provider near the root with a large subtree, this walk visits thousands of Fibers on every value change. This is the mechanical basis of the context performance problem covered in next section.
+
+</details>
+
+---
+
+**Q3.** What is the purpose of the default value in `createContext(defaultValue)`, and when does it take effect?
+
+<details>
+<summary>Answer</summary>
+
+The default value is the fallback value returned by `useContext` when the consuming component has no Provider of that Context anywhere above it in the component tree. It takes effect specifically and only in the absence of a matching Provider.
+
+The default is not the initial value of the Provider. When a Provider is present, `useContext` reads from `context._currentValue`, which is set by the nearest enclosing Provider via `pushProvider`. The `createContext` default is only used when `_currentValue` was never set by any Provider, meaning it remains at the initialization value.
+
+The practical uses: first, testing components in isolation without Provider wrappers. A component that calls `useContext(ThemeContext)` in a unit test environment with no Provider will receive the default value rather than throwing or returning null, allowing tests to run without setup. Second, providing a sensible fallback for contexts that represent optional configuration (feature flags, optional analytics context). Third, as a documentation tool: `createContext({ user: null, isLoading: true })` communicates the expected shape of the context value to readers.
+
+</details>

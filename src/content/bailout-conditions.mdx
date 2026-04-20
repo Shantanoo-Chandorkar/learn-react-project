@@ -1,1 +1,541 @@
-﻿# Bailout conditions
+﻿# 4.5 — Bailout Conditions: When React Skips Reconciliation Entirely
+
+> React doesn't always reconcile. Sometimes it just stops.
+
+### 1. The Problem
+
+Every state update triggers a re-render. Every re-render runs your component function. Every component function produces a new Virtual DOM tree. React then diffs that tree against the previous one.
+
+That's the default. But diffing has a cost. For large component trees, even O(n) adds up. The question becomes: are there cases where React can skip the diff entirely?
+
+Not just skip DOM updates — skip the reconciliation work itself. Never call the component function. Never produce the new VDOM subtree. Just reuse what was there.
+
+---
+
+### 2. The Naive Attempt
+
+You have an expensive component. It renders a large data table. A parent state change causes the parent to re-render. The table's props haven't changed. You want to skip it.
+
+First instinct: add a condition inside the component.
+
+```jsx
+function DataTable({ rows, columns }) {
+  // can we just bail out here if nothing changed?
+  if (/* props are the same as last time */) {
+    return /* ??? — we don't have the previous output */;
+  }
+
+  return (
+    <table>
+      {rows.map(row => (
+        <tr key={row.id}>
+          {columns.map(col => <td key={col}>{row[col]}</td>)}
+        </tr>
+      ))}
+    </table>
+  );
+}
+```
+
+This immediately hits a wall. Inside the component function, you don't have access to the previous render's output. You can't return it even if you wanted to. The component function doesn't receive "what you returned last time" as an argument. Every call starts fresh.
+
+The check needs to happen *before* React calls the component function. That's not something a component can do to itself from the inside.
+
+---
+
+### 3. Why That Breaks
+
+The component function is the wrong place for this check. By the time React calls it, work has already started. What you need is a gate that React checks *before* invoking the function — a signal that says "the output of this component is guaranteed to be identical to last time, so don't bother."
+
+React has several such gates, each applying at a different layer:
+
+- At the component boundary, for prop changes
+- At the hook level, for state changes
+- At the element level, for subtrees passed as children
+
+Each has a different mechanism and different tradeoffs.
+
+---
+
+### 4. React's Mental Model
+
+A bailout is React deciding: **"I already know what this subtree looks like. Nothing that could affect its output has changed. Skip it."**
+
+For a bailout to be correct, React must be certain the output won't differ. It achieves this through referential equality checks — not deep equality, not structural comparison, just `Object.is`. Same reference means same value. Different reference means potentially different output, so React proceeds.
+
+This is why referential stability matters. A new object `{}` created on every render is never equal to the previous render's `{}`, even if their contents are identical. React sees a new reference and cannot bail out.
+
+---
+
+### 5. React's Solution
+
+**Bailout 1: `React.memo` — skip if props haven't changed.**
+
+```jsx
+const DataTable = React.memo(function DataTable({ rows, columns }) {
+  return (
+    <table>
+      {rows.map(row => (
+        <tr key={row.id}>
+          {columns.map(col => <td key={col}>{row[col]}</td>)}
+        </tr>
+      ))}
+    </table>
+  );
+});
+```
+
+When the parent re-renders, React checks each prop with `Object.is` before calling `DataTable`. If all props are referentially equal to their previous values, React reuses the last rendered output. The function is never called. The VDOM subtree is never produced.
+
+The default comparison is shallow: every top-level prop is compared with `Object.is`. You can provide a custom comparator as the second argument:
+
+```jsx
+const DataTable = React.memo(
+  function DataTable({ rows, columns }) { /* ... */ },
+  function arePropsEqual(prevProps, nextProps) {
+    // return true to skip re-render, false to allow it
+    return (
+      prevProps.rows.length === nextProps.rows.length &&
+      prevProps.columns === nextProps.columns
+    );
+  }
+);
+```
+
+Custom comparators are rarely needed and often wrong. If you write one, you are taking on the responsibility of correctly determining equality for all props. Mistakes cause stale renders — the component shows outdated data because your comparator incorrectly returned `true`.
+
+**The prop stability problem.**
+
+`React.memo` only works if the props it receives are referentially stable. This is the most common failure mode:
+
+```jsx
+function Parent() {
+  const [count, setCount] = React.useState(0);
+
+  return (
+    <div>
+      <button onClick={() => setCount(c => c + 1)}>Increment</button>
+      {/* new array reference on every render — memo is defeated */}
+      <DataTable rows={[...data]} columns={['name', 'age']} />
+    </div>
+  );
+}
+```
+
+`[...data]` creates a new array on every render. `React.memo` compares the new array reference to the previous one. They are not equal. `DataTable` re-renders every time `count` changes, despite having nothing to do with `count`. The memo wrapper costs a comparison on every render and provides no benefit.
+
+The fix: stabilize the reference.
+
+```jsx
+function Parent() {
+  const [count, setCount] = React.useState(0);
+
+  // stable reference — only changes when data changes
+  const rows = React.useMemo(() => [...data], [data]);
+  const columns = React.useMemo(() => ['name', 'age'], []);
+
+  return (
+    <div>
+      <button onClick={() => setCount(c => c + 1)}>Increment</button>
+      <DataTable rows={rows} columns={columns} />
+    </div>
+  );
+}
+```
+
+Now `rows` and `columns` have stable references. `React.memo` sees equal props on every `count` change. `DataTable` is skipped.
+
+---
+
+**Bailout 2: `useMemo` — skip if dependencies haven't changed.**
+
+`React.memo` works at the component boundary. `useMemo` works inside a component, memoizing a computed value:
+
+```jsx
+function ProductList({ products, filterText }) {
+  // only recomputes when products or filterText changes
+  const filtered = React.useMemo(
+    () => products.filter(p => p.name.includes(filterText)),
+    [products, filterText]
+  );
+
+  return (
+    <ul>
+      {filtered.map(p => <li key={p.id}>{p.name}</li>)}
+    </ul>
+  );
+}
+```
+
+When `ProductList` re-renders for an unrelated reason (a parent state change that doesn't affect `products` or `filterText`), `useMemo` checks its dependencies with `Object.is`. Both are unchanged. It returns the previous `filtered` array — the same reference. The component re-renders, but the expensive filter computation is skipped, and the returned value is referentially stable.
+
+`useMemo` is also used to stabilize object or array references passed to memoized children:
+
+```jsx
+// without useMemo: new object reference on every render, breaks memo
+const config = { theme: 'dark', density: 'compact' };
+
+// with useMemo: stable reference, memo can bail out
+const config = React.useMemo(
+  () => ({ theme: 'dark', density: 'compact' }),
+  [] // no deps — config never changes
+);
+```
+
+---
+
+**Bailout 3: `useCallback` — stable function references for memoized children.**
+
+Functions are values. A function defined inside a component body gets a new reference on every render.
+
+```jsx
+function Parent() {
+  const [count, setCount] = React.useState(0);
+
+  // new reference on every render
+  const handleSelect = (id) => setSelectedId(id);
+
+  return <MemoizedChild onSelect={handleSelect} />;
+}
+```
+
+`MemoizedChild` is wrapped in `React.memo`. But `handleSelect` is a new reference every render. The memo check fails on `onSelect`. `MemoizedChild` re-renders every time `count` changes.
+
+`useCallback` memoizes the function itself:
+
+```jsx
+const handleSelect = React.useCallback(
+  (id) => setSelectedId(id),
+  [] // setSelectedId from useState is stable — no deps needed
+);
+```
+
+Now `handleSelect` is the same reference across renders unless its dependencies change. `React.memo` on the child can correctly bail out.
+
+`useCallback(fn, deps)` is equivalent to `useMemo(() => fn, deps)`. It's a specialized form for functions.
+
+---
+
+**Bailout 4: Same state value — React skips even the component call.**
+
+If a state update sets the same value that's already stored, React bails out without re-rendering:
+
+```jsx
+function Counter() {
+  const [count, setCount] = React.useState(0);
+
+  return (
+    <button onClick={() => setCount(0)}>
+      {/* clicking this when count is already 0 does nothing */}
+      Reset
+    </button>
+  );
+}
+```
+
+React uses `Object.is` to compare the new state value to the current one. If they're equal, React exits without re-rendering the component or its children. No diff. No commit. Nothing.
+
+This applies to objects too, but only by reference:
+
+```jsx
+const [user, setUser] = React.useState({ name: 'Alice' });
+
+// same reference — React bails out
+setUser(user);
+
+// new reference with same contents — React re-renders
+setUser({ name: 'Alice' });
+```
+
+---
+
+**Bailout 5: Children as props — the composition escape hatch.**
+
+There's a structural pattern that achieves bailout without `memo` at all: pass expensive children as props instead of rendering them inside the component that owns the changing state.
+
+```jsx
+// Without the pattern: ColorPicker re-renders cause ExpensiveTree to re-render
+function App() {
+  const [color, setColor] = React.useState('red');
+  return (
+    <div style={{ color }}>
+      <input value={color} onChange={e => setColor(e.target.value)} />
+      <ExpensiveTree /> {/* re-renders every time color changes */}
+    </div>
+  );
+}
+
+// With the pattern: ExpensiveTree is owned by the parent, passed down as children
+function App() {
+  return (
+    <ColorPicker>
+      <ExpensiveTree />
+    </ColorPicker>
+  );
+}
+
+function ColorPicker({ children }) {
+  const [color, setColor] = React.useState('red');
+  return (
+    <div style={{ color }}>
+      <input value={color} onChange={e => setColor(e.target.value)} />
+      {children} {/* same JSX element reference — React bails out */}
+    </div>
+  );
+}
+```
+
+When `ColorPicker` re-renders due to `color` changing, `children` is the same JSX element that `App` passed in. `App` didn't re-render, so it didn't create a new `<ExpensiveTree />` element. `ColorPicker` receives the same element reference it had before. React sees no change in that subtree and skips it entirely.
+
+This is not `memo`. It's a structural insight: components don't re-render because state changed somewhere below them in the tree. They re-render because their parent re-rendered and passed them new props. Moving state down to a smaller component, and passing the unaffected parts as `children`, keeps them outside the re-render scope entirely.
+
+---
+
+### 6. Internals
+
+React's bailout system is implemented at the Fiber level with two distinct early exits.
+
+**Before calling the component function — the `memo` check:**
+
+```
+scheduleUpdateOnFiber(fiber)
+  → beginWork(fiber)
+      → if fiber.type has compare function (React.memo):
+           run compare(prevProps, nextProps)
+           if true → bailoutOnAlreadyFinishedWork()
+                      clone children fibers, skip subtree
+           if false → call component function, continue reconciliation
+```
+
+`bailoutOnAlreadyFinishedWork` clones the existing child fibers without re-rendering any of them. The subtree is reused in the work-in-progress tree at zero reconciliation cost.
+
+**After calling the component function — the same-output check:**
+
+Even without `React.memo`, React has a second bailout after the component runs. If the new element produced is referentially identical to the previous element (same JSX object), React bails out on that subtree. This is rare in practice because JSX always creates new objects, but it can be triggered deliberately by returning the same element reference from `useMemo`.
+
+**The `useState` same-value bailout:**
+
+```
+dispatchSetState(fiber, queue, action)
+  → compute new state from action
+  → Object.is(currentState, newState)?
+      → true: return early, no re-render scheduled
+      → false: schedule re-render, mark fiber dirty
+```
+
+This happens synchronously during the `setState` call itself, before React's scheduler is involved. For the same-value case, no work is ever enqueued.
+
+**`useMemo` and `useCallback` storage:**
+
+Both are stored in the fiber's hook linked list, just like `useState`. Each node holds `{ memoizedState: [value, deps] }`. On re-render, React reads the stored deps, compares each with `Object.is` against the new deps, and either returns the cached value or recomputes and stores the new one.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: A component is wrapped in `React.memo`. The parent re-renders. The child still re-renders every time. The developer can't figure out why. What are the three most likely causes?**
+
+<details>
+<summary>Answer</summary>
+
+**Cause 1: An object or array prop is recreated on every render.**
+
+```jsx
+// new reference every render — memo fails
+<MemoChild config={{ theme: 'dark' }} />
+```
+
+Fix: `useMemo` to stabilize the reference.
+
+**Cause 2: A function prop is recreated on every render.**
+
+```jsx
+// new function reference every render — memo fails
+<MemoChild onClick={() => doSomething()} />
+```
+
+Fix: `useCallback` to stabilize the function reference.
+
+**Cause 3: The component uses `useContext`, and the context value changed.**
+
+`React.memo` only gates props. It does not prevent re-renders caused by context. If the component reads a context whose value changed, it re-renders regardless of the memo wrapper. Fix: split the context into smaller contexts so consumers only subscribe to the slice they use, or use a selector pattern to derive a stable value from the context.
+
+</details>
+
+---
+
+**Trap 2: A developer wraps every component in `React.memo` "just to be safe." Is this a good strategy?**
+
+<details>
+<summary>Answer</summary>
+
+No. `React.memo` is not free. On every render of the parent, React must run the prop comparison — iterating all props and calling `Object.is` on each. For cheap components (a button, a label, a simple list item), this comparison costs more than just re-rendering the component would have. You've added overhead to prevent a re-render that was faster than the overhead itself.
+
+`React.memo` is appropriate when two conditions are both true: the component is expensive to render (large subtree, heavy computation), and it re-renders frequently with identical props due to unrelated parent state changes. If either condition is false, memo is net-negative or neutral.
+
+The correct workflow: render without memo first. If profiling identifies a specific component as a bottleneck re-rendering unnecessarily, apply memo. Then check that props are actually stable, or the memo wrapper is doing nothing. Memoization is an optimization, not a default.
+
+</details>
+
+---
+
+**Trap 3: What is the difference between `useMemo` and `useCallback`? When would you use one but not the other?**
+
+<details>
+<summary>Answer</summary>
+
+`useCallback(fn, deps)` is syntactic sugar for `useMemo(() => fn, deps)`. Both memoize a value across renders using dependency comparison. The distinction is semantic and practical, not technical.
+
+Use `useMemo` when memoizing a computed value — a filtered array, a derived object, a formatted string, a calculated number. The thing you're memoizing is the result of running a function.
+
+```jsx
+const sortedItems = useMemo(() => [...items].sort(compareFn), [items]);
+```
+
+Use `useCallback` when memoizing the function itself — specifically when that function is passed as a prop to a memoized child or used as a dependency in another hook. The thing you're memoizing is the function reference, not its return value.
+
+```jsx
+const handleSubmit = useCallback((data) => submitForm(data), [submitForm]);
+```
+
+The practical difference: if you wrote `useMemo(() => (data) => submitForm(data), [submitForm])`, you'd get the same stable function reference, but `useCallback` communicates intent more clearly.
+
+</details>
+
+---
+
+**Trap 4: A developer has this code. They claim the `useMemo` is unnecessary because the computation is simple. Are they right?**
+
+```jsx
+function Parent() {
+  const [count, setCount] = React.useState(0);
+
+  const childProps = React.useMemo(
+    () => ({ label: 'Submit', variant: 'primary' }),
+    []
+  );
+
+  return <MemoizedButton {...childProps} />;
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+They are wrong, but not for performance reasons. The `useMemo` here is not memoizing an expensive computation — `{ label: 'Submit', variant: 'primary' }` is trivially cheap to create. However, the purpose of this `useMemo` is not performance of the computation itself. It is referential stability of the resulting object.
+
+Without `useMemo`, a new object `{ label: 'Submit', variant: 'primary' }` is created on every render of `Parent`. Even though the contents are identical, `Object.is` returns false for different object references. `MemoizedButton`'s prop check fails. The memo wrapper is defeated. `MemoizedButton` re-renders on every `count` change despite its props being semantically unchanged.
+
+With `useMemo` and an empty dependency array, the same object reference is returned on every render. `MemoizedButton` correctly bails out. The `useMemo` is not about computation cost. It is about producing a stable reference that allows the child's memo to function.
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** State the exact comparison React uses for all bailout checks. Why not deep equality?
+
+<details>
+<summary>Answer</summary>
+
+React uses `Object.is` for all bailout comparisons — props in `React.memo`, dependencies in `useMemo` and `useCallback`, and new state values in `useState`. `Object.is` is referential equality with two edge-case corrections over `===`: it treats `NaN` as equal to `NaN`, and `+0` as not equal to `-0`.
+
+Deep equality is not used because it is unbounded in cost. A deep comparison of a large nested object could be more expensive than re-rendering the component it is meant to protect. It also creates a false sense of safety: deeply equal objects might contain functions or class instances whose behavior has changed even though their structure looks the same. Referential equality is O(1), predictable, and unambiguous. The tradeoff is that developers must manage reference stability explicitly — which is what `useMemo` and `useCallback` exist for.
+
+</details>
+
+---
+
+**Q2.** A `React.memo` component correctly bails out on every render. Then a developer adds a `useContext` call inside it. It now re-renders on every context update, even when the context value it reads is unchanged. What is happening and how do you fix it?
+
+<details>
+<summary>Answer</summary>
+
+`useContext` subscribes the component to the entire context value. When the context provider re-renders and passes a new value — even if the specific property the component reads is unchanged — the component re-renders. `React.memo` does not intercept context-driven re-renders. It only gates prop changes at the component boundary. Context subscriptions bypass it entirely.
+
+If the context value is an object and only part of it changed, but the component only uses an unchanged part, the component still re-renders because the object reference changed.
+
+Fix options, in order of increasing complexity: first, split the context into smaller, more focused contexts so the component only subscribes to the slice it uses. If the component only needs the theme, it should read from a ThemeContext, not a GlobalAppContext that includes theme, user, and settings. Second, derive a stable primitive from the context using `useMemo`, and use that derived value — though this still runs on every context change, it at least avoids propagating the re-render further down. Third, use a context selector library (like `use-context-selector`) that allows subscribing to a specific slice of context and only re-rendering when that slice changes via a comparison function.
+
+</details>
+
+---
+
+**Q3.** Explain why this `useMemo` does nothing useful.
+
+```jsx
+function Component({ userId }) {
+  const user = useMemo(() => fetchUser(userId), [userId]);
+  return <div>{user.name}</div>;
+}
+```
+
+<details>
+<summary>Answer</summary>
+
+`useMemo` is synchronous. It runs the function during render and returns the result. `fetchUser` is presumably an async function that returns a Promise, not a user object. `useMemo` will memoize that Promise — but the Promise itself resolves asynchronously, after the render completes. The component can't use the Promise's resolved value directly in render.
+
+Beyond the async issue, `useMemo` is not a caching layer for network requests. It only persists the memoized value for the lifetime of the component instance. If the component unmounts and remounts, the cache is gone. If `userId` changes, the previous result is discarded and `fetchUser` is called again synchronously during render. For data fetching, the correct tools are `useEffect` combined with state to store the resolved value, or a data-fetching library (`React Query`, `SWR`, `useSWR`) that handles caching, deduplication, and async lifecycle correctly.
+
+</details>
+
+---
+
+**Q4.** Without using `React.memo`, `useMemo`, or `useCallback`, how can you prevent a component from re-rendering when its parent's state changes? What is the structural principle behind this?
+
+<details>
+<summary>Answer</summary>
+
+Move the changing state down into a smaller component, and pass the stable, unaffected parts as `children` or props from the outer parent.
+
+```jsx
+// Before: ExpensiveTree re-renders when color changes
+function App() {
+  const [color, setColor] = React.useState('red');
+  return (
+    <div style={{ color }}>
+      <input value={color} onChange={e => setColor(e.target.value)} />
+      <ExpensiveTree />
+    </div>
+  );
+}
+
+// After: ExpensiveTree is never in the re-render scope of the state owner
+function App() {
+  return (
+    <ColorPicker>
+      <ExpensiveTree />
+    </ColorPicker>
+  );
+}
+
+function ColorPicker({ children }) {
+  const [color, setColor] = React.useState('red');
+  return (
+    <div style={{ color }}>
+      <input value={color} onChange={e => setColor(e.target.value)} />
+      {children}
+    </div>
+  );
+}
+```
+
+The structural principle: a component only re-renders when its own state changes or its parent re-renders and passes new props. `ExpensiveTree` is now created by `App`, which has no state and never re-renders. `ColorPicker` re-renders on color changes, but `children` is a prop passed from `App` — the same element reference every time. React sees no change in the children subtree and skips it. The insight is that component composition can isolate re-render scope architecturally, without any memoization APIs.
+
+</details>
+
+---
+
+**Q5.** A `useState` setter is called with the same value that's already stored. Trace what happens inside React, step by step.
+
+<details>
+<summary>Answer</summary>
+
+React calls `dispatchSetState` with the fiber, the update queue, and the new value. React computes the new state — if the argument is a function (updater form), it calls it with the current state to get the new value; if it's a direct value, it uses it as-is. React then calls `Object.is(currentState, newState)`. The result is `true`.
+
+React returns early. No update is enqueued on the fiber's update queue. No re-render is scheduled. The scheduler is never involved. The fiber is not marked dirty. The component function is not called. The Virtual DOM subtree is not produced. No diffing occurs. Nothing visible changes.
+
+One nuance: if this `setState` call happens during a render (which is an unusual pattern, used for derived state), React's same-value check still applies but the timing is slightly different — React may have already started rendering and will bail out mid-render rather than before scheduling. In the normal case (event handlers, effects), the bailout is entirely pre-render.
+
+</details>

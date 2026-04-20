@@ -1,1 +1,438 @@
-﻿# The React Compiler (React 19)
+﻿# The React Compiler
+
+### 1. The Problem
+
+Every module in Phase 7 has been building toward the same conclusion: manual memoization is a tax on developers that is frequently paid incorrectly. Developers over-apply it (wrapping trivial computations), under-apply it (missing the components that are actually expensive), apply it ineffectively (unstable props defeating `React.memo`), and introduce bugs doing it (stale closures from incorrect deps).
+
+The root cause is not that developers are careless. It is that manually reasoning about reference stability, dependency arrays, and bailout conditions across a large codebase is genuinely hard. The information required to make correct memoization decisions, what changed, what references are stable, what computations are expensive, is information the compiler has access to and the developer does not, at least not consistently.
+
+React 18 and earlier delegated memoization entirely to developers. React 19 introduces the React Compiler, which performs memoization automatically through static analysis. The question is: what does it actually do, what are its limits, and what does its existence tell you about how to write React code today, even if you are not yet on React 19?
+
+---
+
+### 2. The Naive Attempt
+
+Before the compiler, the recommended approach to a performance-sensitive component was to manually annotate it with memoization:
+
+```jsx
+// React 18: developer is responsible for all of this
+const ExpensiveList = React.memo(function ExpensiveList({ items, onSelect }) {
+  const processed = React.useMemo(
+    () => items
+      .filter(i => i.active)
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    [items]
+  );
+
+  const handleSelect = React.useCallback((id) => {
+    onSelect(id);
+  }, [onSelect]);
+
+  return (
+    <ul>
+      {processed.map(item => (
+        <ListItem key={item.id} item={item} onSelect={handleSelect} />
+      ))}
+    </ul>
+  );
+});
+```
+
+This is the pattern from Module 7.1 through 7.4. It works if:
+- `items` reference is stable when contents are unchanged
+- `onSelect` is wrapped in `useCallback` at the call site
+- `handleSelect`'s deps are complete
+- `ListItem` is also `React.memo`-wrapped and receives stable props
+- Every one of these conditions holds simultaneously
+
+Missing any one condition silently defeats the entire optimization. The developer must hold this entire dependency graph in their head, across multiple files, and maintain it correctly as the codebase evolves.
+
+---
+
+### 3. Why That Breaks
+
+The precise failure mode: **manual memoization requires perfect, complete, continuously maintained knowledge of reference identity across the entire component subtree. Humans are not reliable at this.**
+
+The problem is not knowledge at a moment in time. A developer who reads this module can correctly apply `React.memo` and `useCallback` today. The problem is maintenance over time. Six months later, a different developer adds a new prop to `ExpensiveList`. It is an object, created inline at the call site. They do not know the component is memoized. They do not check whether their prop is reference-stable. `React.memo` silently stops working. The performance regression is invisible until someone notices in a profiler months later.
+
+The compiler knows the entire codebase simultaneously. It does not forget. It does not miss a file. It analyzes reference stability statically, at build time, with complete information. It makes the correct decision every time, for every component, without any developer annotation.
+
+---
+
+### 4. React's Mental Model
+
+The React Compiler is a build-time transform that analyzes your component functions statically and automatically inserts memoization where it is beneficial. It understands React's rules (components are pure functions, props flow down, state triggers re-renders) and uses that understanding to determine which values are stable across renders and which computations can be cached.
+
+The compiler does not change what your code does. It changes how React evaluates it. The output is semantically identical to hand-written `React.memo`, `useMemo`, and `useCallback`, but generated correctly, completely, and automatically.
+
+One sentence: the React Compiler is a static analysis tool that transforms your component code to include optimal memoization automatically, eliminating the developer's responsibility to reason about reference stability.
+
+---
+
+### 5. React's Solution
+
+**What the compiler does.**
+
+The compiler analyzes each component function and:
+
+1. Identifies which values are stable across renders (props that do not change, derived values whose inputs do not change, function definitions whose closures are stable)
+2. Wraps computations that depend only on stable inputs in cache blocks
+3. Ensures referential identity is preserved for stable values
+
+The output is not literally `useMemo` and `useCallback` calls. The compiler generates optimized JavaScript using a lower-level caching primitive, but the semantics are equivalent. Here is a simplified illustration of what the compiler produces for a component:
+
+```jsx
+// What you write:
+function TodoList({ todos, filter }) {
+  const filtered = todos.filter(t => t.status === filter);
+
+  function handleClick(id) {
+    markDone(id);
+  }
+
+  return (
+    <ul>
+      {filtered.map(t => (
+        <TodoItem key={t.id} todo={t} onClick={handleClick} />
+      ))}
+    </ul>
+  );
+}
+```
+
+```jsx
+// What the compiler produces (conceptually):
+function TodoList({ todos, filter }) {
+  // compiler determined: filtered depends on todos and filter
+  // cache it: only recompute when todos or filter change
+  const filtered = _cache(
+    () => todos.filter(t => t.status === filter),
+    [todos, filter]
+  );
+
+  // compiler determined: handleClick has no dependencies on
+  // changing values, markDone is a stable import
+  // cache the function reference: always the same object
+  const handleClick = _cache(
+    () => (id) => { markDone(id); },
+    []
+  );
+
+  // compiler determined: the JSX output depends on filtered and handleClick
+  // both are now stable when todos and filter are unchanged
+  // the component itself bails out when its inputs are unchanged
+  return _cache(
+    () => (
+      <ul>
+        {filtered.map(t => (
+          <TodoItem key={t.id} todo={t} onClick={handleClick} />
+        ))}
+      </ul>
+    ),
+    [filtered, handleClick]
+  );
+}
+```
+
+The actual compiled output uses React's internal `c()` function (a low-level cache array), not `useMemo`, but the behavior is equivalent. The compiler handles the entire component at once, determining which sub-expressions need caching and which are already stable.
+
+**What the compiler enables.**
+
+With the compiler, you write idiomatic, clean React without any memoization annotations:
+
+```jsx
+// React 19 with compiler: write this
+function ProductCard({ product, onAddToCart }) {
+  const discountedPrice = product.price * (1 - product.discount);
+  const label = product.inStock ? 'Add to cart' : 'Out of stock';
+
+  return (
+    <div className="card">
+      <h3>{product.name}</h3>
+      <p>${discountedPrice.toFixed(2)}</p>
+      <button
+        onClick={() => onAddToCart(product.id)}
+        disabled={!product.inStock}
+      >
+        {label}
+      </button>
+    </div>
+  );
+}
+```
+
+The compiler automatically:
+- Caches `discountedPrice` when `product.price` and `product.discount` are stable
+- Caches `label` when `product.inStock` is stable
+- Caches the inline `() => onAddToCart(product.id)` when `onAddToCart` and `product.id` are stable
+- Bails out the entire component when `product` and `onAddToCart` have not changed
+
+No `React.memo`. No `useCallback`. No `useMemo`. The code is simpler, the memoization is correct, and the stale closure risk is eliminated because the compiler manages deps automatically.
+
+**The `eslint-plugin-react-compiler`.**
+
+The compiler requires components to follow React's rules (pure functions, no mutations of props or state, hooks called unconditionally). It ships with an ESLint plugin that identifies code the compiler cannot optimize:
+
+```jsx
+// Compiler cannot optimize this: mutation of a value
+function BadComponent({ items }) {
+  items.sort(); // mutates the prop directly
+  return <ul>{items.map(i => <li key={i.id}>{i.name}</li>)}</ul>;
+}
+
+// ESLint rule: "React Hook rules violation" or "mutation of prop"
+// Compiler skips this component: no memoization applied
+```
+
+The plugin outputs specific violations. Fixing them both makes code more correct and makes it compilable. The compiler incentivizes React best practices structurally.
+
+**What the compiler cannot do.**
+
+The compiler has specific limits:
+
+```jsx
+// Limit 1: cannot optimize components that violate React's rules
+function MutatingComponent({ data }) {
+  data.processed = true; // prop mutation: compiler skips this component
+  return <div>{data.name}</div>;
+}
+
+// Limit 2: cannot optimize across async boundaries
+async function AsyncComponent({ userId }) {
+  const user = await fetchUser(userId); // async components: limited support
+  return <div>{user.name}</div>;
+}
+
+// Limit 3: cannot eliminate genuinely expensive JavaScript work
+function SlowComponent({ rawData }) {
+  // This computation is expensive regardless: compiler caches the result
+  // but the first render (cache cold) still pays the full cost
+  // and any render where rawData changes pays the full cost
+  const result = veryExpensiveTransform(rawData);
+  return <div>{result}</div>;
+}
+```
+
+The compiler optimizes re-render behavior. It does not make individual computations faster. It does not eliminate the initial render cost. It does not move work off the main thread. A 500ms computation is still 500ms the first time it runs. The compiler only prevents it from running again when `rawData` has not changed.
+
+**Adopting the compiler incrementally.**
+
+The compiler works on a per-file or per-component basis. It can be adopted incrementally without rewriting the entire codebase:
+
+```js
+// babel.config.js
+module.exports = {
+  plugins: [
+    ['babel-plugin-react-compiler', {
+      compilationMode: 'annotation', // opt-in per component
+    }],
+  ],
+};
+
+// In component file: opt in per component during gradual adoption
+// @license React Compiler
+function MyComponent({ ... }) {
+  // compiler applies to this component
+}
+```
+
+In `'annotation'` mode, only files or components with the opt-in comment are compiled. In `'infer'` mode (the default), the compiler processes all components it can safely optimize and skips those that violate rules.
+
+---
+
+### 6. Internals
+
+**How the compiler analyzes components.**
+
+The compiler operates as a Babel or TypeScript transform at build time. It parses each component function into an AST (Abstract Syntax Tree) and runs a dataflow analysis to determine which values depend on which other values.
+
+The analysis builds a dependency graph:
+
+```
+props.product → product.price → discountedPrice
+props.product → product.discount → discountedPrice
+props.product → product.inStock → label
+props.onAddToCart + props.product.id → handleClickFn
+discountedPrice + label + handleClickFn → JSX output
+```
+
+For each node in the graph, the compiler determines: can this value change between renders without its dependencies changing? If no (the value is fully determined by its deps), it can be cached keyed by those deps.
+
+The compiler then generates a cache array, allocated on the Fiber (similar to how hooks store state), and wraps each cacheable expression in a cache check:
+
+```js
+// Actual compiled output (simplified, not the exact format):
+function TodoList(props) {
+  const $ = _cache(6); // allocate 6 cache slots
+
+  let filtered;
+  if ($[0] !== props.todos || $[1] !== props.filter) {
+    // deps changed: recompute
+    filtered = props.todos.filter(t => t.status === props.filter);
+    $[0] = props.todos;  // store new deps
+    $[1] = props.filter;
+    $[2] = filtered;     // store new value
+  } else {
+    filtered = $[2];     // use cached value
+  }
+
+  // similar pattern for handleClick, JSX, etc.
+}
+```
+
+The `_cache` array is stored on the Fiber's hook state, reusing the existing infrastructure. The compiler-generated code follows React's rules, so the normal Fiber update and commit machinery works unchanged.
+
+**Why `Object.is` is no longer the developer's concern.**
+
+In manual memoization, developers must think about reference identity and `Object.is` semantics. The compiler handles this automatically because it tracks value identity through the dataflow graph. It knows that `product.price` is a primitive (number) and that `Object.is` comparison is correct for it. It knows that `filtered` is a derived array and its identity must be preserved by using the cached reference. The developer never thinks about this.
+
+**The compiler and the rules of hooks.**
+
+The compiler does not change how hooks work internally. Hooks are still stored in the linked list on the Fiber. The compiler generates code that calls `_cache` (a special hook-like primitive), which uses the same hook infrastructure. The rules of hooks still apply to the generated code, but the compiler ensures its generated code always follows them.
+
+**React 19 without the compiler: what changes.**
+
+React 19 itself (independent of the compiler) introduced several features but did not fundamentally change the memoization model. Without the compiler, React 19 is essentially React 18 with improved APIs. The compiler is opt-in. You can run React 19 without the compiler and write manual `React.memo` / `useCallback` / `useMemo` exactly as before.
+
+The compiler is the strategic direction. Manual memoization is the legacy approach that remains fully supported.
+
+---
+
+### 7. Interview Traps
+
+**Trap 1: "The React Compiler means I never need to think about memoization again." Is this accurate?**
+
+<details>
+<summary>Answer</summary>
+
+Partially accurate but with important caveats.
+
+For the common cases (preventing unnecessary re-renders, stabilizing function references, caching derived values), the compiler handles memoization automatically and correctly. A developer writing clean, rule-following React code on React 19 with the compiler enabled does not need to manually add `React.memo`, `useCallback`, or `useMemo` for these scenarios.
+
+However, the compiler does not eliminate all performance thinking:
+
+The compiler cannot make expensive computations faster. A 500ms data transformation is still 500ms the first time it runs. The developer still needs to think about whether expensive work belongs in the render path at all, or whether it should be moved to a Web Worker, a server, or a background task.
+
+The compiler cannot optimize code that violates React's rules. Components with prop mutations, incorrect hook usage, or other violations are skipped by the compiler. These still require manual intervention.
+
+The compiler does not address architectural performance problems: a huge flat list still needs virtualization, a deeply nested context that changes frequently still causes widespread re-renders (the compiler memoizes consumers, but context changes still bypass `React.memo`), and fundamental data structure choices still affect algorithmic complexity.
+
+The accurate statement: the compiler eliminates the need to think about reference stability and manual memoization annotations for correctly written components. It does not eliminate the need to think about algorithmic complexity, architecture, or render scope.
+
+</details>
+
+---
+
+**Trap 2: A developer runs the React Compiler on their codebase. 30% of components are skipped with "could not optimize" warnings. What does this tell you about the codebase, and what is the correct response?**
+
+<details>
+<summary>Answer</summary>
+
+30% of components being skipped tells you that 30% of components violate React's rules in ways the compiler can detect. Common violations include: mutating props or state directly, calling hooks conditionally, using values in hooks without listing them as dependencies, and accessing mutable variables from outer scope inside render.
+
+These are not just compiler issues. Every one of them is a latent correctness bug independent of the compiler. A component that mutates a prop silently corrupts the parent's data. A component with stale hook dependencies shows stale values. The compiler's inability to optimize these components is a symptom of underlying code quality problems.
+
+The correct response is to treat the compiler's skip list as a bug list. Fix each violation not to "make the compiler happy" but because the violations are independently incorrect. The ESLint plugin for the React Compiler provides specific, actionable errors for each violation. Work through them systematically. Each fixed violation is a correctness improvement that also happens to enable compiler optimization.
+
+Rushing to suppress warnings or add compiler opt-outs to skip problematic files is the wrong response. It removes the signal the compiler is providing and leaves the underlying bugs unfixed.
+
+</details>
+
+---
+
+**Trap 3: Should you remove all `React.memo`, `useCallback`, and `useMemo` from a React 18 codebase in anticipation of upgrading to React 19 with the compiler?**
+
+<details>
+<summary>Answer</summary>
+
+No, not preemptively. The correct sequence is: upgrade to React 19, enable the compiler, then remove manual memoization that the compiler now handles, verified by profiling.
+
+Removing memoization from a React 18 codebase before the compiler is active removes the optimizations that are currently preventing performance problems. If a `React.memo` is preventing 10,000 unnecessary renders per second, removing it in React 18 introduces a real performance regression regardless of future compiler plans.
+
+Additionally, the compiler and manual memoization are not in conflict. The compiler is smart enough to recognize manual `React.memo` wrappers and either work with them or identify that they are redundant. When the compiler is active, it will handle components that were previously manually memoized. The manual annotations become redundant (not harmful) once the compiler is running.
+
+The correct sequence: enable the compiler in React 19, use the `eslint-plugin-react-compiler` to identify what it can and cannot optimize, profile to verify the compiler is producing correct memoization for your performance-sensitive components, then incrementally remove manual memoization that the compiler now handles. This gives you verification at each step rather than a speculative removal.
+
+</details>
+
+---
+
+### Self-Test
+
+**Q1.** What are the two fundamental limitations of manual memoization that the React Compiler addresses, and what property of the compiler makes it more reliable than developers at these tasks?
+
+<details>
+<summary>Answer</summary>
+
+First limitation: manual memoization requires complete, accurate knowledge of reference identity chains across the entire component tree at every moment. A developer adding a prop to a component must know every downstream memoized component that receives it and whether the new prop is reference-stable. As codebases grow, this knowledge is impossible to maintain reliably. The compiler has complete, simultaneous knowledge of the entire codebase via static analysis and makes correct decisions without gaps.
+
+Second limitation: dependency arrays must be manually kept in sync with the values they close over. Every `useMemo` and `useCallback` dep array is a manually maintained contract that can become stale as code evolves. Incorrect deps produce stale closures. The compiler tracks data flow through the AST and generates correct deps automatically. It cannot forget a dep or add a stale one because it derives deps from the actual code, not from a developer's mental model of the code.
+
+The compiler's reliability comes from analyzing the complete, current code rather than relying on developer memory and attention. It processes every file every build, with the same quality of analysis regardless of code size, developer experience, or time pressure.
+
+</details>
+
+---
+
+**Q2.** The compiler generates a cache array (`_cache`) rather than inserting `useMemo` calls. What is the advantage of using a lower-level cache primitive over the public `useMemo` API?
+
+<details>
+<summary>Answer</summary>
+
+`useMemo` has specific semantics: it takes a function and a dependency array, stores `[value, deps]` in the hook linked list, and runs `areHookInputsEqual` on the deps array. The hook linked list position is determined by call order, and the Rules of Hooks restrict where and how it can be called.
+
+The compiler's `_cache` primitive is more flexible. It can be used multiple times in the same render path without being subject to the same positional constraints. It can cache individual sub-expressions within a component rather than whole computations. It can be generated at any granularity the dataflow analysis determines is beneficial, including caching individual JSX nodes or specific derived values that would be awkward to express as `useMemo` callbacks.
+
+More practically: if the compiler inserted `useMemo` calls, every added cache point would change the hook count and position. This would be fragile as the compiler's analysis evolved (adding or removing cache points would change hook positions and break the linked list). Using a separate `_cache` array outside the hook linked list avoids this coupling entirely. The compiler can adjust caching granularity without affecting hook positions or React's hook rules.
+
+</details>
+
+---
+
+**Q3.** A component violates React's rules and the compiler skips it. What is the independent reason this component likely has correctness bugs, beyond the compiler's inability to optimize it?
+
+<details>
+<summary>Answer</summary>
+
+The compiler skips components that violate React's rules, specifically things like mutating props, mutating state directly, calling hooks conditionally, or closing over mutable external variables. Every one of these violations is independently a correctness bug under React's programming model.
+
+Mutating a prop corrupts the parent's data without the parent's knowledge, because props are passed by reference. The parent does not know its object was modified. On the next render, the parent may use the mutated value as if it were the original, or React's change detection (`Object.is`) may fail to detect a change that should have triggered a re-render.
+
+Mutating state directly (rather than calling the setter with a new value) bypasses React's update queue entirely. React never schedules a re-render. The UI shows stale data indefinitely.
+
+Calling hooks conditionally corrupts the hook linked list, causing hooks after the conditional one to read the wrong state slot.
+
+Closing over mutable external variables inside a hook produces stale closures when the variable changes without triggering a re-render.
+
+The compiler's skip signal is a proxy for: this component is already broken in ways that manifest as subtle bugs under certain interaction sequences. The optimization failure is a symptom; the bugs are the actual problem.
+
+</details>
+
+---
+
+**Q4.** You are working on a React 18 codebase with no compiler. A teammate proposes: "let's just add `React.memo` to every component as a baseline." Using what you know about the compiler's approach, explain why this is the wrong direction.
+
+<details>
+<summary>Answer</summary>
+
+The compiler's approach reveals why blanket `React.memo` is wrong: memoization is not a property of components in isolation. It is a property of the data flowing through the component tree. A component is worth memoizing only when its props are reference-stable in the renders you want to skip. `React.memo` without stable props is inert overhead.
+
+Adding `React.memo` to every component does not make props stable. It adds `shallowEqual` comparison overhead to every parent render for every wrapped component. When a component receives an inline object or function prop (which most components do in a typical codebase), `React.memo` fails on that prop and the component re-renders anyway. You have added cost without benefit.
+
+The compiler's approach is: analyze the data flow, identify which values are stable and which are not, and generate caching only where it actually works. This requires understanding the entire chain from state through props to each component. A component-local annotation (`React.memo`) cannot express this chain-level analysis.
+
+The correct approach on React 18 is: measure specific performance problems, trace them to specific re-render patterns, and apply targeted memoization with verified stable props. Or upgrade to React 19 and let the compiler do this analysis correctly.
+
+</details>
+
+---
+
+## Performance Section Complete!
+
+The complete picture of React's memoization system is now built from first principles.
+
+`React.memo` opts a component out of trigger 2 re-renders by checking shallow prop equality before calling the component function. It works only when all props are reference-stable. `useCallback` stabilizes function references by storing them in the hook linked list and returning the same object until specified deps change. It exists specifically to provide stable function references for `React.memo` children and effect dependencies. `useMemo` caches expensive computation results in the hook linked list, recomputing only when specified deps change. It is appropriate for measurably slow computations on components that re-render frequently for unrelated reasons.
+
+All three have overhead paid on every render: equality comparisons, hook node reads, and allocations. This overhead exceeds the benefit for trivial computations, infrequent re-renders, or unstable deps that prevent cache hits. The correct baseline is no memoization, with targeted additions based on profiler evidence. Structural fixes (state colocation, children-as-props) eliminate re-render causes rather than managing their consequences.
+
+The React Compiler automates this entire decision-making process through static dataflow analysis, generating correct and optimal memoization for all components that follow React's rules, eliminating the developer's responsibility to reason about reference stability and dependency arrays.
