@@ -132,27 +132,15 @@ React has two composition patterns. Containment and specialization.
 
 ```jsx
 function Card({ children, className = '' }) {
-  return (
-    <div className={`card ${className}`}>
-      {children}
-    </div>
-  );
+  return <div className={`card ${className}`}>{children}</div>;
 }
 
 function CardHeader({ children }) {
-  return (
-    <div className="card-header">
-      {children}
-    </div>
-  );
+  return <div className="card-header">{children}</div>;
 }
 
 function CardBody({ children }) {
-  return (
-    <div className="card-body">
-      {children}
-    </div>
-  );
+  return <div className="card-body">{children}</div>;
 }
 ```
 
@@ -168,9 +156,7 @@ function UserCard({ user, onFollow }) {
       </CardHeader>
       <CardBody>
         <p>{user.bio}</p>
-        {onFollow && (
-          <button onClick={() => onFollow(user.id)}>Follow</button>
-        )}
+        {onFollow && <button onClick={() => onFollow(user.id)}>Follow</button>}
       </CardBody>
     </Card>
   );
@@ -205,11 +191,7 @@ No inheritance. No hierarchy to trace. Open the file, read the JSX, immediately 
 ```jsx
 function Button({ label, variant, size, onClick, disabled }) {
   return (
-    <button
-      className={`btn btn-${variant} btn-${size}`}
-      onClick={onClick}
-      disabled={disabled}
-    >
+    <button className={`btn btn-${variant} btn-${size}`} onClick={onClick} disabled={disabled}>
       {label}
     </button>
   );
@@ -218,13 +200,7 @@ function Button({ label, variant, size, onClick, disabled }) {
 // Specialization: not a subclass, just a configured wrapper
 function DangerButton({ label, onClick, disabled }) {
   return (
-    <Button
-      label={label}
-      variant="danger"
-      size="medium"
-      onClick={onClick}
-      disabled={disabled}
-    />
+    <Button label={label} variant="danger" size="medium" onClick={onClick} disabled={disabled} />
   );
 }
 
@@ -353,13 +329,7 @@ function Layout({ sidebar, main, footer }) {
 }
 
 function App() {
-  return (
-    <Layout
-      sidebar={<NavigationMenu />}
-      main={<ArticleList />}
-      footer={<FooterLinks />}
-    />
-  );
+  return <Layout sidebar={<NavigationMenu />} main={<ArticleList />} footer={<FooterLinks />} />;
 }
 ```
 
@@ -383,10 +353,11 @@ function WindowSize({ children }) {
   });
 
   React.useEffect(() => {
-    const handler = () => setSize({
-      width: window.innerWidth,
-      height: window.innerHeight,
-    });
+    const handler = () =>
+      setSize({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
     window.addEventListener('resize', handler);
     return () => window.removeEventListener('resize', handler);
   }, []);
@@ -402,10 +373,11 @@ function useWindowSize() {
   });
 
   React.useEffect(() => {
-    const handler = () => setSize({
-      width: window.innerWidth,
-      height: window.innerHeight,
-    });
+    const handler = () =>
+      setSize({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
     window.addEventListener('resize', handler);
     return () => window.removeEventListener('resize', handler);
   }, []);

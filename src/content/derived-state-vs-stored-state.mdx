@@ -27,9 +27,10 @@ function ProductList({ products }) {
     const newQuery = e.target.value;
     setQuery(newQuery);
 
-    const newFiltered = products.filter(p =>
-      p.name.toLowerCase().includes(newQuery.toLowerCase()) &&
-      (category === 'all' || p.category === category)
+    const newFiltered = products.filter(
+      (p) =>
+        p.name.toLowerCase().includes(newQuery.toLowerCase()) &&
+        (category === 'all' || p.category === category),
     );
     setFiltered(newFiltered);
     setCount(newFiltered.length);
@@ -38,9 +39,10 @@ function ProductList({ products }) {
   function handleCategoryChange(newCategory) {
     setCategory(newCategory);
 
-    const newFiltered = products.filter(p =>
-      p.name.toLowerCase().includes(query.toLowerCase()) &&
-      (newCategory === 'all' || p.category === newCategory)
+    const newFiltered = products.filter(
+      (p) =>
+        p.name.toLowerCase().includes(query.toLowerCase()) &&
+        (newCategory === 'all' || p.category === newCategory),
     );
     setFiltered(newFiltered);
     setCount(newFiltered.length);
@@ -52,7 +54,9 @@ function ProductList({ products }) {
       <CategoryPicker value={category} onChange={handleCategoryChange} />
       <p>{count} products found</p>
       <ul>
-        {filtered.map(p => <li key={p.id}>{p.name}</li>)}
+        {filtered.map((p) => (
+          <li key={p.id}>{p.name}</li>
+        ))}
       </ul>
     </div>
   );
@@ -100,9 +104,10 @@ The attempted fix using `useEffect` to resync:
 
 ```jsx
 React.useEffect(() => {
-  const newFiltered = products.filter(p =>
-    p.name.toLowerCase().includes(query.toLowerCase()) &&
-    (category === 'all' || p.category === category)
+  const newFiltered = products.filter(
+    (p) =>
+      p.name.toLowerCase().includes(query.toLowerCase()) &&
+      (category === 'all' || p.category === category),
   );
   setFiltered(newFiltered);
   setCount(newFiltered.length);
@@ -134,9 +139,10 @@ function ProductList({ products }) {
 
   // derived: computed from state and props during render
   // always current, cannot go stale, no sync required
-  const filtered = products.filter(p =>
-    p.name.toLowerCase().includes(query.toLowerCase()) &&
-    (category === 'all' || p.category === category)
+  const filtered = products.filter(
+    (p) =>
+      p.name.toLowerCase().includes(query.toLowerCase()) &&
+      (category === 'all' || p.category === category),
   );
 
   // derived from derived: still just a local variable
@@ -158,7 +164,9 @@ function ProductList({ products }) {
       <CategoryPicker value={category} onChange={handleCategoryChange} />
       <p>{count} products found</p>
       <ul>
-        {filtered.map(p => <li key={p.id}>{p.name}</li>)}
+        {filtered.map((p) => (
+          <li key={p.id}>{p.name}</li>
+        ))}
       </ul>
     </div>
   );
@@ -177,11 +185,13 @@ When filtering genuinely is expensive (large datasets, complex predicates), the 
 
 ```jsx
 const filtered = React.useMemo(
-  () => products.filter(p =>
-    p.name.toLowerCase().includes(query.toLowerCase()) &&
-    (category === 'all' || p.category === category)
-  ),
-  [products, query, category]
+  () =>
+    products.filter(
+      (p) =>
+        p.name.toLowerCase().includes(query.toLowerCase()) &&
+        (category === 'all' || p.category === category),
+    ),
+  [products, query, category],
 );
 ```
 
@@ -233,15 +243,20 @@ function ProductList({ products }) {
   const [unrelated, setUnrelated] = React.useState(0);
 
   // This runs even when unrelated changes
-  const filtered = products.filter(p =>
-    p.name.toLowerCase().includes(query.toLowerCase()) &&
-    (category === 'all' || p.category === category)
+  const filtered = products.filter(
+    (p) =>
+      p.name.toLowerCase().includes(query.toLowerCase()) &&
+      (category === 'all' || p.category === category),
   );
 
   return (
     <div>
-      <button onClick={() => setUnrelated(u => u + 1)}>Unrelated</button>
-      <ul>{filtered.map(p => <li key={p.id}>{p.name}</li>)}</ul>
+      <button onClick={() => setUnrelated((u) => u + 1)}>Unrelated</button>
+      <ul>
+        {filtered.map((p) => (
+          <li key={p.id}>{p.name}</li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -253,11 +268,13 @@ This is where `useMemo` is appropriate:
 
 ```jsx
 const filtered = React.useMemo(
-  () => products.filter(p =>
-    p.name.toLowerCase().includes(query.toLowerCase()) &&
-    (category === 'all' || p.category === category)
-  ),
-  [products, query, category]
+  () =>
+    products.filter(
+      (p) =>
+        p.name.toLowerCase().includes(query.toLowerCase()) &&
+        (category === 'all' || p.category === category),
+    ),
+  [products, query, category],
 );
 ```
 
@@ -266,9 +283,9 @@ const filtered = React.useMemo(
 ```js
 // After first render:
 hook.memoizedState = {
-  value: [...filteredProducts],   // the cached result
-  deps: [products, query, category]  // the dependencies
-}
+  value: [...filteredProducts], // the cached result
+  deps: [products, query, category], // the dependencies
+};
 
 // On re-render triggered by unrelated:
 // React reads the hook node
@@ -297,7 +314,7 @@ function UserDisplay({ userId }) {
   const [displayName, setDisplayName] = React.useState('');
 
   React.useEffect(() => {
-    fetchUser(userId).then(data => {
+    fetchUser(userId).then((data) => {
       setUser(data);
       setDisplayName(data.firstName + ' ' + data.lastName);
     });
@@ -319,12 +336,10 @@ function UserDisplay({ userId }) {
   const [user, setUser] = React.useState(null);
 
   React.useEffect(() => {
-    fetchUser(userId).then(data => setUser(data));
+    fetchUser(userId).then((data) => setUser(data));
   }, [userId]);
 
-  const displayName = user
-    ? user.firstName + ' ' + user.lastName
-    : '';
+  const displayName = user ? user.firstName + ' ' + user.lastName : '';
 
   return <p>{displayName}</p>;
 }
@@ -343,7 +358,7 @@ function EditForm({ initialValues }) {
   const [values, setValues] = React.useState(initialValues);
 
   function handleChange(field, value) {
-    setValues(prev => ({ ...prev, [field]: value }));
+    setValues((prev) => ({ ...prev, [field]: value }));
   }
 
   function handleReset() {
@@ -352,11 +367,10 @@ function EditForm({ initialValues }) {
 
   return (
     <form>
-      <input
-        value={values.name}
-        onChange={e => handleChange('name', e.target.value)}
-      />
-      <button type="button" onClick={handleReset}>Reset</button>
+      <input value={values.name} onChange={(e) => handleChange('name', e.target.value)} />
+      <button type="button" onClick={handleReset}>
+        Reset
+      </button>
     </form>
   );
 }
@@ -389,11 +403,14 @@ If `initialValues` is intended as a "current external source of truth" that rese
 
 ```jsx
 function Dashboard({ user, posts }) {
-  const stats = React.useMemo(() => ({
-    totalPosts: posts.length,
-    avgLikes: posts.reduce((sum, p) => sum + p.likes, 0) / posts.length,
-    name: user.name,
-  }), [posts, user]);
+  const stats = React.useMemo(
+    () => ({
+      totalPosts: posts.length,
+      avgLikes: posts.reduce((sum, p) => sum + p.likes, 0) / posts.length,
+      name: user.name,
+    }),
+    [posts, user],
+  );
 
   return (
     <div>

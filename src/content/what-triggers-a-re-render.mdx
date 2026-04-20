@@ -50,9 +50,7 @@ function Dashboard() {
     <div>
       <Header user={user} />
       <Sidebar />
-      <button onClick={() => setCount(c => c + 1)}>
-        Clicks: {count}
-      </button>
+      <button onClick={() => setCount((c) => c + 1)}>Clicks: {count}</button>
     </div>
   );
 }
@@ -110,7 +108,7 @@ function Counter() {
   const [count, setCount] = React.useState(0);
 
   // clicking this schedules a re-render of Counter
-  return <button onClick={() => setCount(c => c + 1)}>{count}</button>;
+  return <button onClick={() => setCount((c) => c + 1)}>{count}</button>;
 }
 ```
 
@@ -130,7 +128,7 @@ function Parent() {
 
   return (
     <div>
-      <Child />       {/* re-renders when Parent re-renders */}
+      <Child /> {/* re-renders when Parent re-renders */}
       <p>{count}</p>
     </div>
   );
@@ -162,7 +160,7 @@ function App() {
   return (
     <ThemeContext.Provider value={theme}>
       <Layout />
-      <button onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')}>
+      <button onClick={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}>
         Toggle theme
       </button>
     </ThemeContext.Provider>
@@ -302,12 +300,7 @@ During the render phase, React calls `beginWork` on each Fiber. For a function c
 // Simplified beginWork for function component
 function updateFunctionComponent(current, workInProgress, Component, nextProps) {
   // Call the component function with new props
-  let nextChildren = renderWithHooks(
-    current,
-    workInProgress,
-    Component,
-    nextProps,
-  );
+  let nextChildren = renderWithHooks(current, workInProgress, Component, nextProps);
   // reconcile children (diff the output)
   reconcileChildren(current, workInProgress, nextChildren);
   return workInProgress.child;
@@ -367,7 +360,7 @@ function Parent() {
 
   return (
     <div>
-      <button onClick={() => setCount(c => c + 1)}>Click</button>
+      <button onClick={() => setCount((c) => c + 1)}>Click</button>
       <Child value={value} />
     </div>
   );
@@ -436,7 +429,11 @@ function App() {
     setB(1);
   }, []);
 
-  return <div>{a} {b}</div>;
+  return (
+    <div>
+      {a} {b}
+    </div>
+  );
 }
 ```
 

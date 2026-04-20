@@ -47,11 +47,11 @@ function UserList() {
 
   // "optimized" with useCallback
   const handleDelete = React.useCallback((id) => {
-    setUsers(prev => prev.filter(u => u.id !== id));
+    setUsers((prev) => prev.filter((u) => u.id !== id));
   }, []);
 
   const handleEdit = React.useCallback((id, newData) => {
-    setUsers(prev => prev.map(u => u.id === id ? { ...u, ...newData } : u));
+    setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...newData } : u)));
   }, []);
 
   const handleFilterChange = React.useCallback((newFilter) => {
@@ -60,20 +60,15 @@ function UserList() {
 
   // "optimized" with useMemo
   const filteredUsers = React.useMemo(
-    () => users.filter(u => filter === 'all' || u.role === filter),
-    [users, filter]
+    () => users.filter((u) => filter === 'all' || u.role === filter),
+    [users, filter],
   );
 
   return (
     <div>
       <FilterBar filter={filter} onChange={handleFilterChange} />
-      {filteredUsers.map(user => (
-        <UserCard
-          key={user.id}
-          user={user}
-          onDelete={handleDelete}
-          onEdit={handleEdit}
-        />
+      {filteredUsers.map((user) => (
+        <UserCard key={user.id} user={user} onDelete={handleDelete} onEdit={handleEdit} />
       ))}
     </div>
   );
@@ -155,9 +150,11 @@ function DataTable({ rows }) {
   // rows.length = 10000
   return (
     <table>
-      {rows.map(row => (
+      {rows.map((row) => (
         <tr key={row.id}>
-          {row.cells.map((cell, i) => <td key={i}>{cell}</td>)}
+          {row.cells.map((cell, i) => (
+            <td key={i}>{cell}</td>
+          ))}
         </tr>
       ))}
     </table>
@@ -210,7 +207,10 @@ function UserProfile({ userId }) {
 
   if (!user) return <Skeleton />;
 
-  const initials = user.name.split(' ').map(n => n[0]).join('');
+  const initials = user.name
+    .split(' ')
+    .map((n) => n[0])
+    .join('');
 
   function handleFollow() {
     followUser(user.id);
@@ -316,7 +316,7 @@ function UserTable() {
 
   return (
     <table>
-      {users.map(user => (
+      {users.map((user) => (
         <UserRow key={user.id} user={user} onAction={handleAction} />
       ))}
     </table>
@@ -344,13 +344,15 @@ Second, `user` is an object from the API. If `useUsers` returns a new array refe
 ```jsx
 function SearchResults({ query, results }) {
   const filtered = React.useMemo(
-    () => results.filter(r => r.title.toLowerCase().includes(query.toLowerCase())),
-    [results, query]
+    () => results.filter((r) => r.title.toLowerCase().includes(query.toLowerCase())),
+    [results, query],
   );
 
   return (
     <ul>
-      {filtered.map(r => <li key={r.id}>{r.title}</li>)}
+      {filtered.map((r) => (
+        <li key={r.id}>{r.title}</li>
+      ))}
     </ul>
   );
 }
@@ -479,14 +481,11 @@ function ReportDashboard({ reportId }) {
   // B
   const total = React.useMemo(
     () => data?.rows.reduce((sum, row) => sum + row.value, 0) ?? 0,
-    [data]
+    [data],
   );
 
   // C
-  const title = React.useMemo(
-    () => `Report #${reportId}`,
-    [reportId]
-  );
+  const title = React.useMemo(() => `Report #${reportId}`, [reportId]);
 
   if (!data) return <p>Loading...</p>;
   return (
@@ -505,6 +504,6 @@ A: `fetchReport` wrapped in `useCallback` is appropriately applied. It is used a
 
 B: `total` wrapped in `useMemo` is appropriate if `data` can be large. `data?.rows.reduce(...)` is O(n) in the number of rows. If the dashboard re-renders for reasons unrelated to `data` (some parent state change), and `data` has thousands of rows, the reduce runs unnecessarily. `useMemo` with `[data]` caches the result and recomputes only when `data` changes. This is appropriate if rows count is large enough to measure as slow. For small datasets, it is speculative.
 
-C: `title` wrapped in `useMemo` is unnecessary. `` `Report #${reportId}` `` is string template interpolation. It executes in nanoseconds. `useMemo` overhead (reading hook slot, comparing `reportId` with `Object.is`) is comparable to or greater than the string interpolation. This is a textbook case of memoizing a trivial computation. Remove it: `const title = \`Report #${reportId}\`` inline. No `useMemo`.
+C: `title` wrapped in `useMemo` is unnecessary. `` `Report #${reportId}` `` is string template interpolation. It executes in nanoseconds. `useMemo` overhead (reading hook slot, comparing `reportId` with `Object.is`) is comparable to or greater than the string interpolation. This is a textbook case of memoizing a trivial computation. Remove it: `const title = \`Report #${reportId}\``inline. No`useMemo`.
 
 </details>

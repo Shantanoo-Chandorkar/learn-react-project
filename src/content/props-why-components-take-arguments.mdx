@@ -109,7 +109,7 @@ Props are passed as JSX attributes and received as a single object in the functi
   message="Shan liked your post"
   timestamp="2 minutes ago"
   onDismiss={() => dismiss(id)}
-/>
+/>;
 
 // Child receives them as a single object
 function Notification(props) {
@@ -159,9 +159,7 @@ function Card({ title, children }) {
   return (
     <div className="card">
       <h2 className="card-title">{title}</h2>
-      <div className="card-body">
-        {children}
-      </div>
+      <div className="card-body">{children}</div>
     </div>
   );
 }
@@ -171,7 +169,7 @@ function Card({ title, children }) {
   <img src={user.avatar} alt={user.name} />
   <p>{user.bio}</p>
   <FollowButton userId={user.id} />
-</Card>
+</Card>;
 ```
 
 `children` can be a string, a single React element, an array of React elements, a function, or `undefined`. It is just a prop. There is nothing special about how React handles it beyond automatically assigning it from the JSX content between tags.
@@ -196,7 +194,7 @@ function FancyInput({ label, ...rest }) {
   placeholder="you@example.com"
   onChange={handleChange}
   disabled={isSubmitting}
-/>
+/>;
 // `label` goes to the wrapper div's label element
 // `type`, `placeholder`, `onChange`, `disabled` all land on the input
 ```
@@ -208,8 +206,8 @@ function FancyInput({ label, ...rest }) {
 When React creates a Fiber node for a component, the props object passed to that component is stored on the Fiber in two places:
 
 ```js
-fiber.pendingProps   // the props for the current render
-fiber.memoizedProps  // the props from the last completed render
+fiber.pendingProps; // the props for the current render
+fiber.memoizedProps; // the props from the last completed render
 ```
 
 During the render phase, React calls your component function with `fiber.pendingProps` as the argument. After the render completes and the work is committed, React copies `pendingProps` into `memoizedProps`. On the next render, `memoizedProps` is what React compares against to determine if the component's output could have changed.
@@ -287,7 +285,7 @@ function Parent() {
 
   return (
     <div>
-      <button onClick={() => setCount(c => c + 1)}>Count: {count}</button>
+      <button onClick={() => setCount((c) => c + 1)}>Count: {count}</button>
       <Child config={{ label: 'Settings' }} />
     </div>
   );
@@ -348,12 +346,7 @@ function Badge({ count, ...rest }) {
   return <span {...rest}>{count}</span>;
 }
 
-<Badge
-  count={5}
-  className="badge"
-  onClick={() => console.log('clicked')}
-  data-testid="badge"
-/>
+<Badge count={5} className="badge" onClick={() => console.log('clicked')} data-testid="badge" />;
 ```
 
 <details>

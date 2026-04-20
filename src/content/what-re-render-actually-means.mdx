@@ -26,9 +26,7 @@ function ProductCard({ product }) {
       <img src={product.image} alt={product.name} />
       <h3>{product.name}</h3>
       <p className={isOnSale ? 'price sale' : 'price'}>{price}</p>
-      {isOnSale && (
-        <span className="badge">Sale</span>
-      )}
+      {isOnSale && <span className="badge">Sale</span>}
     </div>
   );
 }
@@ -73,7 +71,7 @@ Trace the complete sequence from state change to pixels on screen. Six distinct 
 Something causes React to schedule work. A setter is called. A context value changes. A parent re-renders. React enqueues an update on the relevant Fiber and schedules processing via the Scheduler.
 
 ```jsx
-setCount(c => c + 1);
+setCount((c) => c + 1);
 // queues: { action: c => c + 1 } on Counter's Fiber
 // marks Counter's Fiber lanes with SyncLane
 // schedules ensureRootIsScheduled
@@ -99,7 +97,7 @@ function Counter() {
     <div className="counter">
       <p>{label}</p>
       <span>{doubled}</span>
-      <button onClick={() => setCount(c => c + 1)}>Click</button>
+      <button onClick={() => setCount((c) => c + 1)}>Click</button>
     </div>
   );
 }
@@ -220,7 +218,9 @@ A re-render (the function call) and a DOM write are separate. A component can re
 const MemoChild = React.memo(function Child({ items }) {
   return (
     <ul>
-      {items.map(item => <li key={item.id}>{item.name}</li>)}
+      {items.map((item) => (
+        <li key={item.id}>{item.name}</li>
+      ))}
     </ul>
   );
 });
@@ -231,7 +231,7 @@ function Parent() {
 
   return (
     <div>
-      <button onClick={() => setCount(c => c + 1)}>{count}</button>
+      <button onClick={() => setCount((c) => c + 1)}>{count}</button>
       <MemoChild items={items} />
     </div>
   );
@@ -324,7 +324,7 @@ function App() {
       <Header title="My App" />
       <p>Count: {count}</p>
       <Sidebar items={['Home', 'About']} />
-      <button onClick={() => setCount(c => c + 1)}>+</button>
+      <button onClick={() => setCount((c) => c + 1)}>+</button>
     </div>
   );
 }
@@ -336,7 +336,9 @@ function Header({ title }) {
 function Sidebar({ items }) {
   return (
     <ul>
-      {items.map(i => <li key={i}>{i}</li>)}
+      {items.map((i) => (
+        <li key={i}>{i}</li>
+      ))}
     </ul>
   );
 }

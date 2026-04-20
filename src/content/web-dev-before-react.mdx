@@ -61,7 +61,9 @@ The year is 2010. You're building a todo app. No frameworks. Raw DOM and jQuery,
   });
 
   function updateCount() {
-    var remaining = todos.filter(function (t) { return !t.done; }).length;
+    var remaining = todos.filter(function (t) {
+      return !t.done;
+    }).length;
     $('#count').text(remaining + ' todos');
   }
 </script>
@@ -167,16 +169,14 @@ function TodoApp() {
   }
 
   function toggleTodo(index) {
-    setTodos(todos.map((t, i) =>
-      i === index ? { ...t, done: !t.done } : t
-    ));
+    setTodos(todos.map((t, i) => (i === index ? { ...t, done: !t.done } : t)));
   }
 
   function deleteTodo(index) {
     setTodos(todos.filter((_, i) => i !== index));
   }
 
-  const visible = todos.filter(t => {
+  const visible = todos.filter((t) => {
     if (filter === 'active') return !t.done;
     if (filter === 'completed') return t.done;
     return true;
@@ -184,12 +184,14 @@ function TodoApp() {
 
   return (
     <div>
-      <input value={input} onChange={e => setInput(e.target.value)} />
+      <input value={input} onChange={(e) => setInput(e.target.value)} />
       <button onClick={addTodo}>Add</button>
 
       <div>
-        {['all', 'active', 'completed'].map(f => (
-          <button key={f} onClick={() => setFilter(f)}>{f}</button>
+        {['all', 'active', 'completed'].map((f) => (
+          <button key={f} onClick={() => setFilter(f)}>
+            {f}
+          </button>
         ))}
       </div>
 
@@ -201,15 +203,13 @@ function TodoApp() {
               checked={todo.done}
               onChange={() => toggleTodo(todos.indexOf(todo))}
             />
-            <span style={{ textDecoration: todo.done ? 'line-through' : '' }}>
-              {todo.text}
-            </span>
+            <span style={{ textDecoration: todo.done ? 'line-through' : '' }}>{todo.text}</span>
             <button onClick={() => deleteTodo(todos.indexOf(todo))}>x</button>
           </li>
         ))}
       </ul>
 
-      <p>{todos.filter(t => !t.done).length} todos</p>
+      <p>{todos.filter((t) => !t.done).length} todos</p>
     </div>
   );
 }
@@ -254,7 +254,7 @@ They solve different problems at different levels. jQuery is a DOM manipulation 
 function TodoList({ todos }) {
   const listEl = document.getElementById('todo-list');
 
-  todos.forEach(todo => {
+  todos.forEach((todo) => {
     const li = document.createElement('li');
     li.textContent = todo.text;
     listEl.appendChild(li);
@@ -280,7 +280,7 @@ function Dropdown({ items }) {
   React.useEffect(() => {
     // "simpler" with jQuery
     $('#my-dropdown').hide();
-    $('#toggle-btn').on('click', function() {
+    $('#toggle-btn').on('click', function () {
       $('#my-dropdown').toggle();
     });
   }, []);
@@ -289,7 +289,9 @@ function Dropdown({ items }) {
     <div>
       <button id="toggle-btn">Toggle</button>
       <ul id="my-dropdown">
-        {items.map(item => <li key={item.id}>{item.name}</li>)}
+        {items.map((item) => (
+          <li key={item.id}>{item.name}</li>
+        ))}
       </ul>
     </div>
   );

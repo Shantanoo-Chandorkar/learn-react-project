@@ -30,9 +30,7 @@ function Search({ items }) {
     setIsLoading(true);
     setLastSearchTime(Date.now());
 
-    const filtered = items.filter(item =>
-      item.name.toLowerCase().includes(value.toLowerCase())
-    );
+    const filtered = items.filter((item) => item.name.toLowerCase().includes(value.toLowerCase()));
     setResults(filtered);
     setIsLoading(false);
   }
@@ -44,14 +42,16 @@ function Search({ items }) {
   return (
     <div>
       <input
-        ref={node => setInputRef(node)}
+        ref={(node) => setInputRef(node)}
         value={query}
         onChange={handleChange}
         placeholder="Search..."
       />
       {isLoading && <p>Loading...</p>}
       <ul>
-        {results.map(item => <li key={item.id}>{item.name}</li>)}
+        {results.map((item) => (
+          <li key={item.id}>{item.name}</li>
+        ))}
       </ul>
       <button onClick={focusInput}>Focus input</button>
     </div>
@@ -106,9 +106,7 @@ function Search({ items }) {
 
   // NOT STATE: results is fully derived from query and items
   // compute during render, never store
-  const results = items.filter(item =>
-    item.name.toLowerCase().includes(query.toLowerCase())
-  );
+  const results = items.filter((item) => item.name.toLowerCase().includes(query.toLowerCase()));
 
   // NOT STATE: lastSearchTime never appears in UI
   // persists across renders without triggering them → useRef
@@ -124,24 +122,21 @@ function Search({ items }) {
 
   function handleChange(e) {
     const value = e.target.value;
-    setQuery(value);                          // state update: one re-render
-    lastSearchTime.current = Date.now();      // mutation: no re-render
+    setQuery(value); // state update: one re-render
+    lastSearchTime.current = Date.now(); // mutation: no re-render
   }
 
   function focusInput() {
-    inputRef.current.focus();                 // DOM imperative: no re-render
+    inputRef.current.focus(); // DOM imperative: no re-render
   }
 
   return (
     <div>
-      <input
-        ref={inputRef}
-        value={query}
-        onChange={handleChange}
-        placeholder="Search..."
-      />
+      <input ref={inputRef} value={query} onChange={handleChange} placeholder="Search..." />
       <ul>
-        {results.map(item => <li key={item.id}>{item.name}</li>)}
+        {results.map((item) => (
+          <li key={item.id}>{item.name}</li>
+        ))}
       </ul>
       <button onClick={focusInput}>Focus input</button>
     </div>
@@ -243,7 +238,7 @@ function UserProfile({ userId }) {
   const [user, setUser] = React.useState(null);
 
   React.useEffect(() => {
-    fetchUser(userId2).then(data => setUser(data));
+    fetchUser(userId2).then((data) => setUser(data));
   }, [userId2]);
 
   return <div>{user?.name}</div>;

@@ -54,9 +54,9 @@ The DOM is not a JavaScript object. It's a C++ structure exposed to JavaScript t
 
 ```js
 // This forces the browser to reflow twice
-const height = element.offsetHeight;  // READ: forces reflow to get current value
-element.style.height = height + 10 + 'px';  // WRITE: invalidates layout
-const newHeight = element.offsetHeight;  // READ again: forces another reflow
+const height = element.offsetHeight; // READ: forces reflow to get current value
+element.style.height = height + 10 + 'px'; // WRITE: invalidates layout
+const newHeight = element.offsetHeight; // READ again: forces another reflow
 ```
 
 Every read of a layout property after a write forces the browser to flush its pending style changes to give you an accurate answer. This is called layout thrashing, and it's brutally expensive.
@@ -144,9 +144,9 @@ False, and this is a very common misconception. The Virtual DOM itself adds over
 ```js
 const boxes = document.querySelectorAll('.box');
 
-boxes.forEach(box => {
-  const width = box.offsetWidth;        // read
-  box.style.width = width * 2 + 'px';  // write
+boxes.forEach((box) => {
+  const width = box.offsetWidth; // read
+  box.style.width = width * 2 + 'px'; // write
 });
 ```
 
@@ -156,7 +156,7 @@ boxes.forEach(box => {
 This triggers layout thrashing. For each box, it reads `offsetWidth` (which forces the browser to flush pending style changes and recalculate layout to return an accurate value), then immediately writes a new style (which invalidates the layout again). For N boxes this is N reflows instead of 1. The fix is to separate reads from writes: collect all widths first, then apply all writes.
 
 ```js
-const widths = Array.from(boxes).map(box => box.offsetWidth); // all reads
+const widths = Array.from(boxes).map((box) => box.offsetWidth); // all reads
 boxes.forEach((box, i) => {
   box.style.width = widths[i] * 2 + 'px'; // all writes
 });

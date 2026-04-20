@@ -46,9 +46,7 @@ function Dashboard() {
 
   return (
     <div>
-      <button onClick={() => setCount(c => c + 1)}>
-        Clicks: {count}
-      </button>
+      <button onClick={() => setCount((c) => c + 1)}>Clicks: {count}</button>
       <Sidebar user={user} />
     </div>
   );
@@ -107,9 +105,7 @@ Understanding data flow in the tree requires understanding three distinct mechan
 function App() {
   const [user, setUser] = React.useState({ name: 'Shan', role: 'admin' });
 
-  return (
-    <Dashboard user={user} />
-  );
+  return <Dashboard user={user} />;
 }
 
 function Dashboard({ user }) {
@@ -139,7 +135,7 @@ function App() {
   const [user, setUser] = React.useState({ name: 'Shan', role: 'admin' });
 
   function handleNameChange(newName) {
-    setUser(prev => ({ ...prev, name: newName }));
+    setUser((prev) => ({ ...prev, name: newName }));
   }
 
   return <Dashboard user={user} onNameChange={handleNameChange} />;
@@ -203,8 +199,8 @@ function App() {
 
   return (
     <div>
-      <button onClick={() => setCount(c => c + 1)}>Count: {count}</button>
-      <ExpensiveTree />       {/* Does this re-render when count changes? */}
+      <button onClick={() => setCount((c) => c + 1)}>Count: {count}</button>
+      <ExpensiveTree /> {/* Does this re-render when count changes? */}
     </div>
   );
 }
@@ -218,16 +214,14 @@ Move the state down to the smallest component that needs it:
 // Instead of owning count in App, own it in Counter
 function Counter() {
   const [count, setCount] = React.useState(0);
-  return (
-    <button onClick={() => setCount(c => c + 1)}>Count: {count}</button>
-  );
+  return <button onClick={() => setCount((c) => c + 1)}>Count: {count}</button>;
 }
 
 function App() {
   return (
     <div>
       <Counter />
-      <ExpensiveTree />    {/* App never re-renders, so neither does this */}
+      <ExpensiveTree /> {/* App never re-renders, so neither does this */}
     </div>
   );
 }
@@ -244,7 +238,7 @@ function CounterWrapper({ children }) {
   const [count, setCount] = React.useState(0);
   return (
     <div>
-      <button onClick={() => setCount(c => c + 1)}>Count: {count}</button>
+      <button onClick={() => setCount((c) => c + 1)}>Count: {count}</button>
       {children}
     </div>
   );
@@ -331,7 +325,7 @@ function Parent() {
 
   return (
     <div>
-      <button onClick={() => setCount(c => c + 1)}>Count: {count}</button>
+      <button onClick={() => setCount((c) => c + 1)}>Count: {count}</button>
       <ExpensiveChild data={data} />
     </div>
   );

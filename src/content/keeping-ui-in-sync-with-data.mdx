@@ -28,14 +28,14 @@ const user = {
 function renderProfile(user) {
   document.getElementById('profile-name').textContent = user.name;
   document.getElementById('profile-avatar').src = user.avatar;
-  document.getElementById('online-indicator').className =
-    user.isOnline ? 'indicator green' : 'indicator grey';
-  document.getElementById('follower-count').textContent =
-    user.followers + ' followers';
-  document.getElementById('follow-btn').textContent =
-    user.isFollowing ? 'Unfollow' : 'Follow';
-  document.getElementById('follow-btn').className =
-    user.isFollowing ? 'btn btn-secondary' : 'btn btn-primary';
+  document.getElementById('online-indicator').className = user.isOnline
+    ? 'indicator green'
+    : 'indicator grey';
+  document.getElementById('follower-count').textContent = user.followers + ' followers';
+  document.getElementById('follow-btn').textContent = user.isFollowing ? 'Unfollow' : 'Follow';
+  document.getElementById('follow-btn').className = user.isFollowing
+    ? 'btn btn-secondary'
+    : 'btn btn-primary';
 }
 
 renderProfile(user);
@@ -46,12 +46,11 @@ document.getElementById('follow-btn').addEventListener('click', function () {
   user.followers = user.isFollowing ? user.followers + 1 : user.followers - 1;
 
   // must manually sync every affected DOM node
-  document.getElementById('follower-count').textContent =
-    user.followers + ' followers';
-  document.getElementById('follow-btn').textContent =
-    user.isFollowing ? 'Unfollow' : 'Follow';
-  document.getElementById('follow-btn').className =
-    user.isFollowing ? 'btn btn-secondary' : 'btn btn-primary';
+  document.getElementById('follower-count').textContent = user.followers + ' followers';
+  document.getElementById('follow-btn').textContent = user.isFollowing ? 'Unfollow' : 'Follow';
+  document.getElementById('follow-btn').className = user.isFollowing
+    ? 'btn btn-secondary'
+    : 'btn btn-primary';
 });
 ```
 
@@ -62,8 +61,9 @@ socket.on('user:status', function (data) {
   user.isOnline = data.isOnline;
 
   // must remember to sync this DOM node too
-  document.getElementById('online-indicator').className =
-    user.isOnline ? 'indicator green' : 'indicator grey';
+  document.getElementById('online-indicator').className = user.isOnline
+    ? 'indicator green'
+    : 'indicator grey';
 });
 ```
 
@@ -80,8 +80,7 @@ function saveNameEdit(newName) {
   document.title = user.name + ' | Profile';
 
   // and in the activity feed header, added last sprint
-  document.getElementById('activity-header').textContent =
-    user.name + "'s Activity";
+  document.getElementById('activity-header').textContent = user.name + "'s Activity";
 
   // and in the notification that just appeared
   // ... which was built by a different developer
@@ -136,7 +135,7 @@ function ProfilePage() {
   });
 
   function toggleFollow() {
-    setUser(prev => ({
+    setUser((prev) => ({
       ...prev,
       isFollowing: !prev.isFollowing,
       followers: prev.isFollowing ? prev.followers - 1 : prev.followers + 1,
@@ -144,7 +143,7 @@ function ProfilePage() {
   }
 
   function saveName(newName) {
-    setUser(prev => ({ ...prev, name: newName }));
+    setUser((prev) => ({ ...prev, name: newName }));
     // that's it. every place that uses user.name updates automatically.
   }
 
@@ -220,9 +219,7 @@ function ProfilePage() {
   return (
     <div>
       <p>{user.followers} followers</p>
-      <button onClick={toggleFollow}>
-        {user.isFollowing ? 'Unfollow' : 'Follow'}
-      </button>
+      <button onClick={toggleFollow}>{user.isFollowing ? 'Unfollow' : 'Follow'}</button>
     </div>
   );
 }
@@ -251,7 +248,7 @@ function Dashboard() {
       <p>{expensive}</p>
       <p>{name}</p>
       <button onClick={() => setName('Ravi')}>Change name</button>
-      <button onClick={() => setCount(c => c + 1)}>Increment</button>
+      <button onClick={() => setCount((c) => c + 1)}>Increment</button>
     </div>
   );
 }
@@ -276,7 +273,7 @@ function ProfilePage() {
 
   return (
     <div>
-      <input value={name} onChange={e => setName(e.target.value)} />
+      <input value={name} onChange={(e) => setName(e.target.value)} />
     </div>
   );
 }

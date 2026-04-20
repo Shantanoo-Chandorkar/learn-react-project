@@ -47,32 +47,21 @@ function ProfileCard({ user, onFollow }) {
   return React.createElement(
     'div',
     { className: 'card' },
-    React.createElement(
-      'img',
-      { src: user.avatar, alt: user.name, className: 'avatar' }
-    ),
+    React.createElement('img', { src: user.avatar, alt: user.name, className: 'avatar' }),
     React.createElement(
       'div',
       { className: 'card-body' },
-      React.createElement(
-        'h2',
-        { className: 'name' },
-        user.name
-      ),
-      React.createElement(
-        'p',
-        { className: 'bio' },
-        user.bio
-      ),
+      React.createElement('h2', { className: 'name' }, user.name),
+      React.createElement('p', { className: 'bio' }, user.bio),
       React.createElement(
         'button',
         {
           className: user.isFollowing ? 'btn-secondary' : 'btn-primary',
           onClick: () => onFollow(user.id),
         },
-        user.isFollowing ? 'Unfollow' : 'Follow'
-      )
-    )
+        user.isFollowing ? 'Unfollow' : 'Follow',
+      ),
+    ),
   );
 }
 ```
@@ -101,7 +90,7 @@ return React.createElement(
   'div',
   null,
   React.createElement('p', null, user.name),
-  button  // the variable goes here as a child argument
+  button, // the variable goes here as a child argument
 );
 ```
 
@@ -111,10 +100,11 @@ With JSX, the conditional lives inline:
 return (
   <div>
     <p>{user.name}</p>
-    {user.isFollowing
-      ? <button className="btn-secondary">Unfollow</button>
-      : <button className="btn-primary">Follow</button>
-    }
+    {user.isFollowing ? (
+      <button className="btn-secondary">Unfollow</button>
+    ) : (
+      <button className="btn-primary">Follow</button>
+    )}
   </div>
 );
 ```
@@ -157,15 +147,9 @@ React.createElement(UserCard, { user: user })
 JSX expressions in curly braces `{}` are plain JavaScript evaluated at call time:
 
 ```jsx
-<p className={isActive ? 'active' : 'inactive'}>
-  {user.name.toUpperCase()}
-</p>
+<p className={isActive ? 'active' : 'inactive'}>{user.name.toUpperCase()}</p>;
 // compiles to:
-React.createElement(
-  'p',
-  { className: isActive ? 'active' : 'inactive' },
-  user.name.toUpperCase()
-)
+React.createElement('p', { className: isActive ? 'active' : 'inactive' }, user.name.toUpperCase());
 ```
 
 The curly braces are not a template interpolation syntax like Handlebars `{{ }}`. They are a literal JavaScript expression slot. Anything valid as a JavaScript expression is valid inside `{}`, because after compilation it's just a function argument.
@@ -226,8 +210,8 @@ React.createElement(
   'div',
   { className: 'card' },
   React.createElement('img', { src: '...' }),
-  React.createElement('p', null, 'Hello')
-)
+  React.createElement('p', null, 'Hello'),
+);
 ```
 
 React takes all arguments after the props object and puts them on `props.children`. A single child becomes the value directly. Multiple children become an array. This is why `props.children` sometimes behaves differently for single vs multiple children, though React normalizes this in most contexts.
@@ -267,8 +251,8 @@ function App() {
 
   return (
     <ul>
-      {items.map(item => {
-        <li>{item}</li>
+      {items.map((item) => {
+        <li>{item}</li>;
       })}
     </ul>
   );
@@ -408,8 +392,8 @@ React.createElement(
   React.Fragment,
   null,
   React.createElement('p', null, 'First'),
-  React.createElement('p', null, 'Second')
-)
+  React.createElement('p', null, 'Second'),
+);
 ```
 
 `React.Fragment` is a special built-in type that React recognizes during reconciliation. When React processes a Fiber node whose type is `React.Fragment`, it renders the children directly into the parent's DOM position without creating any wrapper DOM element. The two `p` elements appear in the DOM as direct siblings of whatever contains this component. The Fragment itself leaves no trace in the real DOM. It exists only in the Fiber tree as an organizational node that React uses to group children with a single return value.

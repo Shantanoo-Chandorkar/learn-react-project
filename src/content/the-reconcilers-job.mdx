@@ -198,13 +198,13 @@ A key must be stable (same value for the same item across renders), unique among
 
 ```jsx
 // Correct: stable, unique, predictable
-items.map(item => <ItemCard key={item.id} item={item} />)
+items.map((item) => <ItemCard key={item.id} item={item} />);
 
 // Wrong: index as key when items can be reordered or filtered
-items.map((item, index) => <ItemCard key={index} item={item} />)
+items.map((item, index) => <ItemCard key={index} item={item} />);
 
 // Wrong: random key, destroys every item on every render
-items.map(item => <ItemCard key={Math.random()} item={item} />)
+items.map((item) => <ItemCard key={Math.random()} item={item} />);
 ```
 
 Index keys are wrong whenever the list can change order or items can be inserted/deleted at non-tail positions. An index key means React matches items by position, defeating the purpose of keys. When items are filtered, the item at index 0 after filtering is a different item than before filtering, but React thinks it is the same item and reuses its Fiber, potentially reusing stale state from the previous item.
@@ -274,7 +274,7 @@ function reconcileChildrenArray(returnFiber, currentFirstChild, newChildren) {
   }
 
   // Phase 5: delete any old fibers not matched
-  existingChildren.forEach(child => deleteChild(returnFiber, child));
+  existingChildren.forEach((child) => deleteChild(returnFiber, child));
 }
 ```
 
@@ -306,9 +306,9 @@ If both old and new child have `key = null`, they match by position. If both hav
 Each Fiber node can be marked with one or more flags that tell the commit phase what DOM operation to perform:
 
 ```js
-const Placement = 0b000000000010;  // insert into DOM
-const Update    = 0b000000000100;  // update props/attributes
-const Deletion  = 0b000000001000;  // remove from DOM
+const Placement = 0b000000000010; // insert into DOM
+const Update = 0b000000000100; // update props/attributes
+const Deletion = 0b000000001000; // remove from DOM
 const PlacementAndUpdate = Placement | Update;
 ```
 
@@ -323,12 +323,7 @@ During reconciliation, the reconciler sets flags on Fibers. During the commit ph
 ```jsx
 function Form({ showAdmin }) {
   return (
-    <div>
-      {showAdmin
-        ? <AdminInput label="Admin Code" />
-        : <UserInput label="Username" />
-      }
-    </div>
+    <div>{showAdmin ? <AdminInput label="Admin Code" /> : <UserInput label="Username" />}</div>
   );
 }
 ```

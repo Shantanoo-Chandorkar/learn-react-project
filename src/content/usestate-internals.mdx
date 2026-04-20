@@ -88,11 +88,13 @@ function Counter({ showName }) {
 ```
 
 First render with `showName = true`:
+
 - slot 0: `count = 0`
 - slot 1: `name = 'Shan'`
 - slot 2: `flag = false`
 
 Second render with `showName = false`:
+
 - slot 0: `count = 0` (correct)
 - slot 1: `flag` reads `states[1]` which is `'Shan'` (WRONG)
 - slot 2: undefined, new slot created for nothing
@@ -207,7 +209,7 @@ function mountState(initialState) {
   // Bind the dispatch function to THIS fiber and THIS queue
   const dispatch = (queue.dispatch = dispatchSetState.bind(
     null,
-    currentlyRenderingFiber,  // the specific Fiber being rendered right now
+    currentlyRenderingFiber, // the specific Fiber being rendered right now
     queue,
   ));
 
@@ -224,7 +226,7 @@ function mountWorkInProgressHook() {
     baseState: null,
     baseQueue: null,
     queue: null,
-    next: null,    // pointer to next hook in the list
+    next: null, // pointer to next hook in the list
   };
 
   if (workInProgressHook === null) {
@@ -280,7 +282,7 @@ function dispatchSetState(fiber, queue, action) {
   // Create an update object
   const update = {
     lane: requestUpdateLane(fiber), // priority of this update
-    action,                         // the new value or updater function
+    action, // the new value or updater function
     hasEagerState: false,
     eagerState: null,
     next: null,
@@ -360,7 +362,11 @@ function Counter({ showExtra }) {
 
   const [flag, setFlag] = React.useState(false);
 
-  return <div>{count} {flag.toString()}</div>;
+  return (
+    <div>
+      {count} {flag.toString()}
+    </div>
+  );
 }
 ```
 
@@ -386,11 +392,7 @@ function App() {
   const [count, setCount] = React.useState(0);
   console.log('rendered');
 
-  return (
-    <button onClick={() => setCount(0)}>
-      Set to 0
-    </button>
-  );
+  return <button onClick={() => setCount(0)}>Set to 0</button>;
 }
 ```
 
@@ -424,7 +426,7 @@ function useConditionalState(condition, initialValue) {
 
 function Form({ isEditing }) {
   const [text, setText] = useConditionalState(isEditing, '');
-  return <input value={text || ''} onChange={e => setText(e.target.value)} />;
+  return <input value={text || ''} onChange={(e) => setText(e.target.value)} />;
 }
 ```
 

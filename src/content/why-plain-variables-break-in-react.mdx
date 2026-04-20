@@ -78,7 +78,12 @@ function Counter() {
     renderApp(); // triggers re-render
   }
 
-  return <div><p>{count}</p><button onClick={increment}>+</button></div>;
+  return (
+    <div>
+      <p>{count}</p>
+      <button onClick={increment}>+</button>
+    </div>
+  );
 }
 ```
 
@@ -102,7 +107,7 @@ A component function is called by React on every render. Every time it is called
 
 ```jsx
 function Counter() {
-  let count = 0;     // created fresh every call
+  let count = 0; // created fresh every call
   // by the time increment runs and triggers a re-render,
   // the new call to Counter() will create a new `count` at 0
   // the incremented value is unreachable
@@ -325,7 +330,9 @@ function ProductList() {
 
   return (
     <ul>
-      {products.map(p => <li key={p.id}>{p.name}</li>)}
+      {products.map((p) => (
+        <li key={p.id}>{p.name}</li>
+      ))}
     </ul>
   );
 }

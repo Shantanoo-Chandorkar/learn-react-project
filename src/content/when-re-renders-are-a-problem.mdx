@@ -21,20 +21,16 @@ function DataTable() {
       id: i,
       label: `Row ${i}`,
       checked: false,
-    }))
+    })),
   );
 
   function toggleRow(id) {
-    setRows(prev =>
-      prev.map(row =>
-        row.id === id ? { ...row, checked: !row.checked } : row
-      )
-    );
+    setRows((prev) => prev.map((row) => (row.id === id ? { ...row, checked: !row.checked } : row)));
   }
 
   return (
     <div>
-      {rows.map(row => (
+      {rows.map((row) => (
         <Row key={row.id} row={row} onToggle={toggleRow} />
       ))}
     </div>
@@ -44,11 +40,7 @@ function DataTable() {
 function Row({ row, onToggle }) {
   return (
     <div>
-      <input
-        type="checkbox"
-        checked={row.checked}
-        onChange={() => onToggle(row.id)}
-      />
+      <input type="checkbox" checked={row.checked} onChange={() => onToggle(row.id)} />
       <span>{row.label}</span>
     </div>
   );
@@ -108,37 +100,31 @@ import { FixedSizeList } from 'react-window';
 function DataTable() {
   const [rows, setRows] = React.useState(
     Array.from({ length: 10000 }, (_, i) => ({
-      id: i, label: `Row ${i}`, checked: false,
-    }))
+      id: i,
+      label: `Row ${i}`,
+      checked: false,
+    })),
   );
 
   function toggleRow(id) {
-    setRows(prev =>
-      prev.map(row => row.id === id ? { ...row, checked: !row.checked } : row)
-    );
+    setRows((prev) => prev.map((row) => (row.id === id ? { ...row, checked: !row.checked } : row)));
   }
 
-  const RowRenderer = React.useCallback(({ index, style }) => {
-    const row = rows[index];
-    return (
-      <div style={style}>
-        <input
-          type="checkbox"
-          checked={row.checked}
-          onChange={() => toggleRow(row.id)}
-        />
-        <span>{row.label}</span>
-      </div>
-    );
-  }, [rows, toggleRow]);
+  const RowRenderer = React.useCallback(
+    ({ index, style }) => {
+      const row = rows[index];
+      return (
+        <div style={style}>
+          <input type="checkbox" checked={row.checked} onChange={() => toggleRow(row.id)} />
+          <span>{row.label}</span>
+        </div>
+      );
+    },
+    [rows, toggleRow],
+  );
 
   return (
-    <FixedSizeList
-      height={600}
-      itemCount={rows.length}
-      itemSize={40}
-      width="100%"
-    >
+    <FixedSizeList height={600} itemCount={rows.length} itemSize={40} width="100%">
       {RowRenderer}
     </FixedSizeList>
   );
@@ -217,10 +203,7 @@ function AnalyticsDashboard({ reportId, uiTheme }) {
   const [data, setData] = React.useState(rawData);
 
   // Only recomputes when data changes, not when uiTheme changes
-  const processedData = React.useMemo(
-    () => heavyDataProcessing(data),
-    [data]
-  );
+  const processedData = React.useMemo(() => heavyDataProcessing(data), [data]);
 
   return (
     <div className={uiTheme}>
@@ -247,15 +230,18 @@ function App() {
   // This causes App to re-render every 30 seconds
   // Which causes everything below to re-render
 
-  const config = {          // new object every render
+  const config = {
+    // new object every render
     theme: 'light',
     locale: 'en-IN',
     features: ['analytics', 'export'],
   };
 
   return (
-    <ConfigProvider value={config}>  {/* context value changes every render */}
-      <Dashboard user={user} />      {/* re-renders every 30 seconds */}
+    <ConfigProvider value={config}>
+      {' '}
+      {/* context value changes every render */}
+      <Dashboard user={user} /> {/* re-renders every 30 seconds */}
     </ConfigProvider>
   );
 }
@@ -269,11 +255,14 @@ function App() {
   const [notifications, setNotifications] = React.useState([]);
 
   // Stable: same reference unless actual config changes
-  const config = React.useMemo(() => ({
-    theme: 'light',
-    locale: 'en-IN',
-    features: ['analytics', 'export'],
-  }), []); // no deps: config never changes
+  const config = React.useMemo(
+    () => ({
+      theme: 'light',
+      locale: 'en-IN',
+      features: ['analytics', 'export'],
+    }),
+    [],
+  ); // no deps: config never changes
 
   return (
     <ConfigProvider value={config}>
@@ -375,7 +364,7 @@ function SearchPage() {
   return (
     <div>
       <input value={inputValue} onChange={handleChange} />
-      <SearchResults query={searchQuery} />  {/* expensive render */}
+      <SearchResults query={searchQuery} /> {/* expensive render */}
     </div>
   );
 }
@@ -392,17 +381,16 @@ function SearchResults({ query }) {
   // defer the expensive computation triggered by query changes
   const deferredQuery = React.useDeferredValue(query);
 
-  const results = React.useMemo(
-    () => expensiveSearch(deferredQuery),
-    [deferredQuery]
-  );
+  const results = React.useMemo(() => expensiveSearch(deferredQuery), [deferredQuery]);
 
   // deferredQuery may be stale relative to query during deferred renders
   const isStale = deferredQuery !== query;
 
   return (
     <div style={{ opacity: isStale ? 0.7 : 1 }}>
-      {results.map(r => <ResultItem key={r.id} result={r} />)}
+      {results.map((r) => (
+        <ResultItem key={r.id} result={r} />
+      ))}
     </div>
   );
 }
@@ -429,13 +417,14 @@ const Row = React.memo(function Row({ row, onToggle }) {
 function DataTable() {
   const [rows, setRows] = React.useState(initialRows);
 
-  function toggleRow(id) {  // recreated on every render, no useCallback
-    setRows(prev => prev.map(r => r.id === id ? { ...r, checked: !r.checked } : r));
+  function toggleRow(id) {
+    // recreated on every render, no useCallback
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, checked: !r.checked } : r)));
   }
 
   return (
     <div>
-      {rows.map(row => (
+      {rows.map((row) => (
         <Row key={row.id} row={row} onToggle={toggleRow} />
       ))}
     </div>
@@ -452,7 +441,7 @@ The fix requires `useCallback` on `toggleRow` with an empty dependency array (th
 
 ```jsx
 const toggleRow = React.useCallback((id) => {
-  setRows(prev => prev.map(r => r.id === id ? { ...r, checked: !r.checked } : r));
+  setRows((prev) => prev.map((r) => (r.id === id ? { ...r, checked: !r.checked } : r)));
 }, []);
 ```
 
@@ -470,9 +459,7 @@ function App() {
 
   return (
     <div>
-      <button onClick={() => startTransition(() => setCount(c => c + 1))}>
-        Increment
-      </button>
+      <button onClick={() => startTransition(() => setCount((c) => c + 1))}>Increment</button>
       <p>{count}</p>
     </div>
   );
@@ -500,7 +487,7 @@ Using `startTransition` incorrectly causes missed updates and confusing behavior
 const ProductGrid = React.memo(function ProductGrid({ products, onAddToCart }) {
   return (
     <div className="grid">
-      {products.map(p => (
+      {products.map((p) => (
         <ProductCard key={p.id} product={p} onAdd={() => onAddToCart(p.id)} />
       ))}
     </div>
@@ -513,7 +500,7 @@ function ShopPage() {
   const products = useProducts(filter); // returns new array on every filter change
 
   function addToCart(id) {
-    setCart(prev => [...prev, id]);
+    setCart((prev) => [...prev, id]);
   }
 
   return (

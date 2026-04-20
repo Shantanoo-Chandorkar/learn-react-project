@@ -25,11 +25,7 @@ function CelsiusInput() {
   return (
     <div>
       <label>Celsius</label>
-      <input
-        type="number"
-        value={celsius}
-        onChange={e => setCelsius(Number(e.target.value))}
-      />
+      <input type="number" value={celsius} onChange={(e) => setCelsius(Number(e.target.value))} />
     </div>
   );
 }
@@ -43,7 +39,7 @@ function FahrenheitInput() {
       <input
         type="number"
         value={fahrenheit}
-        onChange={e => setFahrenheit(Number(e.target.value))}
+        onChange={(e) => setFahrenheit(Number(e.target.value))}
       />
     </div>
   );
@@ -87,7 +83,7 @@ function FahrenheitInput() {
   // it has no state tied to sharedCelsius
   // calling onUpdate from the sibling doesn't help unless
   // we have a mechanism to force this component to re-render
-  const fahrenheit = sharedCelsius * 9/5 + 32;
+  const fahrenheit = (sharedCelsius * 9) / 5 + 32;
   return <input type="number" value={fahrenheit} />;
 }
 ```
@@ -126,7 +122,7 @@ function TemperatureConverter() {
   // fahrenheit is always derived from it
   const [celsius, setCelsius] = React.useState(0);
 
-  const fahrenheit = celsius * 9/5 + 32;
+  const fahrenheit = (celsius * 9) / 5 + 32;
 
   function handleCelsiusChange(newCelsius) {
     setCelsius(newCelsius);
@@ -135,21 +131,13 @@ function TemperatureConverter() {
   function handleFahrenheitChange(newFahrenheit) {
     // convert fahrenheit to celsius and store
     // celsius is the single source of truth
-    setCelsius((newFahrenheit - 32) * 5/9);
+    setCelsius(((newFahrenheit - 32) * 5) / 9);
   }
 
   return (
     <div>
-      <TemperatureInput
-        label="Celsius"
-        value={celsius}
-        onChange={handleCelsiusChange}
-      />
-      <TemperatureInput
-        label="Fahrenheit"
-        value={fahrenheit}
-        onChange={handleFahrenheitChange}
-      />
+      <TemperatureInput label="Celsius" value={celsius} onChange={handleCelsiusChange} />
+      <TemperatureInput label="Fahrenheit" value={fahrenheit} onChange={handleFahrenheitChange} />
     </div>
   );
 }
@@ -161,7 +149,7 @@ function TemperatureInput({ label, value, onChange }) {
       <input
         type="number"
         value={Math.round(value * 100) / 100}
-        onChange={e => onChange(Number(e.target.value))}
+        onChange={(e) => onChange(Number(e.target.value))}
       />
     </div>
   );
@@ -182,12 +170,12 @@ An uncontrolled component manages its own state:
 // uncontrolled: owns its own state
 function UncontrolledInput({ defaultValue }) {
   const [value, setValue] = React.useState(defaultValue);
-  return <input value={value} onChange={e => setValue(e.target.value)} />;
+  return <input value={value} onChange={(e) => setValue(e.target.value)} />;
 }
 
 // controlled: parent owns the state
 function ControlledInput({ value, onChange }) {
-  return <input value={value} onChange={e => onChange(e.target.value)} />;
+  return <input value={value} onChange={(e) => onChange(e.target.value)} />;
 }
 ```
 
@@ -280,14 +268,8 @@ function Parent() {
 
   return (
     <div>
-      <ItemList
-        selectedId={selectedId}
-        onSelect={id => setSelectedId(id)}
-      />
-      <ItemDetail
-        selectedId={selectedId}
-        onClose={() => setSelectedId(null)}
-      />
+      <ItemList selectedId={selectedId} onSelect={(id) => setSelectedId(id)} />
+      <ItemDetail selectedId={selectedId} onClose={() => setSelectedId(null)} />
     </div>
   );
 }
@@ -312,14 +294,11 @@ The fix is `useCallback`:
 
 ```jsx
 const handleSelect = React.useCallback(
-  id => setSelectedId(id),
-  []  // setSelectedId is stable, no deps needed
+  (id) => setSelectedId(id),
+  [], // setSelectedId is stable, no deps needed
 );
 
-const handleClose = React.useCallback(
-  () => setSelectedId(null),
-  []
-);
+const handleClose = React.useCallback(() => setSelectedId(null), []);
 ```
 
 With stable function references, `React.memo` can correctly bail out when only the function props are passed and `selectedId` hasn't changed. This is the canonical example of why `React.memo` and `useCallback` are used together.
@@ -337,12 +316,9 @@ function App() {
 
   return (
     <div>
-      <Header />         {/* doesn't use query */}
-      <Sidebar />        {/* doesn't use query */}
-      <Main
-        query={query}
-        setQuery={setQuery}
-      />
+      <Header /> {/* doesn't use query */}
+      <Sidebar /> {/* doesn't use query */}
+      <Main query={query} setQuery={setQuery} />
     </div>
   );
 }

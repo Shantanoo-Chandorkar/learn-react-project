@@ -36,12 +36,9 @@ function createUserCard(user) {
     // toggle follow state... but where does the state live?
     // this closure captures `user`, but mutations here
     // don't propagate back to whoever called createUserCard
-    followBtn.textContent =
-      followBtn.textContent === 'Follow' ? 'Unfollow' : 'Follow';
+    followBtn.textContent = followBtn.textContent === 'Follow' ? 'Unfollow' : 'Follow';
     followBtn.className =
-      followBtn.className === 'btn btn-primary'
-        ? 'btn btn-secondary'
-        : 'btn btn-primary';
+      followBtn.className === 'btn btn-primary' ? 'btn btn-secondary' : 'btn btn-primary';
   });
 
   card.appendChild(avatar);
@@ -74,9 +71,7 @@ followBtn.addEventListener('click', () => {
     // know about the header? It was given a `user` object.
     // It has no reference to anything outside itself.
     document.getElementById('header-follower-count').textContent =
-      parseInt(
-        document.getElementById('header-follower-count').textContent
-      ) + 1;
+      parseInt(document.getElementById('header-follower-count').textContent) + 1;
     // now we're querying global DOM from inside a reusable function.
     // the function is no longer truly reusable.
     // it assumes a specific DOM structure exists outside itself.
@@ -143,7 +138,7 @@ Fourth, reuse is clean:
 function Feed({ users, onFollow }) {
   return (
     <div id="feed">
-      {users.map(user => (
+      {users.map((user) => (
         <UserCard key={user.id} user={user} onFollow={onFollow} />
       ))}
     </div>
@@ -153,7 +148,7 @@ function Feed({ users, onFollow }) {
 function SearchResults({ users, onFollow }) {
   return (
     <div id="search">
-      {users.map(user => (
+      {users.map((user) => (
         <UserCard key={user.id} user={user} onFollow={onFollow} />
       ))}
     </div>
@@ -231,7 +226,10 @@ A React component is a function (or class) that accepts props and returns JSX. I
 
 ```jsx
 function Wrapper() {
-  const card = UserCard({ user: { name: 'Shan', avatar: '...', isFollowing: false }, onFollow: () => {} });
+  const card = UserCard({
+    user: { name: 'Shan', avatar: '...', isFollowing: false },
+    onFollow: () => {},
+  });
   return <div>{card}</div>;
 }
 ```
@@ -251,7 +249,7 @@ It renders the output of `UserCard` as JSX, so visually it appears correct. But 
 function UserCard({ user, onFollow }) {
   console.log('UserCard rendered');
 
-  const handleClick = function() {
+  const handleClick = function () {
     onFollow(user.id);
   };
 
@@ -275,7 +273,7 @@ function Feed({ users }) {
   return (
     <div>
       <button onClick={() => setFilter('active')}>Filter</button>
-      {users.map(u => (
+      {users.map((u) => (
         <MemoizedCard key={u.id} user={u} onFollow={handleFollow} />
       ))}
     </div>

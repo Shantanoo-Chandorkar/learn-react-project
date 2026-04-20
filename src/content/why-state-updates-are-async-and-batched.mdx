@@ -36,9 +36,9 @@ function Form() {
 
   return (
     <form onSubmit={handleSubmit}>
-      <input value={name} onChange={e => setName(e.target.value)} />
-      <input value={email} onChange={e => setEmail(e.target.value)} />
-      <textarea value={message} onChange={e => setMessage(e.target.value)} />
+      <input value={name} onChange={(e) => setName(e.target.value)} />
+      <input value={email} onChange={(e) => setEmail(e.target.value)} />
+      <textarea value={message} onChange={(e) => setMessage(e.target.value)} />
       <button type="submit">{isLoading ? 'Sending...' : 'Send'}</button>
     </form>
   );
@@ -107,20 +107,20 @@ React 17 batched state updates only inside React synthetic event handlers. Updat
 
 // BATCHED: inside a React synthetic event handler
 function handleClick() {
-  setCount(c => c + 1);  // queued
-  setName('Ravi');        // queued
+  setCount((c) => c + 1); // queued
+  setName('Ravi'); // queued
   // one re-render here
 }
 
 // NOT BATCHED: inside setTimeout (React 17)
 setTimeout(() => {
-  setCount(c => c + 1);  // re-render 1
-  setName('Ravi');        // re-render 2
+  setCount((c) => c + 1); // re-render 1
+  setName('Ravi'); // re-render 2
 }, 1000);
 
 // NOT BATCHED: after await (React 17)
 async function handleSubmit() {
-  setIsLoading(true);  // re-render 1
+  setIsLoading(true); // re-render 1
   await fetch('/api');
   setIsLoading(false); // re-render 2  ← separate, not batched
 }
@@ -135,25 +135,25 @@ React 18 extended batching to all contexts. Updates inside `setTimeout`, `Promis
 
 // BATCHED: inside React event handler (same as before)
 function handleClick() {
-  setCount(c => c + 1);  // queued
-  setName('Ravi');        // queued
+  setCount((c) => c + 1); // queued
+  setName('Ravi'); // queued
   // one re-render
 }
 
 // BATCHED: inside setTimeout (new in React 18)
 setTimeout(() => {
-  setCount(c => c + 1);  // queued
-  setName('Ravi');        // queued
+  setCount((c) => c + 1); // queued
+  setName('Ravi'); // queued
   // one re-render
 }, 1000);
 
 // BATCHED: after await (new in React 18)
 async function handleSubmit() {
-  setIsLoading(true);   // queued
-  setName('');          // queued
+  setIsLoading(true); // queued
+  setName(''); // queued
   // one re-render for both
   await fetch('/api');
-  setIsLoading(false);  // queued after the await
+  setIsLoading(false); // queued after the await
   // one re-render
 }
 ```
@@ -169,7 +169,7 @@ import { flushSync } from 'react-dom';
 
 function handleClick() {
   flushSync(() => {
-    setCount(c => c + 1);
+    setCount((c) => c + 1);
   });
   // React has committed the count update to the DOM here
   // the DOM reflects the new count before the next line
@@ -201,8 +201,8 @@ React maintains a bitmask called `executionContext` that tracks what kind of wor
 let executionContext = NoContext;
 
 const BatchedContext = 0b0001;
-const RenderContext  = 0b0010;
-const CommitContext  = 0b0100;
+const RenderContext = 0b0010;
+const CommitContext = 0b0100;
 ```
 
 When a React synthetic event handler fires, React wraps the call with:
@@ -210,11 +210,11 @@ When a React synthetic event handler fires, React wraps the call with:
 ```js
 function batchedUpdates(fn) {
   const prevExecutionContext = executionContext;
-  executionContext |= BatchedContext;  // set the batched flag
+  executionContext |= BatchedContext; // set the batched flag
   try {
-    return fn();  // call your event handler
+    return fn(); // call your event handler
   } finally {
-    executionContext = prevExecutionContext;  // restore
+    executionContext = prevExecutionContext; // restore
     // if we just left the last batched context, flush work
     if (executionContext === NoContext) {
       flushSyncCallbackQueue();
@@ -349,18 +349,18 @@ function App() {
   console.log('render');
 
   async function handleClick() {
-    setCount(c => c + 1);
-    setFlag(f => !f);
+    setCount((c) => c + 1);
+    setFlag((f) => !f);
     await delay(100);
-    setCount(c => c + 1);
-    setFlag(f => !f);
+    setCount((c) => c + 1);
+    setFlag((f) => !f);
   }
 
   return <button onClick={handleClick}>Go</button>;
 }
 
 function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 ```
 
@@ -394,7 +394,7 @@ function List() {
 
   function addItem() {
     flushSync(() => {
-      setItems(prev => [...prev, prev.length + 1]);
+      setItems((prev) => [...prev, prev.length + 1]);
     });
     // scroll to bottom of list after adding
     listRef.current.scrollTop = listRef.current.scrollHeight;
@@ -402,7 +402,9 @@ function List() {
 
   return (
     <ul ref={listRef} style={{ height: 100, overflow: 'auto' }}>
-      {items.map(i => <li key={i}>{i}</li>)}
+      {items.map((i) => (
+        <li key={i}>{i}</li>
+      ))}
     </ul>
   );
 }
@@ -453,9 +455,9 @@ React 18 extended batching to all contexts by changing when work is processed. W
 
 ```js
 // Case A: three functional updates batched
-setCount(prev => prev + 1);
-setCount(prev => prev + 1);
-setCount(prev => prev + 1);
+setCount((prev) => prev + 1);
+setCount((prev) => prev + 1);
+setCount((prev) => prev + 1);
 
 // Case B: three value updates batched
 setCount(count + 1); // count is 0
