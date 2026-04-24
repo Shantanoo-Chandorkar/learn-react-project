@@ -13,8 +13,4 @@ export default defineConfig({
     }),
     react(),
   ],
-  ssgOptions: {
-    script: 'async',
-    formatting: 'minify',
-  },
 });
