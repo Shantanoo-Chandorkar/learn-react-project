@@ -30,3 +30,9 @@ dist-ssr
 # Agent Files
 .gemini
 settings.local.json
+
+# Env — local overrides only; .env is committed
+.env.local
+
+# Temp
+more-topics.json
