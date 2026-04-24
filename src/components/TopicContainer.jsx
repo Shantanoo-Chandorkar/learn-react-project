@@ -1,11 +1,8 @@
 import React, { lazy, Suspense, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { Helmet } from 'react-helmet-async';
 import ErrorBoundary from './ErrorBoundary';
 import MDXComponents from './mdx/MDXComponents';
 import ArticleFooter from './ArticleFooter';
-import topics from '../content/topics.json';
-import { buildOgImageUrl } from '../utils/ogUrl';
 
 /**
  * TopicContainer Component
@@ -15,10 +12,6 @@ import { buildOgImageUrl } from '../utils/ogUrl';
  */
 const TopicContainer = () => {
   const { slug } = useParams();
-
-  // Look up topic metadata from the static JSON for OG tag generation.
-  // Falls back gracefully if the slug doesn't match (e.g. during a 404 state).
-  const topic = useMemo(() => topics.find((t) => t.slug === slug), [slug]);
 
   // Scroll content area to top on topic change
   React.useEffect(() => {
@@ -42,18 +35,6 @@ const TopicContainer = () => {
 
   return (
     <div className="topic-container">
-      {topic && (
-        <Helmet>
-          <meta property="og:type" content="article" />
-          <meta property="og:title" content={topic.title} />
-          <meta property="og:url" content={`https://welcome-react-tutorial.netlify.app/topic/${topic.slug}`} />
-          <meta property="og:image" content={buildOgImageUrl(topic)} />
-          <meta property="og:image:width" content="1200" />
-          <meta property="og:image:height" content="630" />
-          <meta name="twitter:card" content="summary_large_image" />
-          <meta name="twitter:image" content={buildOgImageUrl(topic)} />
-        </Helmet>
-      )}
       <ErrorBoundary key={slug}>
         <Suspense
           fallback={
