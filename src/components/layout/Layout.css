@@ -272,6 +272,25 @@
   z-index: 999;
 }
 
+/* MDX content wrapper — topic article prose */
+.mdx-content-wrapper {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.mdx-content-wrapper table tr:hover {
+  background-color: #f8faff;
+}
+
+/* Shiki code block overrides — ensure horizontal scroll on narrow viewports */
+.mdx-content-wrapper pre {
+  border-radius: 0.5rem;
+  padding: 1rem;
+  overflow-x: auto;
+  margin-bottom: 1.25rem;
+}
+
 /* Error Boundary Fallback */
 .error-boundary-fallback {
   padding: 2rem;

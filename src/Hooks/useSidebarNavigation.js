@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import topics from '../content/topics.json';
+import topics from '../data/topics.json';
 
 /**
  * Custom hook to group topics for sidebar navigation.
