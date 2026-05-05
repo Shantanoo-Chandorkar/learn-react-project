@@ -71,8 +71,8 @@ const Header = () => {
                 </button>
             </div>
 
-            <div className="learn-react-project-header-title">
-                <a href="/">Learn React Platform</a>
+            <div class="learn-react-project-header-title">
+                <a href="/">EscapeTheSurface</a>
             </div>
 
             <div className="learn-react-project-header-link">
