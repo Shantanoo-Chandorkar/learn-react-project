@@ -37,3 +37,4 @@ settings.local.json
 # Temp
 more-topics.json
 .astro/
+.netlify/
