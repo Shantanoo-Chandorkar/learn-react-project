@@ -7,6 +7,8 @@ order: 17
 
 # Execution context & call stack
 
+## Exploring execution context & call stack and common implementation patterns
+
 ### The mental model first
 
 Every piece of JavaScript code runs inside an **execution context**. It is the environment the JS engine creates to track everything needed to execute a piece of code: what variables exist, what `this` refers to, and what the outer scope is. Understanding execution contexts unifies hoisting (1.1), scope (1.2), closures (1.3), and `this` (1.4) into a single coherent picture. All of those were symptoms. This is the mechanism underneath.

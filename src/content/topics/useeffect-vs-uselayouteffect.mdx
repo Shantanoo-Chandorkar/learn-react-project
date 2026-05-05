@@ -7,6 +7,8 @@ order: 67
 
 # useEffect vs useLayoutEffect
 
+## Exploring useeffect vs uselayouteffect and common implementation patterns
+
 ### 1. The Problem
 
 React provides two hooks for running side effects after render: `useEffect` and `useLayoutEffect`. Most documentation says "`useLayoutEffect` is like `useEffect` but fires synchronously after DOM mutations." This is accurate but insufficient. It tells you the what but not the why, and without the why, you cannot reason about when each is correct.

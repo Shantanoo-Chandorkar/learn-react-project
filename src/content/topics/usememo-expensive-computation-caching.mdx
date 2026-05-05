@@ -7,6 +7,8 @@ order: 74
 
 # useMemo, Expensive Computation Caching
 
+## Exploring usememo, expensive computation caching and common implementation patterns
+
 ### 1. The Problem
 
 Every line in your component function runs on every render. That is the contract. A string concatenation, a `.filter()` call, a `.sort()` call, an arithmetic expression, all of them execute every time React calls your function, regardless of whether their inputs changed.

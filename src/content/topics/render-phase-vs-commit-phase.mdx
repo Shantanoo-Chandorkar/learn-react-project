@@ -7,6 +7,8 @@ order: 79
 
 # The Two-Phase Render, Render Phase vs Commit Phase
 
+## Exploring the two-phase render, render phase vs commit phase and common implementation patterns
+
 ### 1. The Problem
 
 React calls your component function. It figures out what changed. It updates the DOM. Three things. But they cannot happen in one continuous, synchronous sequence if React wants to support interruptible rendering, concurrent work, and consistent UI updates.

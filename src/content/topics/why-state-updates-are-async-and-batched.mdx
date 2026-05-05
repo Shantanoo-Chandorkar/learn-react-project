@@ -7,6 +7,8 @@ order: 48
 
 # Why State Updates Are Async and Batched
 
+## Exploring why state updates are async and batched and common implementation patterns
+
 ### 1. The Problem
 
 You call `setCount(1)`. Then you call `setName('Ravi')`. Your instinct, shaped by years of synchronous JavaScript, says: first the count updates and the component re-renders, then the name updates and the component re-renders again. Two state changes, two re-renders.

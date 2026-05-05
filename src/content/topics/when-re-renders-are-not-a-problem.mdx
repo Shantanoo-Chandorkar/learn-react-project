@@ -7,6 +7,8 @@ order: 54
 
 # When Re-renders Are NOT a Problem
 
+## Exploring when re-renders are not a problem and common implementation patterns
+
 ### 1. The Problem
 
 React developers, once they understand that re-renders exist and can be prevented, develop a reflex: see a re-render, add `React.memo`. See a function in JSX, wrap it in `useCallback`. See a computed value, wrap it in `useMemo`. This reflex feels like good engineering. It is not. It is a systematic misapplication of optimization techniques to problems that do not exist, and it creates real problems of its own.

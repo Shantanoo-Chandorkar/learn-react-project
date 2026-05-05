@@ -7,6 +7,8 @@ order: 64
 
 # The Dependency Array: Not "When to Run," It's "What to Sync With"
 
+## Exploring the dependency array: not "when to run," it's "what to sync with" and common implementation patterns
+
 ### 1. The Problem
 
 The dependency array is the most misunderstood part of `useEffect`. Developers treat it as a trigger list — "put the things that should cause this effect to re-run." This produces code that works by accident when the trigger list happens to match the dependencies, and breaks silently when it does not.

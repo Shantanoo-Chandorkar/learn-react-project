@@ -7,6 +7,8 @@ order: 93
 
 # The Four Caching Layers, Opting Out, and On-Demand Revalidation
 
+## Exploring the four caching layers, opting out, and on-demand revalidation and common implementation patterns
+
 ### 1. The Problem
 
 Next.js caching is the most misunderstood part of the framework. Developers coming from React or the Pages Router expect a simple model: fetch data, display it, done. Instead they encounter a layered system where a `fetch` call might return data from four different cache locations, each with different lifetimes and different invalidation mechanisms.

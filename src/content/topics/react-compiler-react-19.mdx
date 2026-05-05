@@ -7,6 +7,8 @@ order: 76
 
 # The React Compiler
 
+## Exploring the react compiler and common implementation patterns
+
 ### 1. The Problem
 
 Every module in Phase 7 has been building toward the same conclusion: manual memoization is a tax on developers that is frequently paid incorrectly. Developers over-apply it (wrapping trivial computations), under-apply it (missing the components that are actually expensive), apply it ineffectively (unstable props defeating `React.memo`), and introduce bugs doing it (stale closures from incorrect deps).

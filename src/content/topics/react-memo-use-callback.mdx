@@ -7,6 +7,8 @@ order: 72
 
 # React.memo and useCallback, Preventing Child Re-renders and Why Functions Break It
 
+## Exploring react.memo and usecallback, preventing child re-renders and why functions break it and common implementation patterns
+
 ### 1. The Problem
 
 React's default behavior: when a parent re-renders, every child re-renders. This is correct and safe. But it is not always efficient. A parent might re-render because of state that has nothing to do with a particular child. The child's output would be identical. The function call, the element tree creation, and the reconciliation are all wasted work.

@@ -7,6 +7,8 @@ order: 90
 
 # Server Components, Client Components, and Data Fetching
 
+## Exploring server components, client components, and data fetching and common implementation patterns
+
 ### 1. The Problem
 
 Every React component before the App Router ran in two places: on the server during SSR (to produce the initial HTML) and in the browser (to hydrate and handle interactions). This double execution was a fundamental constraint. You could not write code in a component that should only ever run on the server, like a direct database query, because the same code would also be bundled and shipped to the browser where `require('pg')` would fail.
