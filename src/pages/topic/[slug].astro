@@ -1,0 +1,57 @@
+---
+/**
+ * [slug].astro — dynamic topic page
+ *
+ * getStaticPaths generates one route per entry in the 'topics' Content
+ * Collection. Astro validates frontmatter against config.ts at build time,
+ * so a missing title or wrong category is a build error, not a runtime 404.
+ *
+ * OG image URL is built here at build time using the same logic that the
+ * old Netlify Edge Function used — except it happens once per slug during
+ * `astro build` instead of on every request at the edge.
+ */
+import { getCollection } from 'astro:content';
+import MainLayout from '../../layouts/MainLayout.astro';
+import ArticleFooter from '../../components/ArticleFooter.jsx';
+import MDXComponents from '../../components/mdx/MDXComponents.jsx';
+
+export async function getStaticPaths() {
+    const topics = await getCollection('topics');
+    return topics.map((topic) => ({
+        params: { slug: topic.slug },
+        props: { topic },
+    }));
+}
+
+const { topic } = Astro.props;
+const { slug } = Astro.params;
+const { Content } = await topic.render();
+
+// Build OG image URL at build time — replaces the Netlify Edge Function
+const EDGE_OG_BASE_URL = import.meta.env.VITE_EDGE_OG_BASE_URL ?? 'https://edge-og-xi.vercel.app';
+const ogParams = new URLSearchParams({
+    template: 'blog-card',
+    title: topic.data.title,
+    tag: topic.data.category,
+    author: 'Shantanoo Chandorkar',
+    readTime: '5 min read',
+    siteUrl: 'welcome-react-tutorial.netlify.app',
+});
+const ogImageUrl = `${EDGE_OG_BASE_URL}/api/og?${ogParams.toString()}`;
+const pageUrl = `https://welcome-react-tutorial.netlify.app/topic/${slug}`;
+---
+
+<MainLayout
+    title={`${topic.data.title} | Learn React Platform`}
+    ogTitle={topic.data.title}
+    ogImage={ogImageUrl}
+    ogUrl={pageUrl}
+    currentPath={`/topic/${slug}`}
+>
+    <div class="topic-container">
+        <div class="mdx-content-wrapper">
+            <Content components={MDXComponents} />
+            <ArticleFooter slug={slug} client:load />
+        </div>
+    </div>
+</MainLayout>
