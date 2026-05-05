@@ -3,6 +3,9 @@ import MainLayout from '../layouts/MainLayout.astro';
 import MultiPageForm from '../react-forms/MultiPageForm.jsx';
 ---
 
-<MainLayout title="Multi-Page Form | Learn React Platform">
+<MainLayout 
+    title="Multi-Page Form | Learn React Platform"
+    description="A complex multi-page form example demonstrating state persistence and validation across multiple steps."
+>
     <MultiPageForm client:only="react" />
 </MainLayout>

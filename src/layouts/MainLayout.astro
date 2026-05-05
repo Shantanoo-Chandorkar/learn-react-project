@@ -19,6 +19,7 @@ import '../components/layout/Layout.css';
 
 interface Props {
     title?: string;
+    description?: string;
     ogTitle?: string;
     ogImage?: string;
     ogUrl?: string;
@@ -27,6 +28,7 @@ interface Props {
 
 const {
     title = 'Learn React Platform',
+    description = 'Master the internal mechanisms of the Frontend. A deep-dive platform for engineering high-caliber React developers.',
     ogTitle,
     ogImage,
     ogUrl,
@@ -40,9 +42,11 @@ const {
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>{title}</title>
+        <meta name="description" content={description} />
 
         {ogTitle && <meta property="og:type" content="article" />}
         {ogTitle && <meta property="og:title" content={ogTitle} />}
+        {ogTitle && <meta property="og:description" content={description} />}
         {ogUrl && <meta property="og:url" content={ogUrl} />}
         {ogImage && <meta property="og:image" content={ogImage} />}
         {ogImage && <meta property="og:image:width" content="1200" />}
