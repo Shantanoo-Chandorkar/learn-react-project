@@ -19,6 +19,7 @@ import '../components/layout/Layout.css';
 
 interface Props {
     title?: string;
+    description?: string;
     ogTitle?: string;
     ogImage?: string;
     ogUrl?: string;
@@ -26,7 +27,8 @@ interface Props {
 }
 
 const {
-    title = 'Learn React Platform',
+    title = 'EscapeTheSurface',
+    description = 'Master the internal mechanisms of the Frontend. A deep-dive platform for engineering high-caliber React developers.',
     ogTitle,
     ogImage,
     ogUrl,
@@ -40,9 +42,46 @@ const {
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>{title}</title>
+        <meta name="description" content={description} />
+
+        <style is:inline>
+            :root {
+                --primary-color: #2563eb;
+                --bg-color: #f8fafc;
+                --text-color: #1e293b;
+                --font-serif: 'Georgia', 'Times New Roman', Times, serif;
+            }
+            body {
+                margin: 0;
+                font-family: system-ui, -apple-system, sans-serif;
+                background-color: #f8fafc;
+                color: #1e293b;
+                line-height: 1.5;
+            }
+            .layout-root {
+                display: flex;
+                flex-direction: column;
+                height: 100vh;
+                overflow: hidden;
+            }
+            .layout-body {
+                display: flex;
+                flex: 1;
+                overflow: hidden;
+            }
+            .layout-content {
+                flex: 1;
+                padding: 2rem;
+                overflow-y: auto;
+            }
+            @media (max-width: 1024px) {
+                .layout-content { padding: 1rem; }
+            }
+        </style>
 
         {ogTitle && <meta property="og:type" content="article" />}
         {ogTitle && <meta property="og:title" content={ogTitle} />}
+        {ogTitle && <meta property="og:description" content={description} />}
         {ogUrl && <meta property="og:url" content={ogUrl} />}
         {ogImage && <meta property="og:image" content={ogImage} />}
         {ogImage && <meta property="og:image:width" content="1200" />}
@@ -54,7 +93,7 @@ const {
         <div class="layout-root">
             <Header client:load />
             <div class="layout-body">
-                <Sidebar currentPath={currentPath} client:load />
+                <Sidebar currentPath={currentPath} client:visible />
                 <main class="layout-content">
                     <slot />
                 </main>

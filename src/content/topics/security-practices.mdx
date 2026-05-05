@@ -7,6 +7,8 @@ order: 31
 
 # Security Practices
 
+## Exploring security practices and common implementation patterns
+
 ### The mental model first
 
 Web security attacks exploit trust relationships. XSS exploits the user's trust in a website: malicious script runs in the context of a trusted origin, with full access to cookies, DOM, and localStorage. CSRF exploits the server's trust in the user's browser: a forged request carries the user's real credentials without their knowledge. Understanding the trust model being abused makes every defense make sense rather than feeling like a checklist.

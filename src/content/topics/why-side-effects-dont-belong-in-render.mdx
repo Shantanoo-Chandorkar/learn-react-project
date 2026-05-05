@@ -7,6 +7,8 @@ order: 62
 
 # Why You Can't Do Side Effects in Render
 
+## Exploring why you can't do side effects in render and common implementation patterns
+
 ### 1. The Problem
 
 You have a component that needs to do two things: show some UI, and do something that affects the outside world. Fetch data. Set the page title. Start a timer. In plain JavaScript these are not separate concerns. You write code, it runs, it does things. There is no distinction between "computing output" and "changing the world." They happen in the same functions, in the same order, without rules.

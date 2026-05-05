@@ -7,6 +7,8 @@ order: 47
 
 # `useState` Internals, How Does React Remember State Between Renders?
 
+## Exploring `usestate` internals, how does react remember state between renders? and common implementation patterns
+
 ### 1. The Problem
 
 You call `useState(0)` inside a function. The function returns. The function is called again. You call `useState(0)` again. Somehow the second call returns `1`, not `0`. The initializer `0` is ignored. The previous value is remembered.

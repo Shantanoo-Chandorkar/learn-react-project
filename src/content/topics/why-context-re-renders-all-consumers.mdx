@@ -7,6 +7,8 @@ order: 70
 
 # Why Context Re-renders Everything That Consumes It
 
+## Exploring why context re-renders everything that consumes it and common implementation patterns
+
 ### 1. The Problem
 
 Context solves prop drilling. You add it to your application. Data flows cleanly. No messenger components. Then you open the React DevTools Profiler and discover that a single state change in your `UserProvider` is causing 47 components to re-render, including components that only read stable data like the user's name that has not changed, components that only use the `logout` function which is the same reference as before, and components deep in completely different subtrees of the application.

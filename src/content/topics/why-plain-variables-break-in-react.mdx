@@ -7,6 +7,8 @@ order: 46
 
 # Why `let count = 0` Breaks Completely
 
+## Exploring why `let count = 0` breaks completely and common implementation patterns
+
 ### 1. The Problem
 
 You know React re-renders a component when state changes. You know `useState` is how you declare state. But the question nobody stops to answer precisely is: why? Why can't a plain variable do the same job? JavaScript variables change. You can increment them. You can read them. Why does React need a special API for something that is, at its core, just storing a number?

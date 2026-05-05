@@ -7,6 +7,8 @@ order: 83
 
 # How Hooks Are Stored on the Fiber Node
 
+## Exploring how hooks are stored on the fiber node and common implementation patterns
+
 ### 1. The Problem
 
 You call `useState(0)` inside a function. The function returns. The function is called again on the next render. You call `useState(0)` again. React returns `1`, not `0`. The initializer is ignored. The previous value is remembered.

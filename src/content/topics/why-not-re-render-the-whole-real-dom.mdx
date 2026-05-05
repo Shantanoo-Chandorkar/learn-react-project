@@ -7,6 +7,8 @@ order: 57
 
 # Why Not Just Re-Render the Whole Real DOM
 
+## Exploring why not just re-render the whole real dom and common implementation patterns
+
 ### 1. The Problem
 
 State changed. You know what the UI should look like now. The fastest path to a correct screen is to throw away what is there and rebuild it from scratch. One operation. No diffing. No tracking. No incremental updates. Just wipe and re-render.

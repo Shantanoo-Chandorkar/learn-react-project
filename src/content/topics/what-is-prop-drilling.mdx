@@ -7,6 +7,8 @@ order: 68
 
 # What is Prop Drilling, Why is it Painful?
 
+## Exploring what is prop drilling, why is it painful? and common implementation patterns
+
 ### 1. The Problem
 
 You have data at the top of your component tree. A deeply nested component needs it. React's data model says: data flows down via props. So you pass it down. One level. Two levels. Three levels. Five levels. Every intermediate component that does not need the data receives it anyway, just to forward it to the next level.

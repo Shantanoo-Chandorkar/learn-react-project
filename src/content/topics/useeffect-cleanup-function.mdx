@@ -7,6 +7,8 @@ order: 65
 
 # The Cleanup Function: Preventing Memory Leaks and Stale Subscriptions
 
+## Exploring the cleanup function: preventing memory leaks and stale subscriptions and common implementation patterns
+
 ### 1. The Problem
 
 Your effect starts something. Opens a connection. Starts a timer. Adds an event listener. Subscribes to a data stream. These are all things with a lifecycle — they have a beginning and they must have an end.

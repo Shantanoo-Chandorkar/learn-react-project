@@ -47,7 +47,7 @@ const Header = () => {
                     style={{
                         background: '#3f4451',
                         border: 'none',
-                        color: '#9ca3af',
+                        color: '#ffffff',
                         padding: '0.5rem 1rem',
                         borderRadius: '0.5rem',
                         cursor: 'pointer',
@@ -71,8 +71,8 @@ const Header = () => {
                 </button>
             </div>
 
-            <div className="learn-react-project-header-title">
-                <a href="/">Learn React Platform</a>
+            <div class="learn-react-project-header-title">
+                <a href="/">EscapeTheSurface</a>
             </div>
 
             <div className="learn-react-project-header-link">
