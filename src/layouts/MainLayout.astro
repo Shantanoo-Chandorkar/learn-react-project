@@ -1,0 +1,64 @@
+---
+/**
+ * MainLayout.astro
+ *
+ * The root HTML shell for every page. Imports all global CSS, mounts
+ * the Header and Sidebar as React islands (client:load so they hydrate
+ * immediately and share the Zustand store), and provides a <slot /> for
+ * page-specific content.
+ *
+ * OG / social meta tags are optional props — the topic page passes them
+ * at build time so every crawlable URL gets proper previews without an
+ * edge function.
+ */
+import Header from '../components/layout/Header.jsx';
+import Sidebar from '../components/layout/Sidebar.jsx';
+import '../index.css';
+import '../App.css';
+import '../components/layout/Layout.css';
+
+interface Props {
+    title?: string;
+    ogTitle?: string;
+    ogImage?: string;
+    ogUrl?: string;
+    currentPath?: string;
+}
+
+const {
+    title = 'Learn React Platform',
+    ogTitle,
+    ogImage,
+    ogUrl,
+    currentPath = Astro.url.pathname,
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>{title}</title>
+
+        {ogTitle && <meta property="og:type" content="article" />}
+        {ogTitle && <meta property="og:title" content={ogTitle} />}
+        {ogUrl && <meta property="og:url" content={ogUrl} />}
+        {ogImage && <meta property="og:image" content={ogImage} />}
+        {ogImage && <meta property="og:image:width" content="1200" />}
+        {ogImage && <meta property="og:image:height" content="630" />}
+        {ogImage && <meta name="twitter:card" content="summary_large_image" />}
+        {ogImage && <meta name="twitter:image" content={ogImage} />}
+    </head>
+    <body>
+        <div class="layout-root">
+            <Header client:load />
+            <div class="layout-body">
+                <Sidebar currentPath={currentPath} client:load />
+                <main class="layout-content">
+                    <slot />
+                </main>
+            </div>
+        </div>
+    </body>
+</html>

@@ -1,0 +1,6 @@
+---
+// Permanent redirect for the legacy /react-router URL.
+// Astro also handles this via the netlify.toml [[redirects]] block,
+// but this page ensures local `astro dev` redirects correctly too.
+return Astro.redirect('/topic/react-router', 301);
+---
