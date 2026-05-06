@@ -96,6 +96,18 @@ const MDXComponents = {
     // Table row hover is handled by CSS (.mdx-content-wrapper table tr:hover)
     // rather than event handlers so it works without React hydration.
     tr: (props) => <tr {...props} />,
+    pre: (props) => {
+        // Shiki adds tabindex="0" by default for keyboard scrollability.
+        // To make this valid accessibility-wise for non-interactive elements,
+        // we add role="region" and a label.
+        return (
+            <pre 
+                role="region" 
+                aria-label="Code snippet" 
+                {...props} 
+            />
+        );
+    }
 };
 
 export default MDXComponents;
