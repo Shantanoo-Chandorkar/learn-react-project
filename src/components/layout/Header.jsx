@@ -11,83 +11,44 @@ import SearchModal from './SearchModal';
  * instead of receiving it as a prop from a React parent layout.
  * Uses plain <a> tags for navigation — no react-router-dom in Astro.
  */
+const SidebarIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
+        <line x1="9" x2="9" y1="3" y2="21"/>
+    </svg>
+);
+
 const Header = () => {
-    const { toggleMobileMenu } = useStore();
+    const { toggleSidebar } = useStore();
     const [isSearchOpen, setIsSearchOpen] = useState(false);
-
-    // Ctrl+K / Cmd+K global shortcut
-    useEffect(() => {
-        const handleKeyDown = (e) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-                e.preventDefault();
-                setIsSearchOpen(true);
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, []);
-
     return (
         <header className="learn-react-project-header-outer">
-            <div className="mobile-menu-button-container">
+            <div className="header-left-section">
                 <button
-                    className="mobile-menu-button"
-                    onClick={toggleMobileMenu}
-                    aria-label="Toggle mobile menu"
+                    className="sidebar-toggle-trigger"
+                    onClick={toggleSidebar}
+                    aria-label="Toggle sidebar"
                 >
-                    <span className="hamburger-line"></span>
-                    <span className="hamburger-line"></span>
-                    <span className="hamburger-line"></span>
+                    <SidebarIcon />
                 </button>
             </div>
 
-            <div className="learn-react-project-header-link" style={{ display: 'flex', gap: '1rem' }}>
-                <button
-                    onClick={() => setIsSearchOpen(true)}
-                    style={{
-                        background: '#3f4451',
-                        border: 'none',
-                        color: '#ffffff',
-                        padding: '0.5rem 1rem',
-                        borderRadius: '0.5rem',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                        fontSize: '0.9rem',
-                    }}
-                >
-                    <span>Search...</span>
-                    <kbd
-                        style={{
-                            background: '#282c34',
-                            padding: '2px 4px',
-                            borderRadius: '4px',
-                            fontSize: '0.7rem',
-                        }}
-                    >
-                        ⌘K
-                    </kbd>
-                </button>
-            </div>
-
-            <div class="learn-react-project-header-title">
+            <div className="learn-react-project-header-title">
                 <a href="/">EscapeTheSurface</a>
             </div>
 
-            <div className="learn-react-project-header-link">
-                <a href="https://react.dev" target="_blank" rel="noopener noreferrer">
-                    React Docs
-                </a>
-            </div>
-
-            <div className="learn-react-project-header-link">
-                <a href="/topic/react-router">React Router</a>
+            <div className="header-right-section">
+                <button
+                    onClick={() => setIsSearchOpen(true)}
+                    className="header-search-trigger"
+                >
+                    <span>Search...</span>
+                    <kbd>⌘K</kbd>
+                </button>
             </div>
 
             <SearchModal isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
         </header>
-    );
-};
+    );};
 
 export default Header;

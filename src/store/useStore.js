@@ -9,19 +9,19 @@ import { persist } from 'zustand/middleware';
 const useStore = create(
   persist(
     (set) => ({
-      // --- Mobile Menu State ---
-      isMobileMenuOpen: false,
+      // --- Sidebar State ---
+      isSidebarOpen: true,
 
       // --- Progress Tracking State ---
       // Array of slugs for completed topics
       completedTopics: [],
 
       // --- Actions ---
-      toggleMobileMenu: () => set((state) => ({ isMobileMenuOpen: !state.isMobileMenuOpen })),
+      toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
 
-      closeMobileMenu: () => set({ isMobileMenuOpen: false }),
+      closeSidebar: () => set({ isSidebarOpen: false }),
 
-      openMobileMenu: () => set({ isMobileMenuOpen: true }),
+      openSidebar: () => set({ isSidebarOpen: true }),
 
       // Progress Actions
       toggleTopicCompletion: (slug) =>
@@ -33,7 +33,10 @@ const useStore = create(
     }),
     {
       name: 'learn-react-platform-storage', // unique name for localStorage
-      partialize: (state) => ({ completedTopics: state.completedTopics }), // only persist progress
+      partialize: (state) => ({ 
+        completedTopics: state.completedTopics,
+        isSidebarOpen: state.isSidebarOpen 
+      }), // persist progress and sidebar state
     },
   ),
 );

@@ -2,107 +2,110 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  flex-wrap: wrap; /* Allow items to wrap on smaller screens */
-  padding: 1rem 2rem;
-  background-color: #282c34;
-  color: white;
-  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background-color: #ffffff;
+  color: #1a1e2e;
   position: sticky;
   top: 0;
   z-index: 1001;
+  border-bottom: 1px solid #e5e7eb;
 }
 
-.mobile-menu-button-container {
-  display: none;
+.header-left-section {
+  display: flex;
+  align-items: center;
+  flex: 1;
 }
 
-.mobile-menu-button {
+.sidebar-toggle-trigger {
   background: none;
   border: none;
+  color: #64748b;
+  padding: 0.5rem;
+  border-radius: 0.375rem;
   cursor: pointer;
   display: flex;
-  flex-direction: column;
-  justify-content: space-around;
-  width: 2rem;
-  height: 2rem;
-  padding: 0;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
 }
 
-.hamburger-line {
-  width: 2rem;
-  height: 0.25rem;
-  background: white;
-  border-radius: 10px;
-  transition: all 0.3s linear;
-  position: relative;
-  transform-origin: 1px;
+.sidebar-toggle-trigger:hover {
+  background-color: #f1f5f9;
+  color: #0f172a;
 }
 
 .learn-react-project-header-title {
-  font-size: 1.5rem;
-  text-align: center;
+  font-size: 1rem;
+  font-weight: 700;
   flex: 1;
+  text-align: center;
 }
 
 .learn-react-project-header-title a {
   text-decoration: none;
-  color: white;
+  color: #0f172a;
+  letter-spacing: -0.02em;
 }
 
-.learn-react-project-header-link {
-  width: 150px;
-  text-align: center;
+.header-right-section {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1;
 }
 
-.learn-react-project-header-link a {
-  color: #61dafb;
-  text-decoration: none;
-  font-weight: bold;
+.header-search-trigger {
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #64748b;
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  font-size: 0.85rem;
+  transition: all 0.2s;
 }
 
-.learn-react-project-header-link a:hover {
-  text-decoration: underline;
+.header-search-trigger:hover {
+  background-color: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.header-search-trigger kbd {
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  color: #94a3b8;
 }
 
 /* Tablet responsiveness */
 @media screen and (max-width: 1024px) {
-  .mobile-menu-button-container {
-    display: block;
-  }
-
   .learn-react-project-header-outer {
-    flex-direction: row;
-    justify-content: space-around;
-    padding: 0.8rem 1rem;
-  }
-
-  .learn-react-project-header-link {
-    width: auto;
-    font-size: 0.95rem;
+    padding: 0.5rem 0.75rem;
   }
 
   .learn-react-project-header-title {
-    font-size: 1.25rem;
-    flex: 100%;
-    margin-top: 0.5rem;
+    font-size: 0.95rem;
   }
 }
 
 /* Mobile responsiveness */
 @media screen and (max-width: 480px) {
-  .learn-react-project-header-outer {
-    flex-direction: column;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 1rem;
+  .header-search-trigger span {
+    display: none;
+  }
+  
+  .header-search-trigger {
+    gap: 0;
+    padding: 0.4rem;
   }
 
   .learn-react-project-header-title {
-    font-size: 1.2rem;
-  }
-
-  .learn-react-project-header-link {
-    width: auto;
     font-size: 0.9rem;
   }
 }
