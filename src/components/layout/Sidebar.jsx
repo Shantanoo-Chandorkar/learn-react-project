@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as Accordion from '@radix-ui/react-accordion';
+import * as Tooltip from '@radix-ui/react-tooltip';
 import useStore from '../../store/useStore';
 import useSidebarNavigation from '../../Hooks/useSidebarNavigation';
 import CollapsibleSidebar from './CollapsibleSidebar';
@@ -54,6 +55,35 @@ const ChevronDownIcon = ({ className, style }) => (
         />
     </svg>
 );
+
+/**
+ * SidebarTooltip component
+ * Wraps children with a portal-based tooltip that only triggers in Rail mode.
+ */
+const SidebarTooltip = ({ children, content }) => {
+    const { isSidebarOpen } = useStore();
+    
+    // Only show tooltips when sidebar is closed (Rail mode)
+    if (isSidebarOpen) return children;
+
+    return (
+        <Tooltip.Root delayDuration={100}>
+            <Tooltip.Trigger asChild>
+                {children}
+            </Tooltip.Trigger>
+            <Tooltip.Portal>
+                <Tooltip.Content 
+                    side="right" 
+                    sideOffset={12} 
+                    className="TooltipContent"
+                >
+                    {content}
+                    <Tooltip.Arrow className="TooltipArrow" />
+                </Tooltip.Content>
+            </Tooltip.Portal>
+        </Tooltip.Root>
+    );
+};
 
 /**
  * Sidebar navigation component — Astro island (client:load).
@@ -166,16 +196,15 @@ const Sidebar = ({ currentPath = '' }) => {
         const Icon = categoryIcons[category.id] || Squares2X2Icon;
         return (
             <Accordion.Item value={category.id} key={category.id}>
-                <Accordion.Trigger 
-                    className="sidebar-accordion-trigger"
-                    data-tooltip={category.name}
-                >
-                    <div className="sidebar-category-header">
-                        <Icon className="sidebar-category-icon" />
-                        <span className="sidebar-category-label">{category.name}</span>
-                    </div>
-                    <ChevronDownIcon className="sidebar-accordion-chevron" />
-                </Accordion.Trigger>
+                <SidebarTooltip content={category.name}>
+                    <Accordion.Trigger className="sidebar-accordion-trigger">
+                        <div className="sidebar-category-header">
+                            <Icon className="sidebar-category-icon" />
+                            <span className="sidebar-category-label">{category.name}</span>
+                        </div>
+                        <ChevronDownIcon className="sidebar-accordion-chevron" />
+                    </Accordion.Trigger>
+                </SidebarTooltip>
                 <Accordion.Content className="sidebar-accordion-content">
                     {category.subcategories.length > 0 && (
                         <Accordion.Root 
@@ -209,34 +238,37 @@ const Sidebar = ({ currentPath = '' }) => {
 
     return (
         <CollapsibleSidebar>
-            <div ref={sidebarRef}>
-                <div className="sidebar-header">
-                    <span className="sidebar-header-label">Topics</span>
+            <Tooltip.Provider>
+                <div ref={sidebarRef}>
+                    <div className="sidebar-header">
+                        <span className="sidebar-header-label">Topics</span>
+                    </div>
+
+                    <nav className="sidebar-nav">
+                        <ul>
+                            <li className="sidebar-nav-home">
+                                <SidebarTooltip content="Home">
+                                    <a
+                                        href="/"
+                                        onClick={closeSidebar}
+                                        className={isActive('/') ? 'active' : undefined}
+                                    >
+                                        <HomeIcon className="sidebar-category-icon" />
+                                        <span className="sidebar-link-label">Home</span>
+                                    </a>
+                                </SidebarTooltip>
+                            </li>
+                        </ul>
+
+                        <Accordion.Root 
+                            type="multiple" 
+                            defaultValue={activeCategory ? [activeCategory] : []}
+                        >
+                            {navigation.map(renderCategory)}
+                        </Accordion.Root>
+                    </nav>
                 </div>
-
-                <nav className="sidebar-nav">
-                    <ul>
-                        <li className="sidebar-nav-home">
-                            <a
-                                href="/"
-                                onClick={closeSidebar}
-                                className={isActive('/') ? 'active' : undefined}
-                                data-tooltip="Home"
-                            >
-                                <HomeIcon className="sidebar-category-icon" />
-                                <span className="sidebar-link-label">Home</span>
-                            </a>
-                        </li>
-                    </ul>
-
-                    <Accordion.Root 
-                        type="multiple" 
-                        defaultValue={activeCategory ? [activeCategory] : []}
-                    >
-                        {navigation.map(renderCategory)}
-                    </Accordion.Root>
-                </nav>
-            </div>
+            </Tooltip.Provider>
         </CollapsibleSidebar>
     );
 };
