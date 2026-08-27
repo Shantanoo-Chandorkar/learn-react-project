@@ -31,7 +31,8 @@ dist-ssr
 .gemini
 settings.local.json
 
-# Env — local overrides only; .env is committed
+# Env
+.env
 .env.local
 
 # Temp
