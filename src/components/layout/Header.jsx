@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import useStore from '../../store/useStore';
 import '../../Header/style.css';
 import SearchModal from './SearchModal';
+import ReadingModeControls from './ReadingModeControls';
 
 /**
  * Presentational Header Component — Astro island (client:load).
@@ -38,6 +39,7 @@ const Header = () => {
             </div>
 
             <div className="header-right-section">
+                <ReadingModeControls />
                 <button
                     onClick={() => setIsSearchOpen(true)}
                     className="header-search-trigger"

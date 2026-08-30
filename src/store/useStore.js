@@ -30,13 +30,30 @@ const useStore = create(
             ? state.completedTopics.filter((s) => s !== slug)
             : [...state.completedTopics, slug],
         })),
+
+      // --- Reading Mode State ---
+      readingMode: { voiceURI: null, rate: 1, pitch: 1, readCodeBlocks: false },
+
+      // Reading Mode Actions
+      setReadingVoice: (voiceURI) =>
+        set((state) => ({ readingMode: { ...state.readingMode, voiceURI } })),
+
+      setReadingRate: (rate) =>
+        set((state) => ({ readingMode: { ...state.readingMode, rate } })),
+
+      setReadingPitch: (pitch) =>
+        set((state) => ({ readingMode: { ...state.readingMode, pitch } })),
+
+      setReadCodeBlocks: (readCodeBlocks) =>
+        set((state) => ({ readingMode: { ...state.readingMode, readCodeBlocks } })),
     }),
     {
       name: 'learn-react-platform-storage', // unique name for localStorage
-      partialize: (state) => ({ 
+      partialize: (state) => ({
         completedTopics: state.completedTopics,
-        isSidebarOpen: state.isSidebarOpen 
-      }), // persist progress and sidebar state
+        isSidebarOpen: state.isSidebarOpen,
+        readingMode: state.readingMode,
+      }), // persist progress, sidebar state, and reading mode preferences
     },
   ),
 );

@@ -1,4 +1,6 @@
 import React from 'react';
+import Question from './Question.jsx';
+import Answer from './Answer.jsx';
 
 /**
  * MDXComponents — passed to <Content components={MDXComponents} /> in [slug].astro.
@@ -101,13 +103,16 @@ const MDXComponents = {
         // To make this valid accessibility-wise for non-interactive elements,
         // we add role="region" and a label.
         return (
-            <pre 
-                role="region" 
-                aria-label="Code snippet" 
-                {...props} 
+            <pre
+                role="region"
+                aria-label="Code snippet"
+                data-tts-role="code"
+                {...props}
             />
         );
-    }
+    },
+    Question,
+    Answer,
 };
 
 export default MDXComponents;
