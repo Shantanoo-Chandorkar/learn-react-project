@@ -270,11 +270,11 @@ The update targeting is surgical. Context marks only the consumers. The messenge
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: A developer says "prop drilling is always bad and should always be replaced with Context." Evaluate this claim.**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The claim is wrong. Prop drilling is the correct solution for most data sharing between components.
 
 Prop drilling at one to two levels of depth is explicit, traceable, and testable. You can read a component and immediately know what data it receives and where it comes from. Changes to the data shape are caught by TypeScript at every call site. Testing a component in isolation only requires providing the props it declares.
@@ -282,11 +282,11 @@ Prop drilling at one to two levels of depth is explicit, traceable, and testable
 Context has real costs: every consumer re-renders when the context value changes (covered in 6.3), the data source is implicit and requires global knowledge to trace, and components that consume context are harder to test in isolation (they require a Provider wrapper).
 
 The correct principle: use props when the distance is short and the data is relevant to intermediate components. Use Context when the distance is large, the intermediate components have no legitimate connection to the data, and the data genuinely represents a cross-cutting concern (theme, locale, authenticated user, feature flags). Treating prop drilling as universally bad leads to premature Context adoption, which introduces re-render performance problems and implicit coupling.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: What is wrong with this approach to fixing prop drilling?**
 
 ```jsx
@@ -304,10 +304,9 @@ function CheckoutButton({ product }) {
   return <button onClick={handleClick}>Add to cart</button>;
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Three concrete problems.
 
 First, React has no knowledge of `window.currentUser`. When `user` changes, React schedules re-renders based on state changes. `window.currentUser = user` is a direct mutation of a global variable. It triggers no re-render. `CheckoutButton` continues to render based on its existing output. The button label (which shows "Log in to buy" or "Add to cart" based on user state) would not update when the user logs in or out. The UI is stale.
@@ -317,11 +316,11 @@ Second, `window` is a shared global. In server-side rendering, `window` does not
 Third, this breaks the `UI = f(state)` contract entirely. `CheckoutButton` takes `product` as a prop but depends on `window.currentUser` for its logic. Its output is not a pure function of its declared inputs. Two instances of `CheckoutButton` with the same `product` prop could produce different behavior depending on what `window.currentUser` is at runtime. The component is non-deterministic from React's perspective.
 
 Context is the correct solution: it is React-aware, triggers re-renders when the value changes, is scoped to a subtree rather than global, and is explicit in the component's consumption.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: The children-as-props pattern eliminates `user` drilling through intermediate components. But does it eliminate all the re-renders from the drilling chain? Trace precisely.**
 
 ```jsx
@@ -341,10 +340,9 @@ function ProductGrid({ renderProduct }) {
 ```
 
 When `user` changes, do `Main` and `ProductGrid` re-render?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Yes, `Main` and `ProductGrid` still re-render when `user` changes, but for a different reason.
 
 When `user` changes, `App` re-renders (trigger 1: own state). `App`'s render body executes. The `renderProduct` function is defined inline: `(product) => <CheckoutButton product={product} user={user} />`. This creates a new function object on every `App` render. `Main` receives the new `renderProduct` reference as a prop. Even though `user` is no longer threaded through `Main`, `Main` still receives a changed prop and re-renders by default (trigger 2). `ProductGrid` receives the changed `renderProduct` from `Main` and re-renders.
@@ -363,33 +361,31 @@ const renderProduct = React.useCallback(
 Now `renderProduct` is the same reference when `user` is unchanged. Combined with `React.memo` on `Main` and `ProductGrid`, re-renders are prevented when `user` has not changed. When `user` does change, the re-renders are correct and necessary because the button rendering behavior changed.
 
 The children-as-props pattern eliminates the prop drilling problem (messenger coupling) but does not automatically eliminate re-render propagation. That still requires either `React.memo` with stable references, or Context (which directly targets consumers without propagating through intermediaries).
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** Name the four failure modes of prop drilling. Which one is purely a performance problem, and which ones are correctness and maintainability problems?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The four failure modes are: messenger coupling (components accepting props they do not use), refactoring cost (renaming or changing the prop requires touching every messenger), reusability loss (components carry their drilling dependencies wherever they go), and unnecessary re-renders (the drilling chain is also a re-render chain).
 
 The unnecessary re-render failure mode is purely a performance problem. The component tree still renders correctly, just with wasted work.
 
 The other three are correctness and maintainability problems. Messenger coupling produces incorrect abstractions: `ProductGrid`'s API implies it cares about `user` when it does not. Refactoring cost means that changes to the data shape produce incorrect code (compilation errors or runtime failures) across many files simultaneously, requiring multiple changes to fix one logical change. Reusability loss means that components cannot be correctly used in new contexts without understanding and replicating their full drilling chain.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** What question should you ask before replacing prop drilling with Context? Why is this question important?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The question is: "why is the data so far from the components that need it?" This asks you to examine the architecture before applying a solution.
 
 Sometimes the answer reveals a design problem: the component tree is too rigid, and component composition (children-as-props) or moving state closer to consumers would eliminate the drilling without introducing Context's performance costs.
@@ -397,16 +393,15 @@ Sometimes the answer reveals a design problem: the component tree is too rigid, 
 Sometimes the answer confirms that Context is correct: the data is genuinely global to the application (authenticated user, theme, locale), needed in many unrelated parts of the tree simultaneously, and there is no reasonable way to restructure the component hierarchy to eliminate the distance.
 
 The question is important because Context has real costs, primarily the re-render problem where every consumer re-renders on every value change. Applying Context prematurely to solve drilling that could be fixed structurally introduces these costs unnecessarily. The correct pattern: exhaust structural solutions first, then apply Context for genuinely global data.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** Two components consume the same data. One is four levels below its data source. The other is one level below. Should you use Context for both, drilling for both, or a mix? Justify the decision.
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 A mix is the most architecturally precise answer, but it depends on the nature of the data and the component tree structure.
 
 For the component one level below its data source, prop drilling is correct. The data passes through one intermediate level at most, the intermediate component likely has a legitimate relationship with the data (it probably renders the consumer directly), refactoring cost is minimal (one prop to change in two places), and re-render propagation is one level deep (negligible cost). Context's costs, implicit data source, re-render performance trap, Provider wrapper required for testing, are not justified by the shallow distance.
@@ -414,5 +409,4 @@ For the component one level below its data source, prop drilling is correct. The
 For the component four levels below, Context is likely correct if the three intermediate components have no legitimate connection to the data. They are messengers. The structural coupling, maintenance tax, and re-render chain from four levels of drilling outweigh Context's costs.
 
 In practice, you would probably use Context for the whole concern and let both components consume it, rather than drilling for one and using Context for the other, because splitting the data source creates inconsistency and makes the codebase harder to reason about. The practical decision: if any consumer is far enough that drilling is painful, use Context for all consumers of that data and let the shallow consumer also read from Context. This is consistent and avoids the split-source problem.
-
-</details>
+</Answer>

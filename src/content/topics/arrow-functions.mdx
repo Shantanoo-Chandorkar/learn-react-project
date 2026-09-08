@@ -277,6 +277,7 @@ const correct = (x) => {
 
 ### Self-test: 5 questions
 
+<Question>
 **Q1.** What does this log?
 
 ```js
@@ -291,7 +292,15 @@ const obj = {
 console.log(obj.getName());
 console.log(obj.getNameRegular());
 ```
+</Question>
 
+<Answer>
+`undefined`, `"shan"`. `getName` is an arrow defined at object literal construction time in global scope, so `this` is global. `getNameRegular` uses method shorthand (regular function semantics), called on `obj`, so `this` is `obj`.
+</Answer>
+
+---
+
+<Question>
 **Q2.** What does this log?
 
 ```js
@@ -302,14 +311,30 @@ function outer() {
 
 console.log(outer(42));
 ```
+</Question>
 
+<Answer>
+`42`, not `99`. The arrow function has no own `arguments`. It inherits `outer`'s `arguments`, which is `[42]` from `outer(42)`. The `99` passed to `arrow(99)` is completely ignored.
+</Answer>
+
+---
+
+<Question>
 **Q3.** What does this return?
 
 ```js
 const makeUser = (name) => { name: name, active: true };
 console.log(makeUser("shan"));
 ```
+</Question>
 
+<Answer>
+`undefined`. The `{}` is parsed as a block, not an object literal. `name: name` is a labeled statement. No `return` statement, so the function returns `undefined`. Fix: `({ name: name, active: true })`.
+</Answer>
+
+---
+
+<Question>
 **Q4.** What does this log?
 
 ```js
@@ -318,7 +343,15 @@ const double = (x) => x * 2;
 const result = double.call({ multiplier: 3 }, 5);
 console.log(result);
 ```
+</Question>
 
+<Answer>
+`10`. `call` cannot override `this` on an arrow function, but it still passes arguments normally. `double` receives `5` and returns `5 * 2 = 10`. The `{ multiplier: 3 }` context is silently ignored.
+</Answer>
+
+---
+
+<Question>
 **Q5.** Which of these will throw a TypeError and why?
 
 ```js
@@ -328,20 +361,8 @@ function B() {}
 new A();
 new B();
 ```
+</Question>
 
----
-
-<details>
-<summary>Answers</summary>
-
-**A1.** `undefined`, `"shan"`. `getName` is an arrow defined at object literal construction time in global scope, so `this` is global. `getNameRegular` uses method shorthand (regular function semantics), called on `obj`, so `this` is `obj`.
-
-**A2.** `42`, not `99`. The arrow function has no own `arguments`. It inherits `outer`'s `arguments`, which is `[42]` from `outer(42)`. The `99` passed to `arrow(99)` is completely ignored.
-
-**A3.** `undefined`. The `{}` is parsed as a block, not an object literal. `name: name` is a labeled statement. No `return` statement, so the function returns `undefined`. Fix: `({ name: name, active: true })`.
-
-**A4.** `10`. `call` cannot override `this` on an arrow function, but it still passes arguments normally. `double` receives `5` and returns `5 * 2 = 10`. The `{ multiplier: 3 }` context is silently ignored.
-
-**A5.** `new A()` throws `TypeError: A is not a constructor`. Arrow functions have no `prototype` and cannot be used with `new`. `new B()` works fine.
-
-</details>
+<Answer>
+`new A()` throws `TypeError: A is not a constructor`. Arrow functions have no `prototype` and cannot be used with `new`. `new B()` works fine.
+</Answer>

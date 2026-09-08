@@ -246,17 +246,17 @@ Backbone.js, one of the dominant pre-React frameworks, tried to solve the jQuery
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: "React is just jQuery but newer." What's wrong with this comparison?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 They solve different problems at different levels. jQuery is a DOM manipulation library. It makes it easier to write imperative DOM mutations with a cleaner API and cross-browser compatibility. It doesn't change the programming model. You still write transitions. You still own the DOM. You still maintain synchronization manually. React is a declarative UI library. It changes the programming model entirely. You don't write DOM mutations at all. You write a function from state to UI description, and React handles the DOM. Comparing them is like comparing a better screwdriver to a CNC machine. One is a better tool for the same manual job. The other eliminates the manual job.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: What is wrong with this approach to "optimizing" a React list?**
 
 ```jsx
@@ -272,16 +272,15 @@ function TodoList({ todos }) {
   return <ul id="todo-list"></ul>;
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 This directly mutates a DOM node that React owns. React renders the `<ul>` as an empty element. Then your code appends `li` elements to the real DOM directly, outside React's knowledge. On the next render, React diffs its Virtual DOM (empty `ul`) against the previous Virtual DOM (also empty `ul`), sees no change, and does nothing to the real DOM. But the real DOM now has stale `li` elements from the previous render still appended to it, plus newly appended ones from this render. The list grows forever on every re-render. You've created a ghost DOM that React cannot see or clean up. The fix is to let React render the `li` elements via JSX and never touch the DOM directly.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: A developer says "I'll use React for the complex parts and jQuery for the simple DOM stuff." What problems will this cause?**
 
 ```jsx
@@ -306,67 +305,60 @@ function Dropdown({ items }) {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Three concrete problems. First, React and jQuery now both think they control the dropdown's visibility. If a state change causes React to re-render this component, React will re-render the `ul` based on its Virtual DOM, which has no concept of the jQuery `hide`/`show` state. React might restore the `ul` to visible because its Virtual DOM says it's visible, overriding the jQuery hide. Second, the jQuery `click` handler is added in `useEffect` but the component could re-render and attach multiple handlers on the same button. Third, if `items` changes, React re-renders the `li` elements correctly, but the `ul` visibility state is entirely managed by jQuery and is now decoupled from React's render cycle. Mixing the two models means neither has a complete picture of the DOM, so neither can be trusted. You must pick one owner.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** Name the three sources of state in the jQuery todo example. Why is having multiple sources of state a structural problem, not just a style problem?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The three sources are: the `todos[]` array, the `currentFilter` variable, and the DOM itself (which elements exist, which checkboxes are checked, which styles are applied). It's a structural problem, not a style problem, because any function that needs to know the current state of the app must read from multiple locations, and any mutation must update multiple locations atomically. There is no mechanism in the jQuery model that enforces this. A developer who updates `todos[]` but forgets to update the DOM (or vice versa) creates an inconsistency that the framework has no way to detect or prevent. The inconsistency is possible by design.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** Why did Angular 1's two-way data binding make the circular update problem worse rather than solving it?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Two-way data binding automatically syncs a JS model to a DOM input and vice versa. When the model changes, the DOM updates. When the DOM changes (user types), the model updates. The problem is that a model update can trigger a DOM change, which triggers a model update, which triggers another DOM change. Angular 1 used a "dirty checking" digest cycle that would re-run until the model stabilized, with a maximum iteration limit (10 by default) after which it threw an error. Any sufficiently complex interaction graph could trigger cascading updates that were hard to trace. React broke this entirely by making data flow unidirectional: state flows down via props, events flow up via callbacks, and the DOM is always the output, never the input to a state update.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** What does it mean for React to "own" the DOM, and what breaks if you bypass that ownership?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 React owning the DOM means React is the sole writer to any DOM node it manages. React keeps its Virtual DOM tree as an accurate model of what the real DOM looks like. If you bypass React and write directly to a DOM node (via `getElementById`, jQuery, etc.), the real DOM diverges from React's Virtual DOM. On the next reconciliation, React diffs its Virtual DOM against the previous Virtual DOM, not against the real DOM. It sees no change in its own records and leaves the real DOM alone, meaning your direct mutation persists. But on subsequent renders, React may overwrite your change, or not, depending on what specifically changed. The behavior is unpredictable because React's model no longer accurately represents reality.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q4.** The jQuery todo code needed `renderList()` to be called manually after every mutation. What React feature eliminates this requirement entirely, and what is the mechanism?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `useState`. When you call `setTodos` with a new array, React schedules a re-render of the component. Re-rendering means React calls your component function again with the new state value. Because the JSX in your return statement is just code that derives UI from the current `todos` and `filter` values, the re-render automatically produces the correct new UI. There is no `renderList` to call because rendering is not a function you call. It is the component function itself, which React calls whenever state changes.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q5.** Backbone tried to solve jQuery's problem with models and views. What specific problem did it fail to solve that React solved?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Backbone decoupled state (models) from DOM manipulation (views), which was a step forward. But views still wrote directly to the DOM. React solved the deeper problem: it removed the DOM as a shared mutable surface entirely. In Backbone, a view listening to a model change would call `this.render()` and write to the DOM directly, and other views could do the same. React replaced this with a single reconciler that is the only writer to the DOM. By making the DOM an output rather than a shared mutable resource, React eliminated the entire class of problems caused by multiple parts of the app fighting over the same DOM nodes.
-
-</details>
+</Answer>

@@ -388,6 +388,7 @@ const doubled = [1, 2, 3].map((n) => n * 2);
 
 ### Self-test: 6 questions
 
+<Question>
 **Q1.** What does this log?
 
 ```js
@@ -396,20 +397,44 @@ const result = [1, 2, 3].map((n) => {
 });
 console.log(result);
 ```
+</Question>
 
+<Answer>
+`[undefined, undefined, undefined]`. The callback has braces but no `return`. Every iteration returns `undefined`, which `map` places into the new array.
+</Answer>
+
+---
+
+<Question>
 **Q2.** What does this log?
 
 ```js
 console.log(['1', '2', '3'].map(parseInt));
 ```
+</Question>
 
+<Answer>
+`[1, NaN, NaN]`. `map` passes three arguments to `parseInt`: `(element, index, array)`. `parseInt("1", 0)` → `1`, `parseInt("2", 1)` → `NaN` (invalid radix), `parseInt("3", 2)` → `NaN` (3 is not valid in base 2).
+</Answer>
+
+---
+
+<Question>
 **Q3.** What does this log?
 
 ```js
 const arr = [false, 0, '', null, undefined, NaN, 1, 'hello'];
 console.log(arr.filter(Boolean).length);
 ```
+</Question>
 
+<Answer>
+`2`. Only `1` and `"hello"` are truthy. `false`, `0`, `""`, `null`, `undefined`, and `NaN` are all falsy and are filtered out.
+</Answer>
+
+---
+
+<Question>
 **Q4.** What does this log?
 
 ```js
@@ -419,7 +444,15 @@ const result = nums.reduce((acc, n) => {
 }, []);
 console.log(result);
 ```
+</Question>
 
+<Answer>
+`TypeError`, then `undefined` if it somehow continued. The callback never returns `acc`. On the second iteration, `acc` is `undefined`. `undefined.push` throws `TypeError`. Always return the accumulator in `reduce`.
+</Answer>
+
+---
+
+<Question>
 **Q5.** What does this log?
 
 ```js
@@ -427,28 +460,22 @@ const arr = [1, 2, 3, 4, 5];
 const result = arr.filter((n) => n > 2).map((n, i) => `${i}-${n}`);
 console.log(result);
 ```
+</Question>
 
+<Answer>
+`["0-3", "1-4", "2-5"]`. After `filter`, the surviving elements `[3, 4, 5]` form a new array starting at index `0`. `map` receives fresh indices `0`, `1`, `2`, not the original `2`, `3`, `4`.
+</Answer>
+
+---
+
+<Question>
 **Q6.** What does this log and why?
 
 ```js
 [].reduce((acc, n) => acc + n);
 ```
+</Question>
 
----
-
-<details>
-<summary>Answers</summary>
-
-**A1.** `[undefined, undefined, undefined]`. The callback has braces but no `return`. Every iteration returns `undefined`, which `map` places into the new array.
-
-**A2.** `[1, NaN, NaN]`. `map` passes three arguments to `parseInt`: `(element, index, array)`. `parseInt("1", 0)` → `1`, `parseInt("2", 1)` → `NaN` (invalid radix), `parseInt("3", 2)` → `NaN` (3 is not valid in base 2).
-
-**A3.** `2`. Only `1` and `"hello"` are truthy. `false`, `0`, `""`, `null`, `undefined`, and `NaN` are all falsy and are filtered out.
-
-**A4.** `TypeError`, then `undefined` if it somehow continued. The callback never returns `acc`. On the second iteration, `acc` is `undefined`. `undefined.push` throws `TypeError`. Always return the accumulator in `reduce`.
-
-**A5.** `["0-3", "1-4", "2-5"]`. After `filter`, the surviving elements `[3, 4, 5]` form a new array starting at index `0`. `map` receives fresh indices `0`, `1`, `2`, not the original `2`, `3`, `4`.
-
-**A6.** `TypeError: Reduce of empty array with no initial value`. No initial value was provided. On an empty array with no initial value, `reduce` has nothing to use as the starting accumulator and throws immediately.
-
-</details>
+<Answer>
+`TypeError: Reduce of empty array with no initial value`. No initial value was provided. On an empty array with no initial value, `reduce` has nothing to use as the starting accumulator and throws immediately.
+</Answer>

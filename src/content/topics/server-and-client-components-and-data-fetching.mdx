@@ -405,11 +405,11 @@ Props passed from Server Components to Client Components must be serializable. T
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: "Server Components are just SSR." What is wrong with this statement?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 SSR and Server Components are different concepts that solve different problems.
 
 SSR is a rendering strategy: component code runs on the server to produce the initial HTML, then the same code runs in the browser for hydration. The key word is "same": in SSR, your component code exists in both environments and runs in both.
@@ -419,16 +419,15 @@ Server Components are a component type: they run only on the server, their code 
 The practical differences: with SSR, a component that imports a 500KB markdown parser ships that 500KB to the browser even if the markdown is only rendered on the server. With Server Components, the same import stays on the server permanently, contributing zero bytes to the client bundle. With SSR, every component is eventually hydrated in the browser. With Server Components, only Client Components hydrate.
 
 SSR and Server Components can coexist: Server Components can SSR (they produce HTML on the server for the initial page load), but SSR-rendered Server Components still never run in the browser. The initial HTML is generated on the server. The client receives that HTML plus the RSC payload to complete hydration of Client Components, but Server Components are not hydrated.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: A Client Component needs to display user-specific data fetched from the database. The developer cannot make the component a Server Component because it needs `useState` for interactivity. How do you structure this?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Separate the data fetching from the interactivity by splitting the component into a Server Component parent and a Client Component child.
 
 The Server Component parent handles data fetching:
@@ -468,16 +467,15 @@ export default function ProfileEditor({ initialData }) {
 ```
 
 The Server Component fetches the data (server-only capability) and passes it to the Client Component as `initialData`. The Client Component manages the interactive editing state (client-only capability). Neither component crosses into the other's domain. The database import stays on the server. The `useState` stays on the client.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: What happens when you add `'use client'` to a layout file that imports a database module?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Adding `'use client'` to a layout file marks the entire module and its imports as client code. The bundler includes the layout file and everything it imports in the browser JavaScript bundle. If the layout imports a database module (like `pg`, `mongoose`, or `prisma/client`), the bundler attempts to include that module in the browser bundle.
 
 Database modules typically depend on Node.js built-ins (`net`, `tls`, `fs`, `child_process`) that do not exist in browsers. The build will either fail with a module resolution error, or the bundler will produce broken browser code that throws at runtime when the missing Node.js APIs are accessed.
@@ -485,52 +483,48 @@ Database modules typically depend on Node.js built-ins (`net`, `tls`, `fs`, `chi
 Beyond the build failure, making a layout a Client Component loses all the benefits of server-side data fetching in the layout: the layout can no longer be `async`, cannot directly await database queries, and cannot access server-only environment variables.
 
 The correct architecture: keep layout files as Server Components (default, no directive needed). Extract the interactive portions of the layout (sidebar toggle button, navigation dropdowns, theme switcher) into separate Client Component files. The layout renders these Client Components as leaves in its tree, keeping data fetching server-side while enabling interactivity where needed.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** What is the serialization constraint on props passed from Server Components to Client Components? Why does this constraint exist?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Props passed from Server Components to Client Components must be serializable to JSON-compatible values: strings, numbers, booleans, null, arrays, and plain objects. Dates, certain React types, and some other types are also supported by the RSC serialization format. Non-serializable values include functions, class instances, Symbols, Maps, Sets, and WeakRefs.
 
 The constraint exists because Server Component props cross the server-client boundary. The RSC payload that the server sends to the client is a serialized description of the rendered component tree. Every prop value passed to a Client Component is embedded in this payload. Values that cannot be serialized (functions, class instances) cannot be embedded in the payload and therefore cannot cross the boundary.
 
 This is why event handlers like `onClick` cannot be passed from a Server Component to a Client Component as props: functions are not serializable. Event handlers must be defined within the Client Component itself. This is also why class instances from ORMs or other server libraries cannot be passed directly: they must be converted to plain objects (serialized data) before being passed as props.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** A Server Component and a Client Component both call `fetch('/api/current-user')` within the same request. How many actual HTTP requests are made, and what Next.js feature enables this?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 One actual HTTP request is made. React's extended `fetch` implementation, used by Next.js in Server Components, includes request memoization: within a single render pass (a single server request), identical `fetch` calls (same URL, same options) are deduplicated. The first call makes the actual HTTP request. The second call receives the cached result of the first without making a new network request.
 
 This is specifically called Request Memoization in Next.js's caching documentation. It is scoped to a single server render pass: once the request is complete, the in-memory cache is cleared. This is different from the Data Cache (which persists across requests for ISR/SSG), the Full Route Cache (which caches the rendered HTML), or the Router Cache (which caches RSC payloads on the client). Request Memoization is specifically for eliminating redundant fetches within the same server-side render.
 
 The practical implication: components can fetch their own data independently without the developer needing to manually deduplicate or coordinate data fetching between sibling components. Each component declares what it needs, and Next.js ensures the underlying request is only made once per render pass.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** Why can a Client Component receive a Server Component as `children` but not import and render a Server Component directly?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 When a Client Component imports a Server Component directly and renders it, the import is a module dependency. The bundler processes the Client Component's imports to include them in the browser bundle. The Server Component is then treated as client code: it is bundled, shipped to the browser, and runs in the browser. It loses all server-only capabilities and becomes effectively a Client Component without the `'use client'` declaration.
 
 When a Server Component passes another Server Component as the `children` prop to a Client Component, no import exists in the Client Component for the Server Component. The Server Component is rendered (executed) by the Server Component parent before the Client Component is ever involved. Its output (the rendered HTML and RSC payload) is passed to the Client Component as the `children` prop value, which is a serializable React element tree, not component code. The Client Component receives already-rendered output, not a component to execute. The Server Component's code never enters the client bundle.
 
 This asymmetry is intentional: the `children` pattern preserves the server execution of Server Components while allowing Client Components to control their layout and visibility. The import pattern destroys server execution by bringing the code into the client module graph.
-
-</details>
+</Answer>

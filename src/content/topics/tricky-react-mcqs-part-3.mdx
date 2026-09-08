@@ -11,6 +11,7 @@ order: 35
 
 ---
 
+<Question>
 ### Q1 — Event Bubbling
 
 Consider the following code:
@@ -30,20 +31,19 @@ Where `#inner` is a button inside `#outer`. When the button is clicked, what is 
 3. `inner` only
 4. `outer` only
 5. Nothing is logged
+</Question>
 
-<details>
-<summary>Answer (expand after you've thought through it)</summary>
-
+<Answer>
 **Answer: Option 3 — `inner` only**
 
 - Events bubble from child to parent by default
 - `e.stopPropagation()` stops the event from bubbling up to `#outer`
 - So `outer`'s listener never fires
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 ### Q2 — Closure in a Loop
 
 ```javascript
@@ -59,21 +59,20 @@ What is logged?
 3. `3`, `3`, `3`
 4. `1`, `2`, `3`
 5. `undefined`, `undefined`, `undefined`
+</Question>
 
-<details>
-<summary>Answer (expand after you've thought through it)</summary>
-
+<Answer>
 **Answer: Option 3 — `3`, `3`, `3`**
 
 - `var` is function-scoped, not block-scoped
 - All three callbacks share the same `i` variable
 - By the time the callbacks fire, the loop has finished and `i` is `3`
 - Fix: use `let` instead of `var`
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 ### Q3 — Fetch and HTTP Errors
 
 ```javascript
@@ -90,21 +89,20 @@ The server returns a 404 response with a valid JSON body. What happens?
 3. `.then(response => response.json())` is called normally and `.catch()` is NOT triggered
 4. The fetch Promise rejects immediately for any non-2xx status
 5. `response.json()` throws a SyntaxError
+</Question>
 
-<details>
-<summary>Answer (expand after you've thought through it)</summary>
-
+<Answer>
 **Answer: Option 3**
 
 - `fetch()` only rejects on network failures, not HTTP error statuses
 - A 404 still resolves the promise — `response.ok` would be false but the chain continues
 - `.catch()` won't trigger unless `response.json()` itself throws (e.g. non-JSON body)
 - Always check `response.ok` manually if you want to handle HTTP errors
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 ### Q4 — Microtasks vs Macrotasks
 
 ```javascript
@@ -121,20 +119,19 @@ What is the output?
 3. `A`, `D`, `C`, `B`
 4. `A`, `C`, `D`, `B`
 5. `A`, `B`, `D`, `C`
+</Question>
 
-<details>
-<summary>Answer (expand after you've thought through it)</summary>
-
+<Answer>
 **Answer: Option 3 — `A`, `D`, `C`, `B`**
 
 - Synchronous code runs first: `A`, `D`
 - Microtask queue (Promises) runs before macrotask queue: `C`
 - Macrotask queue (setTimeout) runs last: `B`
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 ### Q5 — Event Delegation
 
 You have a `<ul>` with 1000 dynamically generated `<li>` items. You want to log the text of whichever `<li>` is clicked. Which is the most correct and efficient approach?
@@ -144,18 +141,16 @@ You have a `<ul>` with 1000 dynamically generated `<li>` items. You want to log 
 3. Add a click listener to `document.body` and use `event.currentTarget`
 4. Add a click listener to `document` and check `event.srcElement`
 5. Options 1 and 4 are equivalent in performance
+</Question>
 
-<details>
-<summary>Answer (expand after you've thought through it)</summary>
-
+<Answer>
 **Answer: Option 2 — Event Delegation**
 
 - One listener on the parent `<ul>` using `event.target` handles all children
 - Much more efficient than attaching 1000 individual listeners
 - Also works for dynamically added `<li>` items added after the listener is set up
 - `event.currentTarget` (Option 3) refers to the element the listener is attached to, not the clicked element
-
-</details>
+</Answer>
 
 ---
 
@@ -163,6 +158,7 @@ You have a `<ul>` with 1000 dynamically generated `<li>` items. You want to log 
 
 ---
 
+<Question>
 ### Q6 — Arrow Functions and `this`
 
 ```javascript
@@ -182,21 +178,20 @@ What is logged? (Assume strict mode / ES module context)
 3. `TypeError: cannot read property 'name' of undefined`
 4. `Hello` (empty string)
 5. `ReferenceError: this is not defined`
+</Question>
 
-<details>
-<summary>Answer (expand after you've thought through it)</summary>
-
+<Answer>
 **Answer: Option 2 — `Hello undefined`**
 
 - Arrow functions do NOT have their own `this`
 - They inherit `this` from the enclosing lexical scope, which here is the module scope, not `obj`
 - `this.name` is `undefined` in strict mode
 - Fix: use a regular function expression — `greet: function() { ... }`
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 ### Q7 — Destructuring with Defaults
 
 ```javascript
@@ -211,20 +206,19 @@ What is logged?
 3. `1`, `10`, `undefined`
 4. `1`, `undefined`, `undefined`
 5. Error: cannot destructure
+</Question>
 
-<details>
-<summary>Answer (expand after you've thought through it)</summary>
-
+<Answer>
 **Answer: Option 1 — `1`, `10`, `null`**
 
 - Default values in destructuring only activate when the value is `undefined`, not `null`
 - `b` is `undefined` → uses default `10`
 - `c` is `null` → stays `null`, default does not apply
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 ### Q8 — Spread and Shallow Copy
 
 ```javascript
@@ -241,20 +235,19 @@ What is logged?
 3. `1`, `1`
 4. `99`, `1`
 5. Error: cannot mutate spread array
+</Question>
 
-<details>
-<summary>Answer (expand after you've thought through it)</summary>
-
+<Answer>
 **Answer: Option 2 — `99`, `99`**
 
 - Spread creates a shallow copy — the array is new but the objects inside are the same references
 - Mutating `b[0].x` also mutates `a[0].x` because they point to the same object
 - A deep copy would be needed to avoid this: `JSON.parse(JSON.stringify(a))`
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 ### Q9 — Promise.all
 
 ```javascript
@@ -274,20 +267,19 @@ What is logged?
 3. `error`
 4. `[1, undefined, 3]`
 5. Nothing is logged
+</Question>
 
-<details>
-<summary>Answer (expand after you've thought through it)</summary>
-
+<Answer>
 **Answer: Option 3 — `error`**
 
 - `Promise.all` rejects immediately if any single promise rejects (fail-fast)
 - The `.catch()` block fires with the rejection reason
 - Use `Promise.allSettled` if you want all results regardless of failures
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 ### Q10 — Optional Chaining and Nullish Coalescing
 
 ```javascript
@@ -304,17 +296,15 @@ What is logged?
 3. `Unknown`, `Shan`
 4. `TypeError: cannot read property 'city' of undefined`
 5. `null`, `Shan`
+</Question>
 
-<details>
-<summary>Answer (expand after you've thought through it)</summary>
-
+<Answer>
 **Answer: Option 3 — `Unknown`, `Shan`**
 
 - `user?.address` is `undefined` → `undefined?.city` is `undefined`
 - `undefined ?? 'Unknown'` → `'Unknown'` (nullish coalescing triggers on `null` / `undefined`)
 - `user?.profile?.name` → `'Shan'` → `'Shan' ?? 'Anonymous'` → `'Shan'` (non-nullish, right side ignored)
-
-</details>
+</Answer>
 
 ---
 
@@ -322,6 +312,7 @@ What is logged?
 
 ---
 
+<Question>
 ### Q11 — useEffect Dependency Array
 
 ```javascript
@@ -345,20 +336,19 @@ What is the problem with this code?
 3. The empty dependency array means the effect only runs on mount and won't re-fetch when `userId` changes
 4. This will cause an infinite re-render loop
 5. There is no problem
+</Question>
 
-<details>
-<summary>Answer (expand after you've thought through it)</summary>
-
+<Answer>
 **Answer: Option 3**
 
 - Empty `[]` means the effect runs only once on mount
 - If `userId` prop changes, the component re-renders but the fetch does NOT re-run
 - Fix: add `userId` to the dependency array: `[userId]`
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 ### Q12 — useState Stale Closure
 
 ```javascript
@@ -382,20 +372,19 @@ After clicking the button once, what does the counter show?
 3. `0`
 4. `2`
 5. Throws an error
+</Question>
 
-<details>
-<summary>Answer (expand after you've thought through it)</summary>
-
+<Answer>
 **Answer: Option 2 — `1`**
 
 - All three `setCount(count + 1)` calls use the same stale `count` value (0), so all set it to 1
 - React batches them but they all resolve to the same value
 - Fix: use the functional update form `setCount(prev => prev + 1)` — this increments from the latest state each time
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 ### Q13 — React.memo and useCallback
 
 ```javascript
@@ -425,21 +414,20 @@ What happens every time the Increment button is clicked?
 3. Only Child re-renders
 4. Neither re-renders because state updates are batched
 5. Child re-renders only on the first click
+</Question>
 
-<details>
-<summary>Answer (expand after you've thought through it)</summary>
-
+<Answer>
 **Answer: Option 2**
 
 - `React.memo` does a shallow prop comparison
 - `handleClick` is redeclared as a new function reference on every Parent render
 - New reference → `React.memo` sees a changed prop → Child re-renders
 - Fix: wrap `handleClick` with `useCallback(() => console.log('clicked'), [])` to stabilize the reference
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 ### Q14 — useRef vs useState
 
 ```javascript
@@ -472,20 +460,19 @@ Which statements are true about `useRef` here? (Pick all that apply)
 3. `useRef` could be replaced with `useState` here with no side effects
 4. `intervalRef.current` resets to `null` on every re-render
 5. This is the correct pattern for storing mutable values that should not trigger re-renders
+</Question>
 
-<details>
-<summary>Answer (expand after you've thought through it)</summary>
-
+<Answer>
 **Answer: Options 2 and 5**
 
 - `useRef` stores a mutable value that persists across renders but does NOT trigger re-renders when changed
 - If you used `useState` for the interval ID, every `setIntervalId()` call would cause an unnecessary re-render
 - The ref's value survives re-renders, unlike a regular variable declared inside the component
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 ### Q15 — Rules of Hooks in a Custom Hook
 
 ```javascript
@@ -511,10 +498,9 @@ What is wrong with this custom hook?
 3. `setData` cannot be passed directly as a `.then()` callback
 4. Custom hooks must return an object, not a primitive or `null`
 5. Nothing is wrong, this is valid
+</Question>
 
-<details>
-<summary>Answer (expand after you've thought through it)</summary>
-
+<Answer>
 **Answer: Option 2**
 
 - Rules of Hooks: hooks must not be called inside conditions, loops, or nested functions
@@ -530,5 +516,4 @@ useEffect(() => {
   }
 }, [url]);
 ```
-
-</details>
+</Answer>

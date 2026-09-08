@@ -164,6 +164,7 @@ This is the sentence that unifies lexical scope, closures, and the `foo`/`bar` g
 
 ### Self-test: 4 rapid-fire questions
 
+<Question>
 **Q1.** What does this log?
 
 ```js
@@ -180,7 +181,15 @@ function b() {
 
 b();
 ```
+</Question>
 
+<Answer>
+`"top"`. `a` is defined in global scope, so its scope chain points to global. `b`'s local `val` is invisible to `a`.
+</Answer>
+
+---
+
+<Question>
 **Q2.** What does this log?
 
 ```js
@@ -197,7 +206,15 @@ function outer() {
 const fn = outer();
 fn();
 ```
+</Question>
 
+<Answer>
+`2`. `inner` is defined inside `outer`, so it closes over `outer`'s `x = 2`. The returned function carries that scope chain with it.
+</Answer>
+
+---
+
+<Question>
 **Q3.** What does this log and why?
 
 ```js
@@ -211,20 +228,18 @@ function test() {
 
 test();
 ```
+</Question>
 
-**Q4.** Can a parent function access a variable declared inside its child function?
+<Answer>
+`undefined`, then `"local"`. The `var y` inside `test` is hoisted and shadows the global `y` from the very start of `test`'s scope. At the first `console.log`, the local `y` exists but is uninitialized. This is the shadowing + hoisting combination trap.
+</Answer>
 
 ---
 
-<details>
-<summary>Answers</summary>
+<Question>
+**Q4.** Can a parent function access a variable declared inside its child function?
+</Question>
 
-**A1.** `"top"`. `a` is defined in global scope, so its scope chain points to global. `b`'s local `val` is invisible to `a`.
-
-**A2.** `2`. `inner` is defined inside `outer`, so it closes over `outer`'s `x = 2`. The returned function carries that scope chain with it.
-
-**A3.** `undefined`, then `"local"`. The `var y` inside `test` is hoisted and shadows the global `y` from the very start of `test`'s scope. At the first `console.log`, the local `y` exists but is uninitialized. This is the shadowing + hoisting combination trap.
-
-**A4.** No. Scope chain only walks outward, never inward. A child's scope is private to that child and anything nested further inside it.
-
-</details>
+<Answer>
+No. Scope chain only walks outward, never inward. A child's scope is private to that child and anything nested further inside it.
+</Answer>

@@ -443,20 +443,41 @@ console.log(y, z); // undefined undefined
 
 ### Self-test: 5 questions
 
+<Question>
 **Q1.** What does this log?
 
 ```js
 const { a: x = 10, b: y = 20 } = { a: null, b: undefined };
 console.log(x, y);
 ```
+</Question>
 
+<Answer>
+`null`, `20`.
+
+Default values only apply when the value is `undefined`. `a` is `null`, which is not `undefined`, so `x` gets `null` and the default `10` is not used. `b` is `undefined`, so `y` gets the default `20`. This is the `null` vs `undefined` default trap.
+</Answer>
+
+---
+
+<Question>
 **Q2.** What does this log?
 
 ```js
 const { outer: { inner } = {} } = { outer: undefined };
 console.log(inner);
 ```
+</Question>
 
+<Answer>
+`undefined`, no TypeError.
+
+`outer` is `undefined` in the source. The destructuring `{ outer: { inner } = {} }` applies the default `{}` when `outer` is `undefined`. So it destructures `inner` from `{}`, which gives `undefined`. Without the `= {}` default, this would throw `TypeError: Cannot destructure property 'inner' of undefined`.
+</Answer>
+
+---
+
+<Question>
 **Q3.** What does this log?
 
 ```js
@@ -467,7 +488,17 @@ function test({ a, b, ...rest } = {}) {
 test({ a: 1, b: 2, c: 3, d: 4 });
 test();
 ```
+</Question>
 
+<Answer>
+First call: `1 2 { c: 3, d: 4 }`. Second call: `undefined undefined {}`.
+
+First call: `a` and `b` are destructured, remaining properties `c` and `d` are collected into `rest`. Second call: no argument is passed, so the `= {}` default kicks in. All destructured values are `undefined`, and `rest` is an empty object since no properties remain.
+</Answer>
+
+---
+
+<Question>
 **Q4.** What does this log?
 
 ```js
@@ -475,7 +506,17 @@ const arr = [1, 2, 3, 4, 5];
 const [, second, , ...tail] = arr;
 console.log(second, tail);
 ```
+</Question>
 
+<Answer>
+`2`, `[4, 5]`.
+
+Position `0` is skipped with a hole. `second` captures position `1` which is `2`. Position `2` is skipped with another hole. `...tail` collects everything from position `3` onward: `[4, 5]`. The holes in array destructuring let you skip elements by position without declaring a variable for them.
+</Answer>
+
+---
+
+<Question>
 **Q5.** What does this log?
 
 ```js
@@ -488,30 +529,10 @@ console.log(config.lang);
 console.log(config.debug);
 console.log(config.version);
 ```
+</Question>
 
----
-
-<details>
-<summary>Answers</summary>
-
-**A1.** `null`, `20`.
-
-Default values only apply when the value is `undefined`. `a` is `null`, which is not `undefined`, so `x` gets `null` and the default `10` is not used. `b` is `undefined`, so `y` gets the default `20`. This is the `null` vs `undefined` default trap.
-
-**A2.** `undefined`, no TypeError.
-
-`outer` is `undefined` in the source. The destructuring `{ outer: { inner } = {} }` applies the default `{}` when `outer` is `undefined`. So it destructures `inner` from `{}`, which gives `undefined`. Without the `= {}` default, this would throw `TypeError: Cannot destructure property 'inner' of undefined`.
-
-**A3.** First call: `1 2 { c: 3, d: 4 }`. Second call: `undefined undefined {}`.
-
-First call: `a` and `b` are destructured, remaining properties `c` and `d` are collected into `rest`. Second call: no argument is passed, so the `= {}` default kicks in. All destructured values are `undefined`, and `rest` is an empty object since no properties remain.
-
-**A4.** `2`, `[4, 5]`.
-
-Position `0` is skipped with a hole. `second` captures position `1` which is `2`. Position `2` is skipped with another hole. `...tail` collects everything from position `3` onward: `[4, 5]`. The holes in array destructuring let you skip elements by position without declaring a variable for them.
-
-**A5.** `"dark"`, `"hi"`, `true`, `1`.
+<Answer>
+`"dark"`, `"hi"`, `true`, `1`.
 
 Spread merges left to right, with later properties overwriting earlier ones. `theme` only exists in `defaults`, so it is `"dark"`. `lang` exists in both, `overrides` comes after `defaults` so `"hi"` wins. `debug` exists in both, `true` from `overrides` wins over `false` from `defaults`. `version: 1` is added last and has no conflict.
-
-</details>
+</Answer>

@@ -187,11 +187,11 @@ The matrix prevents a common mistake: using SSR for content that could be SSG, w
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: A developer says "I'll use SSR for everything to keep data fresh." What is the architectural problem with this, and for which routes is it most harmful?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Using SSR for everything means every request to every page hits the origin server, executes data fetching code, and renders a React component tree before sending a response. Pages that could have been served as static files from a CDN in 10-50ms now each require 100-500ms of server round-trip, database query, and rendering.
 
 The routes where this is most harmful are those with high traffic and identical responses across users. A homepage, a blog post, a product detail page: these are the same for every user. SSRing them means 100,000 daily visitors each individually trigger a database query and a render, where 100,000 CDN file serves would have done the work for free. At scale, this requires provisioning significantly more server capacity for work that provides zero user benefit over static files.
@@ -199,16 +199,15 @@ The routes where this is most harmful are those with high traffic and identical 
 The specific user experience harm: a homepage that could load in 400ms total (50ms CDN + browser rendering) now loads in 800ms (500ms SSR + browser rendering). A 400ms slower homepage is a measurable conversion loss in e-commerce. Google's Core Web Vitals score drops. The infrastructure bill increases. The database load increases. All for data that has not changed since the last deployment.
 
 The correct model: SSR only for routes where the response genuinely differs per user or per moment in a way that ISR or SSG cannot serve. Every other route should be SSG or ISR.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: When does reading `cookies()` in an App Router Server Component force SSR, and how would you restructure a layout to avoid SSRing the entire route tree?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Reading `cookies()` from `next/headers` in any Server Component in a route automatically opts that entire route into dynamic rendering (SSR). Next.js cannot pre-render a component at build time if it depends on the cookies of an incoming request, because those cookies do not exist at build time.
 
 The problem is that layout files affect all routes below them. If your root `layout.js` reads cookies to check authentication, every page in your application is forced into SSR, even static marketing pages that have no authentication requirement.
@@ -239,16 +238,15 @@ export default async function AuthLayout({ children }) {
 ```
 
 Public routes under `(public)` remain SSG. Authenticated routes under `(auth)` are SSR. The route group convention `(name)` creates organizational groupings without affecting the URL structure.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: A product page uses ISR with `revalidate: 3600`. The product sells out. How long could a user see "In stock" after it sells out, and how would you fix this?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 In the worst case, a user could see "In stock" for up to 3600 seconds (one hour) plus the background regeneration time (typically under a second). The worst case is a user visiting the page immediately after it was last regenerated. That page will not be eligible for regeneration for another 3600 seconds. During that entire window, all users see the stale "In stock" HTML.
 
 Time-based ISR alone is insufficient for inventory data where correctness is business-critical. The fix is on-demand revalidation triggered by the inventory system.
@@ -270,18 +268,17 @@ revalidateTag(`product-${params.id}`);
 This immediately marks the cached page as stale. The next request to that product page triggers background regeneration with fresh inventory data. The worst case is now: the time between the inventory system updating and the revalidation API being called (typically seconds) plus the time for one user to trigger regeneration (seconds). The user who triggers regeneration still sees "In stock" for that one request, but the next user sees "Out of stock."
 
 For genuinely zero-tolerance inventory accuracy (the sold-out product must never show "In stock" to anyone), SSR with `cache: 'no-store'` is the only correct choice. Every request fetches live inventory. No user ever sees a cached value.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** A SaaS application has these routes: `/` (marketing homepage), `/pricing` (static pricing table), `/app/dashboard` (user's personal analytics), `/app/settings` (user preferences form), `/blog/[slug]` (published articles). Apply the decision matrix to each route.
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `/` (marketing homepage): Q1: No user-specific data. Q2: Changes only with deployments (copy, design). Never changes between deployments. Strategy: SSG. Pre-render at build time, serve from CDN. No revalidation needed: a new deployment triggers a rebuild.
 
 `/pricing` (static pricing table): Q1: No user-specific data. Q2: Changes rarely, and when it does, a deployment is acceptable. Strategy: SSG. If pricing is managed in a CMS without deployments, ISR with on-demand revalidation via a CMS webhook. Otherwise pure SSG.
@@ -291,31 +288,29 @@ For genuinely zero-tolerance inventory accuracy (the sold-out product must never
 `/app/settings` (user preferences form): Q1: Yes, user-specific. The settings form is pre-populated with the current user's preferences. Strategy: SSR. Must read session and fetch user preferences per request. Could also be SSG shell + CSR data fetch, but SSR is simpler and correct.
 
 `/blog/[slug]` (published articles): Q1: No user-specific data. Q2: Articles do not change after publication (or change rarely with corrections). Strategy: SSG. Use `generateStaticParams` to pre-render all published articles at build time. Add on-demand revalidation via CMS webhook for article corrections. `fallback: 'blocking'` for articles published after the last build.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** What is the difference in behavior between `export const dynamic = 'force-dynamic'` and `cache: 'no-store'` on a fetch call in the App Router?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `cache: 'no-store'` on a specific fetch call opts that individual fetch out of caching. The fetch result is never stored and always fetches fresh data. However, other fetch calls in the same route can still use caching. The route may still be partially static if other fetches are cached.
 
 `export const dynamic = 'force-dynamic'` is a route segment configuration that forces the entire route into dynamic rendering, equivalent to `getServerSideProps` in the Pages Router. It affects the entire route segment: all fetch calls are treated as uncached regardless of their individual `cache` options, and the route is never pre-rendered at build time. It also implies that request-time data (cookies, headers, searchParams) is available.
 
 The practical difference: use `cache: 'no-store'` when you want granular control over which specific data is always fresh while allowing other data in the same route to be cached. Use `export const dynamic = 'force-dynamic'` when the entire route must be dynamic and you want to make that intent explicit at the route level rather than relying on individual fetch configurations.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** A route uses ISR with `revalidate: 300`. Traffic is extremely low: the page receives one request per day. Describe the freshness behavior of this page over a 24-hour period.
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 This reveals a non-obvious characteristic of ISR: low-traffic pages can be much more stale than the `revalidate` value suggests.
 
 Assume the page is generated at build time at 8:00 AM. The revalidation window expires at 8:05 AM (300 seconds later). The day's single request arrives at 6:00 PM.
@@ -327,8 +322,7 @@ No further requests arrive until tomorrow's single request at 6:00 PM the follow
 The `revalidate: 300` value means the page is eligible for regeneration every 5 minutes, but it is only actually regenerated when a request arrives after the window expires. With one request per day, the effective freshness is "last time a user visited," which could be 24 hours ago. The revalidation window is a minimum interval between regenerations, not a maximum staleness guarantee.
 
 For low-traffic pages where data freshness is important, ISR is less effective than for high-traffic pages. On-demand revalidation (triggered when data changes) is more appropriate because it ensures regeneration happens when data changes regardless of traffic, rather than relying on user requests to trigger it.
-
-</details>
+</Answer>
 
 ---
 

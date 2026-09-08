@@ -146,6 +146,7 @@ let y = 2; // SyntaxError: Identifier 'y' has already been declared
 
 Try to answer these before reading the answers.
 
+<Question>
 **Q1.** What does this log?
 
 ```js
@@ -156,7 +157,15 @@ function foo() {
 }
 foo();
 ```
+</Question>
 
+<Answer>
+`undefined`. The `var x` inside `foo` is hoisted to the top of `foo`, shadowing the outer `x`. At the point of `console.log`, the inner `x` exists but hasn't been assigned yet.
+</Answer>
+
+---
+
+<Question>
 **Q2.** What does this log?
 
 ```js
@@ -166,7 +175,15 @@ let a = 1;
   let a = 2;
 }
 ```
+</Question>
 
+<Answer>
+`ReferenceError`. Even though `a` exists in the outer scope, the `let a` declaration inside the block creates a new binding that puts `a` in TDZ from the start of the block until the declaration line.
+</Answer>
+
+---
+
+<Question>
 **Q3.** What does this log?
 
 ```js
@@ -174,7 +191,15 @@ const arr = [1, 2, 3];
 arr.push(4);
 console.log(arr);
 ```
+</Question>
 
+<Answer>
+`[1, 2, 3, 4]`. `const` prevents reassignment of the binding, not mutation of the value.
+</Answer>
+
+---
+
+<Question>
 **Q4.** What does this output and why?
 
 ```js
@@ -182,18 +207,8 @@ for (var i = 0; i < 3; i++) {
   setTimeout(() => console.log(i), 1000);
 }
 ```
+</Question>
 
----
-
-<details>
-<summary>Answers (expand after you've thought through them)</summary>
-
-**A1.** `undefined`. The `var x` inside `foo` is hoisted to the top of `foo`, shadowing the outer `x`. At the point of `console.log`, the inner `x` exists but hasn't been assigned yet.
-
-**A2.** `ReferenceError`. Even though `a` exists in the outer scope, the `let a` declaration inside the block creates a new binding that puts `a` in TDZ from the start of the block until the declaration line.
-
-**A3.** `[1, 2, 3, 4]`. `const` prevents reassignment of the binding, not mutation of the value.
-
-**A4.** `3, 3, 3`. `var` is function-scoped, one shared `i`. Loop finishes before callbacks fire.
-
-</details>
+<Answer>
+`3, 3, 3`. `var` is function-scoped, one shared `i`. Loop finishes before callbacks fire.
+</Answer>

@@ -331,6 +331,7 @@ Interop: ESM can import CJS modules, but CJS cannot `require()` ESM modules (bec
 
 ### Self-test: 5 questions
 
+<Question>
 **Q1.** What does this log?
 
 ```js
@@ -345,7 +346,15 @@ module.exports = { val };
 const { val } = require('./val');
 setTimeout(() => console.log(val), 100);
 ```
+</Question>
 
+<Answer>
+`1`. CJS exports a copy of `val` at the time of `require()`. The `setTimeout` that updates `val` to `2` runs after `module.exports` is set. Even if it ran before, the exported copy wouldn't update. Live bindings are an ESM-only concept.
+</Answer>
+
+---
+
+<Question>
 **Q2.** What is wrong with this ESM code?
 
 ```js
@@ -354,7 +363,15 @@ if (env === 'dev') {
   import { logger } from './logger.js';
 }
 ```
+</Question>
 
+<Answer>
+`import` is a static declaration and cannot appear inside a block or conditional. This is a `SyntaxError`. The fix is to use dynamic `import()`: `const { logger } = await import("./logger.js")`.
+</Answer>
+
+---
+
+<Question>
 **Q3.** What does this log?
 
 ```js
@@ -366,7 +383,15 @@ exports = { x: 99 };
 const a = require('./a');
 console.log(a.x);
 ```
+</Question>
 
+<Answer>
+`1`. `exports.x = 1` writes to the original `module.exports` object. `exports = { x: 99 }` reassigns the local `exports` variable to a new object, breaking the link to `module.exports`. `module.exports` is still the original object with `x: 1`. The reassignment is effectively discarded.
+</Answer>
+
+---
+
+<Question>
 **Q4.** You have a default export in `theme.js`. Which import is correct?
 
 ```js
@@ -379,22 +404,18 @@ import theme from './theme.js';
 // Option C
 import * as theme from './theme.js';
 ```
+</Question>
 
-**Q5.** True or false: ESM modules can use `require()` to import a CJS module in Node.js.
+<Answer>
+Option B is correct for a default export. Option A would look for a named export called `theme`. Option C imports the entire module namespace as an object, which gives you `theme.default`, not `theme` directly.
+</Answer>
 
 ---
 
-<details>
-<summary>Answers</summary>
+<Question>
+**Q5.** True or false: ESM modules can use `require()` to import a CJS module in Node.js.
+</Question>
 
-**A1.** `1`. CJS exports a copy of `val` at the time of `require()`. The `setTimeout` that updates `val` to `2` runs after `module.exports` is set. Even if it ran before, the exported copy wouldn't update. Live bindings are an ESM-only concept.
-
-**A2.** `import` is a static declaration and cannot appear inside a block or conditional. This is a `SyntaxError`. The fix is to use dynamic `import()`: `const { logger } = await import("./logger.js")`.
-
-**A3.** `1`. `exports.x = 1` writes to the original `module.exports` object. `exports = { x: 99 }` reassigns the local `exports` variable to a new object, breaking the link to `module.exports`. `module.exports` is still the original object with `x: 1`. The reassignment is effectively discarded.
-
-**A4.** Option B is correct for a default export. Option A would look for a named export called `theme`. Option C imports the entire module namespace as an object, which gives you `theme.default`, not `theme` directly.
-
-**A5.** False. ESM can import CJS modules (Node treats `module.exports` as the default export). But the reverse is not true: CJS cannot `require()` an ESM module because `require()` is synchronous and ESM loading involves async operations. Attempting it throws `ERR_REQUIRE_ESM`.
-
-</details>
+<Answer>
+False. ESM can import CJS modules (Node treats `module.exports` as the default export). But the reverse is not true: CJS cannot `require()` an ESM module because `require()` is synchronous and ESM loading involves async operations. Attempting it throws `ERR_REQUIRE_ESM`.
+</Answer>

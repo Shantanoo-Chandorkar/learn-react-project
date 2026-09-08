@@ -17,6 +17,7 @@ Topics covered in order: hooks, keys & reconciliation, rendering & batching, con
 
 ---
 
+<Question>
 **Q1.** What does `state.b` equal after the div is clicked?
 
 ```jsx
@@ -30,18 +31,17 @@ function App() {
 - B) `undefined`
 - C) `10`
 - D) Throws a TypeError
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **B) `undefined`**
 
 `useState`'s setter completely replaces state. It does not merge like `this.setState` in class components. `setState({ a: 10 })` replaces the entire object, so `b` no longer exists. The fix is `setState(prev => ({ ...prev, a: 10 }))`.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** `id` changes from `1` to `2`. What is the exact console output?
 
 ```jsx
@@ -59,18 +59,17 @@ function App({ id }) {
 - B) `cleanup 1` → `effect 2`
 - C) `effect 2` → `cleanup 1`
 - D) `cleanup 2` → `effect 2`
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **B) `cleanup 1` → `effect 2`**
 
 When a dependency changes, React runs the previous effect's cleanup before running the new effect. The cleanup captures the old `id` value via closure (`1`), then the new effect fires with the new `id` (`2`). The initial mount output (`effect 1`) already happened, so only the cleanup and new effect fire on the change.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** The button is clicked 3 times. What does the `<p>` display?
 
 ```jsx
@@ -90,18 +89,17 @@ function Counter() {
 - B) `0`
 - C) Throws a TypeError on the third click
 - D) Re-renders each time but shows `0`
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **B) `0`**
 
 `useRef` mutations never trigger re-renders. `count.current` increments in memory correctly (it would be `3` if you logged it), but the component never re-renders to reflect the new value. The `<p>` stays frozen at the initial `0`. This is the core behavioral difference between `useRef` and `useState`.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q4.** When `count` changes, does `Child` re-render?
 
 ```jsx
@@ -125,18 +123,17 @@ const Child = React.memo(({ onClick }) => {
 - B) Yes, `useCallback` returns a new reference when `count` changes
 - C) No, `useCallback` always returns the same reference regardless of deps
 - D) Yes, `React.memo` only works with primitive props
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **B) Yes, `useCallback` returns a new reference when `count` changes**
 
 `useCallback` memoizes the function only as long as its dependencies stay the same. `count` is in the dependency array, so every time `count` changes, `useCallback` produces a new function reference. `React.memo` does a shallow prop comparison, sees a new `onClick` reference, and re-renders `Child`. To fix this you would need to remove `count` from the deps, which then risks a stale closure.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q5.** What does `count` display after 5 seconds?
 
 ```jsx
@@ -158,15 +155,13 @@ function Timer() {
 - B) `1`
 - C) `0`
 - D) It increments correctly but leaks the interval
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **B) `1`**
 
 Classic stale closure. The `useEffect` with empty deps runs once at mount and closes over `count = 0`. Every tick of the interval executes `setCount(0 + 1)`, permanently setting count to `1`. The fix is the functional update form: `setCount(prev => prev + 1)`, which does not close over the stale `count` value.
-
-</details>
+</Answer>
 
 ---
 
@@ -174,6 +169,7 @@ Classic stale closure. The `useEffect` with empty deps runs once at mount and cl
 
 ---
 
+<Question>
 **Q6.** The array changes from `['A', 'B', 'C']` to `['B', 'C', 'A']`. What do the inputs show?
 
 ```jsx
@@ -184,18 +180,17 @@ items.map((item, index) => <input key={index} defaultValue={item} />);
 - B) `A`, `B`, `C` (original values retained)
 - C) React throws a key-related warning
 - D) The inputs clear to empty strings
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **B) `A`, `B`, `C` (original values retained)**
 
 Using index as key, React sees the same keys (`0`, `1`, `2`) after the reorder. It thinks the same components are in place and tries to update them. But `defaultValue` is an uncontrolled prop, it only sets the initial DOM value at mount and is ignored on subsequent renders. The DOM inputs keep whatever was typed into them originally. This is exactly why using index as key is dangerous with reorderable lists.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q7.** What is the primary effect of `id` changing from `1` to `2`?
 
 ```jsx
@@ -208,18 +203,17 @@ function App({ id }) {
 - B) `ExpensiveComponent` is fully unmounted and a fresh instance is mounted
 - C) React skips the update because `id` is not passed as a prop
 - D) React merges old and new component state
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **B) `ExpensiveComponent` is fully unmounted and a fresh instance is mounted**
 
 Changing `key` signals to React that this is a completely different element. The old instance is unmounted (all cleanup runs, all state is destroyed), and a brand new instance is mounted from scratch. This is also a deliberate pattern to force a full state reset on a component without lifting state up.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q8.** The child order is swapped. What happens to `Counter`'s state?
 
 ```jsx
@@ -240,15 +234,13 @@ Changing `key` signals to React that this is a completely different element. The
 - B) State is reset, `Counter` moved to a different tree position
 - C) State is preserved because both trees contain the same components
 - D) React throws a reconciliation error
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **B) State is reset, `Counter` moved to a different tree position**
 
 React reconciles by position in the tree, not by component identity. At position 0, it sees the type changed from `Counter` to `p`. It unmounts `Counter` (destroying its state) and mounts `p`. At position 1, it mounts a fresh `Counter` with default state. To preserve state across reorders, use a stable `key` prop.
-
-</details>
+</Answer>
 
 ---
 
@@ -256,6 +248,7 @@ React reconciles by position in the tree, not by component identity. At position
 
 ---
 
+<Question>
 **Q9.** In React 18, how many times does `"render"` log after the button is clicked and the fetch resolves?
 
 ```jsx
@@ -279,18 +272,17 @@ function App() {
 - B) `2` (initial + 1 batched update)
 - C) `1` (state updates are deferred and skipped)
 - D) Behavior is non-deterministic
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **B) `2` (initial + 1 batched update)**
 
 React 18 introduced automatic batching that extends to async contexts including Promise callbacks, `setTimeout`, and native event handlers. Before React 18, the two `setState` calls inside `.then()` would trigger two separate re-renders because batching only applied inside React event handlers. In React 18, both are batched into one re-render. Total: `1` initial render + `1` batched re-render = `2`.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q10.** After one click, what does `count` display?
 
 ```jsx
@@ -311,18 +303,17 @@ function App() {
 - B) `1`
 - C) `2`
 - D) Throws a too-many-renders error
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **B) `1`**
 
 All three `setCount(count + 1)` calls read the same stale `count = 0` captured by the closure. They are all equivalent to `setCount(1)`. React batches them in the same event handler and the final state is `1`. To get `3`, use the functional updater: `setCount(prev => prev + 1)` three times, because each call receives the latest pending state rather than the closed-over value.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q11.** Every time the button is clicked, does `Child` re-render?
 
 ```jsx
@@ -346,15 +337,13 @@ function Parent() {
 - B) Yes, the inline object is a new reference on every `Parent` render
 - C) No, React deep-compares style objects
 - D) Yes, but only on the first re-render after mount
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **B) Yes, the inline object is a new reference on every `Parent` render**
 
 `React.memo` uses shallow (reference) equality. `{ color: 'red' }` creates a new object in memory on every render of `Parent`, so the reference is always different even though the contents are identical. Shallow comparison sees a new reference and re-renders `Child` every time, making `React.memo` completely ineffective here. Fix: `const style = useMemo(() => ({ color: 'red' }), [])` or define the style object outside the component.
-
-</details>
+</Answer>
 
 ---
 
@@ -362,6 +351,7 @@ function Parent() {
 
 ---
 
+<Question>
 **Q12.** When the button is clicked, which components log?
 
 ```jsx
@@ -394,18 +384,17 @@ function B() {
 - B) Both `A` and `B`
 - C) Only `App`
 - D) `App`, `A`, and `B`
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **B) Both `A` and `B`**
 
 `setVal` triggers a re-render of `App` because it owns that state. When `App` re-renders, all its children re-render by default, including `A`, even though `A` does not consume the context. `B` also re-renders both as a child of `App` and as a context consumer. To prevent `A` from re-rendering, wrap it in `React.memo`. This is a common misconception: context change doesn't just re-render consumers, the parent re-renders and that cascades.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q13.** When the button is clicked, does `Child` log `'render'`?
 
 ```jsx
@@ -432,15 +421,13 @@ function App() {
 - B) Yes, context changes bypass `React.memo`
 - C) No, `Child` only re-renders if props change
 - D) Yes, but only because `App` re-renders and `Child` is its descendant
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **B) Yes, context changes bypass `React.memo`**
 
 `React.memo` only prevents re-renders caused by prop changes. A component that subscribes to a context via `useContext` will always re-render when that context value changes, regardless of `React.memo`. Context subscriptions are a separate subscription channel from props. To optimize context-heavy trees, split contexts into smaller pieces or use a state management library that supports selective subscriptions.
-
-</details>
+</Answer>
 
 ---
 
@@ -448,6 +435,7 @@ function App() {
 
 ---
 
+<Question>
 **Q14.** The parent re-renders and passes a new array reference with identical contents, e.g. `[3, 1, 2]` again. Does `useMemo` recompute?
 
 ```jsx
@@ -464,18 +452,17 @@ function App({ items }) {
 - B) Yes, `useMemo` uses `Object.is` (reference equality)
 - C) No, `useMemo` checks array length and skips if equal
 - D) It depends on the React version
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **B) Yes, `useMemo` uses `Object.is` (reference equality)**
 
 `useMemo` (and `useEffect`, `useCallback`) all use `Object.is` for dependency comparison. This is strict reference equality for objects and arrays. A new array reference, even with byte-for-byte identical contents, is a different reference. `useMemo` recomputes. This is why stabilizing references matters, and why you can't naively pass `items.filter(...)` inline as a prop to a memoized component.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q15.** What happens when `App` renders?
 
 ```jsx
@@ -490,10 +477,9 @@ function App() {
 - B) The import resolves synchronously in modern bundlers
 - C) React throws: a Suspense boundary is required
 - D) `LazyComp` renders normally after the bundle loads
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **C) React throws: a Suspense boundary is required**
 
 `React.lazy` works by suspending while the dynamic import resolves. Suspense requires a `<Suspense>` boundary somewhere above the lazy component to catch that suspension and show a fallback. Without it, React throws an error. Fix:
@@ -503,8 +489,7 @@ function App() {
   <LazyComp />
 </Suspense>
 ```
-
-</details>
+</Answer>
 
 ---
 
@@ -512,6 +497,7 @@ function App() {
 
 ---
 
+<Question>
 **Q16.** What is wrong with this custom hook?
 
 ```jsx
@@ -533,18 +519,17 @@ function useData(id) {
 - B) Hooks are called conditionally, violating the rules of hooks
 - C) The hook is missing a loading state return
 - D) `fetch` cannot be called inside `useEffect`
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **B) Hooks are called conditionally, violating the rules of hooks**
 
 The rules of hooks require that hooks are called at the top level of a function, never inside conditionals, loops, or nested blocks. When `id` is falsy, `useState` and `useEffect` are never called. When `id` becomes truthy, they are called for the first time. This changes the number and order of hook calls between renders, which breaks React's internal linked-list tracking of hook state and produces unpredictable bugs.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q17.** What is the problem with this HOC?
 
 ```jsx
@@ -560,15 +545,13 @@ function withLogger(WrappedComponent) {
 - B) Props are logged but never forwarded to `WrappedComponent`
 - C) The HOC causes an infinite render loop
 - D) `console.log` cannot be called during render
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **B) Props are logged but never forwarded to `WrappedComponent`**
 
 `<WrappedComponent />` is rendered with no props. Any props passed to `LoggedComponent` are consumed and discarded. The fix is `<WrappedComponent {...props} />`. This is the most common HOC bug and also the reason ref forwarding requires explicit `forwardRef` handling, since refs are not part of `props` and need separate treatment.
-
-</details>
+</Answer>
 
 ---
 
@@ -576,6 +559,7 @@ function withLogger(WrappedComponent) {
 
 ---
 
+<Question>
 **Q18.** In React 16 (with event pooling), what does `e.target.value` log after 1 second?
 
 ```jsx
@@ -594,18 +578,17 @@ function App() {
 - B) `null` or throws, because the event is nullified after the handler returns
 - C) The value at the time the event fired, correctly
 - D) An empty string
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **B) `null` or throws, because the event is nullified after the handler returns**
 
 In React 16, synthetic events are pooled. After the event handler synchronously returns, React resets all properties on the event object to `null` and returns it to the pool for reuse. The `setTimeout` callback fires after this has already happened, so `e.target` is `null`. The fix in React 16 is `e.persist()` before the async call. Note: React 17 removed event pooling entirely, so this specific behavior only affects React 16 and below.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q19.** What logs when the button is clicked?
 
 ```jsx
@@ -629,18 +612,17 @@ function App() {
 - B) `"button"` then `"div"`
 - C) `"button"` only
 - D) `"div"` only
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **C) `"button"` only**
 
 `e.stopPropagation()` prevents the event from bubbling up the tree. React's synthetic event system follows the same bubbling model as native DOM events. The `div`'s handler never fires. Note that `stopPropagation` is different from `preventDefault` which would not prevent bubbling at all.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q20.** After clicking the button 3 times, what does the keydown handler log when a key is pressed?
 
 ```jsx
@@ -661,12 +643,10 @@ function App() {
 - B) `0`, due to stale closure
 - C) `0` on the first keypress, then the correct value
 - D) Throws, because `window` is unavailable during render
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **B) `0`, due to stale closure**
 
 The `useEffect` with empty deps runs once at mount. The `keydown` callback closes over `count = 0` at that point. No matter how many times the button is clicked and `count` updates, the callback always reads its stale closure copy of `0`. There is also a secondary bug: each new render does not clean up the previous listener, so multiple listeners accumulate. Fix: use a `ref` to track the latest count without re-running the effect, or add `count` to the deps array and clean up the previous listener in the effect's return function.
-
-</details>
+</Answer>

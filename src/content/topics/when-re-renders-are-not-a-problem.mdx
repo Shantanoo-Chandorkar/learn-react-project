@@ -300,6 +300,7 @@ React's team has a recorded position: adding `useMemo` and `useCallback` everywh
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: A senior engineer reviews your PR and says "this `React.memo` is doing nothing, remove it." What would make them right?**
 
 ```jsx
@@ -332,10 +333,9 @@ function UserTable() {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The senior engineer is right. `React.memo` is doing nothing here for two reasons.
 
 First, `onAction` is `handleAction`, defined inline in `UserTable`. Every time `UserTable` re-renders (every filter change), a new `handleAction` function is created with a new reference. `React.memo` does a shallow equality check. `prevProps.onAction !== nextProps.onAction` because the reference changed. The memo check fails. `UserRow` re-renders anyway.
@@ -343,11 +343,11 @@ First, `onAction` is `handleAction`, defined inline in `UserTable`. Every time `
 Second, `user` is an object from the API. If `useUsers` returns a new array reference on every render (common with hooks that store data in state), and each user object is also a new reference, then `prevProps.user !== nextProps.user` for every row on every render. The memo check fails for the `user` prop too.
 
 `React.memo` requires stable prop references to do anything. Without `useCallback` on `handleAction` and a stable `user` reference (or a custom comparison function), the memo is inert. It adds complexity (the wrapper, the mental model that "this is memoized") with zero benefit. The fix is either remove `React.memo` (if re-renders are not a measured problem) or pair it with `useCallback` and ensure stable user references.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: Is this `useMemo` correct? Will it prevent unnecessary recomputation?**
 
 ```jsx
@@ -366,10 +366,9 @@ function SearchResults({ query, results }) {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The `useMemo` is syntactically correct and its dependencies are complete. It will recompute when `results` or `query` changes, and use the cached value otherwise.
 
 Whether it is beneficial depends on context. The questions to ask:
@@ -381,11 +380,11 @@ How often does `SearchResults` re-render for reasons unrelated to `results` or `
 Is `results` a stable reference? If the parent creates a new `results` array on every render (inline array literal or new fetch), `Object.is(prevResults, nextResults)` is always `false`, the memo recomputes on every render, and the `useMemo` is completely inert.
 
 The correct answer is: this may or may not be beneficial. Without profiling data showing that the filter computation is slow and that the memo hit rate is high, the `useMemo` is speculative and may add complexity for no gain.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: A developer says "I always use `useCallback` for event handlers because functions are recreated on every render and that's wasteful." Evaluate this reasoning.**
 
 ```jsx
@@ -409,10 +408,9 @@ function Form() {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The reasoning has a valid premise (functions are recreated on every render) but an invalid conclusion (therefore `useCallback` is always beneficial).
 
 Functions being recreated on every render has a cost: one function object allocation, on the order of nanoseconds. This is not "wasteful" in any practical sense for a form component that renders on every keystroke.
@@ -422,56 +420,53 @@ Functions being recreated on every render has a cost: one function object alloca
 More critically, the empty dependency array on `handleSubmit` introduces a stale closure bug. `handleSubmit` closes over `name` from the render when it was created. With `[]` as deps, it is never recreated. When the user types, `name` updates, but `handleSubmit` always submits the initial empty string, because it captured `name = ''` and was never updated. This is a real bug introduced by the "optimization." Without `useCallback`, `handleSubmit` would be recreated on every render, always closing over the current `name`. It would be slightly less "optimized" and always correct.
 
 `useCallback` is appropriate only when function reference stability is necessary: passing to a memoized child or using as an effect dependency. For inline event handlers on DOM elements, `useCallback` is never necessary and actively introduces stale closure risk.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** A component re-renders 50 times per second. Under what specific conditions is this a problem, and under what conditions is it not?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 It is not a problem if: the component function executes quickly (no expensive computations, small JSX tree), the reconciliation of its output is fast (few children, simple structure), and the resulting DOM writes are few or zero. A simple display component re-rendering 50 times per second may consume less than 1ms of the 16.6ms frame budget. This is not a performance problem.
 
 It is a problem if: the component function is expensive to execute (heavy computation in the function body), the component has a large subtree that must be reconciled on every render (thousands of children), or the re-renders produce frequent DOM writes that trigger layout recalculation. Any of these could consume a significant fraction of the frame budget at 50 renders per second, causing dropped frames.
 
 The correct determination requires profiling: use the browser Performance panel to identify long tasks, use React DevTools Profiler to identify which components consume the most render time, and correlate with user-observable symptoms (stuttering, dropped frames, delayed interaction response).
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** What are the three concrete failure modes introduced by applying `React.memo`, `useCallback`, and `useMemo` without evidence of a performance problem?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 First, stale closure bugs from `useCallback` with incorrect dependencies. When a callback is memoized with `useCallback` and its dependency array is incomplete or empty, the callback closes over values from the render when it was created. If those values change, the callback operates on stale data silently. Without `useCallback`, the callback is recreated on every render and always uses current values. The "optimization" introduces a correctness bug.
 
 Second, `React.memo` that does nothing because props are unstable. When object or function props are created inline in the parent (new reference on every render), the memo check always fails and the component re-renders anyway. The developer believes the component is memoized and may stop investigating real performance issues, while the code is more complex for no benefit.
 
 Third, `useMemo` overhead exceeding computation savings. For trivial computations, the cost of checking dependencies on every render plus the memory overhead of storing the cached result may exceed the cost of just recomputing. The developer has added complexity, potential stale data bugs from incorrect deps, and reduced readability, for a net negative performance impact.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** The React Compiler in React 19 automatically memoizes components and values. What does its existence imply about the current practice of manual memoization?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The React Compiler's existence is an acknowledgment that manual memoization is frequently done incorrectly, applied where it does not help, and not applied where it does. The compiler performs static analysis to determine exactly which memoizations are beneficial, applying them automatically and correctly, including handling dependency arrays perfectly (no stale closures possible from compiler-generated memoization). Developers are systematically bad at manual memoization in aggregate: they over-apply it (adding `useCallback` to all handlers, `useMemo` to all derived values), under-apply it (missing the components that are actually expensive), and get the dependencies wrong (stale closure bugs).
 
 The implication: manual memoization in modern React is a premature optimization in most cases. The correct default is to write clean, correct code without memoization and let the compiler handle optimization where it is genuinely beneficial. For cases where the compiler is not available (React 17 and 18 without the compiler), apply memoization only with profiler evidence and understand exactly which props must be stable for `React.memo` to function.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q4.** A component contains the following code. Which of these is unnecessary, and which is appropriately applied?
 
 ```jsx
@@ -505,14 +500,12 @@ function ReportDashboard({ reportId }) {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 A: `fetchReport` wrapped in `useCallback` is appropriately applied. It is used as a dependency of `useEffect`. Without `useCallback`, `fetchReport` would be a new function reference on every render, causing the `useEffect` to re-run on every render (because its dependency `fetchReport` changed), triggering an infinite fetch loop. `useCallback` with `[reportId]` as deps ensures the effect only re-runs when `reportId` changes. This is a legitimate use: stabilizing a function used as an effect dependency.
 
 B: `total` wrapped in `useMemo` is appropriate if `data` can be large. `data?.rows.reduce(...)` is O(n) in the number of rows. If the dashboard re-renders for reasons unrelated to `data` (some parent state change), and `data` has thousands of rows, the reduce runs unnecessarily. `useMemo` with `[data]` caches the result and recomputes only when `data` changes. This is appropriate if rows count is large enough to measure as slow. For small datasets, it is speculative.
 
 C: `title` wrapped in `useMemo` is unnecessary. `` `Report #${reportId}` `` is string template interpolation. It executes in nanoseconds. `useMemo` overhead (reading hook slot, comparing `reportId` with `Object.is`) is comparable to or greater than the string interpolation. This is a textbook case of memoizing a trivial computation. Remove it: ``const title = `Report #${reportId}``inline. No`useMemo`.
-
-</details>
+</Answer>

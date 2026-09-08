@@ -287,6 +287,7 @@ Note that `4` comes after `2` because `setTimeout("4")` was enqueued during the 
 
 Work through the output order for each one before expanding the answer.
 
+<Question>
 **Q1.** What is the output?
 
 ```js
@@ -300,7 +301,17 @@ Promise.resolve().then(() => console.log('E'));
 
 console.log('F');
 ```
+</Question>
 
+<Answer>
+`A`, `F`, `D`, `E`, `B`, `C`.
+
+Sync first: `A`, `F`. Then microtask queue drains in FIFO order: `D`, `E`. Then macrotasks one at a time: `B`, `C`.
+</Answer>
+
+---
+
+<Question>
 **Q2.** What is the output?
 
 ```js
@@ -315,7 +326,17 @@ async function foo() {
 foo();
 console.log('4');
 ```
+</Question>
 
+<Answer>
+`1`, `4`, `2`, `3`.
+
+`foo` runs sync until the first `await`, logs `1`, then suspends. `4` runs sync. Microtask fires, `foo` resumes, logs `2`, hits second `await`, suspends again. Next microtask fires, `foo` resumes, logs `3`.
+</Answer>
+
+---
+
+<Question>
 **Q3.** What is the output?
 
 ```js
@@ -328,9 +349,27 @@ Promise.resolve()
   })
   .then(() => console.log('p2'));
 ```
+</Question>
 
+<Answer>
+`p1`, `p2`, `timeout`.
+
+The first `.then` logs `p1` and returns `Promise.resolve()`. Returning a resolved Promise from a `.then` callback schedules the next `.then` as a microtask, but it takes an extra microtask tick to unwrap the returned Promise. So the queue looks like: `[p1-callback]` → runs, enqueues unwrap tick → `[unwrap]` → runs, enqueues p2 → `[p2-callback]` → runs. All of this happens before the macrotask queue is touched. Output: `p1`, `p2`, `timeout`.
+</Answer>
+
+---
+
+<Question>
 **Q4.** True or false: if the microtask queue keeps getting new microtasks added to it, the macrotask queue will never be processed.
+</Question>
 
+<Answer>
+True. The microtask queue is fully drained after every task and after the initial script. If a microtask always enqueues another microtask, the event loop is permanently stuck draining the microtask queue. Macrotasks starve. This is also why an infinite microtask loop freezes the browser.
+</Answer>
+
+---
+
+<Question>
 **Q5.** What is the output and why is it different from Q3?
 
 ```js
@@ -340,28 +379,10 @@ Promise.resolve()
   .then(() => console.log('p1'))
   .then(() => console.log('p2'));
 ```
+</Question>
 
----
-
-<details>
-<summary>Answers</summary>
-
-**A1.** `A`, `F`, `D`, `E`, `B`, `C`.
-
-Sync first: `A`, `F`. Then microtask queue drains in FIFO order: `D`, `E`. Then macrotasks one at a time: `B`, `C`.
-
-**A2.** `1`, `4`, `2`, `3`.
-
-`foo` runs sync until the first `await`, logs `1`, then suspends. `4` runs sync. Microtask fires, `foo` resumes, logs `2`, hits second `await`, suspends again. Next microtask fires, `foo` resumes, logs `3`.
-
-**A3.** `p1`, `p2`, `timeout`.
-
-The first `.then` logs `p1` and returns `Promise.resolve()`. Returning a resolved Promise from a `.then` callback schedules the next `.then` as a microtask, but it takes an extra microtask tick to unwrap the returned Promise. So the queue looks like: `[p1-callback]` → runs, enqueues unwrap tick → `[unwrap]` → runs, enqueues p2 → `[p2-callback]` → runs. All of this happens before the macrotask queue is touched. Output: `p1`, `p2`, `timeout`.
-
-**A4.** True. The microtask queue is fully drained after every task and after the initial script. If a microtask always enqueues another microtask, the event loop is permanently stuck draining the microtask queue. Macrotasks starve. This is also why an infinite microtask loop freezes the browser.
-
-**A5.** `p1`, `p2`, `timeout`. Same output, but the reason differs subtly from Q3.
+<Answer>
+`p1`, `p2`, `timeout`. Same output, but the reason differs subtly from Q3.
 
 Here, `.then(() => console.log("p2"))` is chained directly without returning a new Promise. After `p1` runs, the next `.then` is immediately queued as a microtask (no unwrap tick needed). Both `p1` and `p2` complete in the microtask drain phase before `timeout` ever gets a chance. In Q3, returning `Promise.resolve()` added an extra microtask tick to unwrap it, but the end result is the same because `timeout` is still a macrotask waiting behind all microtasks.
-
-</details>
+</Answer>

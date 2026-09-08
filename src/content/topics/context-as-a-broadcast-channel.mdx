@@ -446,6 +446,7 @@ The component's Fiber accumulates a `dependencies` list of every Context it cons
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: What does this print when the button is clicked, and why?**
 
 ```jsx
@@ -470,10 +471,9 @@ function App() {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 On mount: `Display rendered, count: 0`.
 
 On each button click: `Display rendered, count: N` where N is the new count.
@@ -481,11 +481,11 @@ On each button click: `Display rendered, count: N` where N is the new count.
 The sequence: the button click calls `setCount`, which enqueues an update on `App`'s state. `App` re-renders with the new `count`. `App` passes `count` as the `value` prop to `CountContext.Provider`. The Provider processes this in `updateContextProvider`. `Object.is(oldValue, newValue)` checks `0 === 1` (first click): `false`. `propagateContextChange` walks the subtree, finds `Display`'s Fiber (which has `CountContext` in its dependencies), and marks it with a `ForceUpdate` lane. React renders `Display`, which calls `useContext(CountContext)`, reads the new value `1`, and returns new JSX. DOM updates to show `1`.
 
 `Display` re-renders for two simultaneous reasons: it is a child of `App` (trigger 2: parent re-render) and it is a consumer of a context whose value changed (trigger 3: context change). In practice both triggers fire but the component only renders once. React does not double-render a component that has both trigger 2 and trigger 3 in the same pass.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: Context with no Provider. What does `Display` render?**
 
 ```jsx
@@ -503,10 +503,9 @@ function App() {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `Display` renders `<div className="light">Themed content</div>`.
 
 When no Provider exists above a consumer in the tree, `useContext` returns the default value provided to `createContext`. Here, `React.createContext('light')` sets the default to `'light'`. `Display` reads `'light'` from `ThemeContext._currentValue`, which is initialized to the default and never overridden by a Provider.
@@ -514,11 +513,11 @@ When no Provider exists above a consumer in the tree, `useContext` returns the d
 The default value is not an "initial" value that gets replaced by a Provider. It is specifically the fallback for consumers with no Provider ancestor. This distinction matters: if `Display` is rendered inside a `ThemeContext.Provider value="dark"`, it reads `'dark'`. If it is rendered outside any Provider, it reads `'light'`. Both cases are intentional uses of Context. The default value enables components to be used in testing or storybook environments without wrapping them in a Provider.
 
 A common mistake: setting the default to `null` or `undefined` when the component is always meant to be used inside a Provider. This makes the error confusing ("cannot read property of null") instead of explicit. The custom hook pattern with an existence check, `if (context === undefined) throw new Error(...)`, is the correct way to enforce Provider requirement.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: Why does this not trigger a consumer re-render even though the Provider re-renders?**
 
 ```jsx
@@ -546,10 +545,9 @@ const ConfigConsumer = React.memo(function ConfigConsumer() {
   return <div>{config.timeout}</div>;
 });
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 When the button is clicked, `unrelated` changes. `App` re-renders. The Provider processes the new props. `updateContextProvider` compares `oldValue` and `newValue` using `Object.is`. `config` is the `useMemo` result: same object reference across `App` re-renders because `useMemo` with empty deps returns the same cached object. `Object.is(config, config)` is `true`. The value did not change. `propagateContextChange` is not called. No consumer is marked for re-render.
 
 `ConfigConsumer` would normally re-render due to trigger 2 (parent `App` re-rendered). But `ConfigConsumer` is wrapped in `React.memo`. It has no props (zero props to compare). `shallowEqual({}, {})` returns `true`. `React.memo` bails out. Trigger 2 is blocked.
@@ -557,52 +555,48 @@ When the button is clicked, `unrelated` changes. `App` re-renders. The Provider 
 The context change check (`Object.is` on the Provider value) also passes, so trigger 3 does not fire. Both possible re-render triggers are blocked. `ConfigConsumer` does not render. The console does not log.
 
 This is the pattern for high-performance Context: stable value references prevent context propagation, and `React.memo` on propless consumers prevents parent re-render propagation.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** Context is described as a "transport" not a "state manager." What is the precise distinction, and what component actually manages the state when using Context?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 A state manager stores data, manages updates to that data, and provides a mechanism for components to subscribe to specific slices of the data. Context does none of these things independently. Context has no storage of its own. It has no update mechanism. It has no subscription selectors.
 
 What Context does: it takes a value that already exists in a component's state and makes it readable by any descendant without prop drilling. The Provider component receives `value` as a prop and makes it available to consumers. The Provider does not own the value. The component rendering the Provider owns the value via `useState` or `useReducer`.
 
 The precise distinction: `useState` (or `useReducer`) is the state manager. It stores the value, handles updates, and schedules re-renders. Context is the delivery mechanism. It takes the value that `useState` manages and broadcasts it to consumers. If you remove `useState` from the Provider component and try to manage state in Context itself, you cannot: Context has no setter, no update queue, no scheduler integration.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** What is `propagateContextChange`, when does it run, and what is its time complexity?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `propagateContextChange` is the function React calls when a Context Provider's value changes between renders. It runs during the render phase when `updateContextProvider` detects `Object.is(oldValue, newValue)` is `false`.
 
 It performs a depth-first walk of the entire Fiber subtree below the Provider. For each Fiber, it checks whether the Fiber's `dependencies` list contains the changed Context. If it does, it marks the Fiber with a force-update lane, scheduling a re-render regardless of props or `React.memo`. It also marks all ancestors of the consumer with `childLanes` to ensure the work loop visits them.
 
 The time complexity is O(n) where n is the number of Fibers in the subtree below the Provider, not the number of consumers. Every Fiber is visited to check for context dependency, even Fibers that do not consume the context. For a Provider near the root with a large subtree, this walk visits thousands of Fibers on every value change. This is the mechanical basis of the context performance problem covered in next section.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** What is the purpose of the default value in `createContext(defaultValue)`, and when does it take effect?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The default value is the fallback value returned by `useContext` when the consuming component has no Provider of that Context anywhere above it in the component tree. It takes effect specifically and only in the absence of a matching Provider.
 
 The default is not the initial value of the Provider. When a Provider is present, `useContext` reads from `context._currentValue`, which is set by the nearest enclosing Provider via `pushProvider`. The `createContext` default is only used when `_currentValue` was never set by any Provider, meaning it remains at the initialization value.
 
 The practical uses: first, testing components in isolation without Provider wrappers. A component that calls `useContext(ThemeContext)` in a unit test environment with no Provider will receive the default value rather than throwing or returning null, allowing tests to run without setup. Second, providing a sensible fallback for contexts that represent optional configuration (feature flags, optional analytics context). Third, as a documentation tool: `createContext({ user: null, isLoading: true })` communicates the expected shape of the context value to readers.
-
-</details>
+</Answer>

@@ -411,6 +411,7 @@ function SearchResults({ query }) {
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: The developer adds `React.memo` to fix the large list problem. Profile shows no improvement. Why?**
 
 ```jsx
@@ -440,10 +441,9 @@ function DataTable() {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `React.memo` checks all props with shallow equality. `row` for unchanged rows is the same object reference (the `map` in `toggleRow` only creates new objects for the changed row, returning existing objects for others). `row` check passes. But `onToggle` is `toggleRow`, defined inline in `DataTable` without `useCallback`. Every `DataTable` render creates a new `toggleRow` function with a new reference. `prevProps.onToggle !== nextProps.onToggle` for every row. The memo check fails on `onToggle` for all 10,000 rows. All 10,000 rows re-render. `React.memo` is completely bypassed.
 
 The fix requires `useCallback` on `toggleRow` with an empty dependency array (the functional update form means it does not need to close over `rows`):
@@ -455,11 +455,11 @@ const toggleRow = React.useCallback((id) => {
 ```
 
 Now `toggleRow` is stable. `onToggle` passes the memo check. Only the row with the changed `row` object reference re-renders. This is the pattern where `React.memo` and `useCallback` must be applied together: one without the other is useless.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: Is `startTransition` the right fix here? What is the actual problem?**
 
 ```jsx
@@ -474,10 +474,9 @@ function App() {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 No. `startTransition` is the wrong fix here. The problem it solves, non-urgent state updates that should not block urgent ones, does not exist in this component.
 
 `startTransition` marks an update as deferrable: React can delay it to handle higher-priority work. The `count` update and `<p>{count}</p>` re-render are trivial, microseconds of work. There is no expensive render to defer. Wrapping `setCount` in `startTransition` means the count increment is treated as non-urgent. If the user clicks the button rapidly, React may skip intermediate count values to stay responsive. The counter will not increment on every click, which is almost certainly not the intended behavior.
@@ -485,11 +484,11 @@ No. `startTransition` is the wrong fix here. The problem it solves, non-urgent s
 `startTransition` is appropriate when a state change triggers an inherently expensive render (large list re-render, complex visualization update) and the update can be visually stale for a moment without breaking the user experience. It is not appropriate for simple state updates whose renders are fast, or for updates where every increment must be reflected (like a counter or form field).
 
 Using `startTransition` incorrectly causes missed updates and confusing behavior. It is a surgical tool for specific concurrency scenarios, not a general performance optimization to apply to all state updates.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: A developer profiles their app and sees `ProductGrid` taking 180ms to render. They add `React.memo` to `ProductGrid`. The profiler now shows `ProductGrid` taking 0ms. But the user still reports lag on filter changes. Why?**
 
 ```jsx
@@ -520,10 +519,9 @@ function ShopPage() {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `React.memo` on `ProductGrid` correctly bails out when neither `products` nor `onAddToCart` change. The profiler shows `ProductGrid` as 0ms for renders where it bails out.
 
 But when the filter changes, `useProducts(filter)` returns a new `products` array. `products` is a new reference. `React.memo` check fails. `ProductGrid` re-renders with the new products. This is correct and necessary. The issue is not `ProductGrid` itself.
@@ -533,74 +531,69 @@ Inside `ProductGrid`, each `ProductCard` receives `onAdd={() => onAddToCart(p.id
 The lag on filter changes is from two things: `products` is a new array (correct re-render, expected work) plus 200 inline function allocations defeating any memoization on `ProductCard`. The fix: memoize `ProductCard`, and either pass stable `onAddToCart` with the product id already bound (using `useCallback` with `p.id`), or restructure `ProductCard` to accept only `productId` and handle the cart interaction internally or via context.
 
 The deeper lesson: fixing one component's re-render often reveals the next bottleneck in the subtree. Profile after every fix, not just once.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** What are the three categories of genuine re-render performance problems? For each, name the cause, the signature in the profiler, and the targeted fix.
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Category 1: large flat lists. Cause: one state change above a large list triggers reconciliation of every item, even unchanged ones. Profiler signature: many components rendered in one commit, each with low individual cost but high aggregate cost, most showing "props changed" for unchanged items. Fix: virtualization to reduce the number of rendered components to the visible viewport, plus `React.memo` with `useCallback` on handlers to skip unchanged rows if virtualization is insufficient.
 
 Category 2: expensive computations running unnecessarily. Cause: a component function contains a slow computation that re-runs when the component re-renders for unrelated reasons. Profiler signature: one component with very high `actualDuration` close to `baseDuration`, indicating no memoization bailout, with the re-render triggered by a prop or state change unrelated to the expensive computation's inputs. Fix: `useMemo` on the expensive computation with its actual dependencies, so it only recomputes when its inputs change.
 
 Category 3: cascading re-renders from unstable references. Cause: object or function references created inline in a component's render body change on every render, propagating re-renders to all descendants that receive them as props or context values. Profiler signature: a large number of components re-rendering after a single state change, many showing "props changed" or "context changed" for props that appear logically unchanged. Fix: stabilize references with `useMemo` for objects and `useCallback` for functions, breaking the cascade at its source.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** What is the difference between `startTransition` and `useMemo` as solutions for expensive renders? When should you use each?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `useMemo` prevents a computation from running when its inputs have not changed. It reduces total work by caching results. It is appropriate when a component re-renders due to state changes unrelated to an expensive computation: the computation simply does not run. The expensive work is skipped entirely in renders where the cache is valid.
 
 `startTransition` does not reduce total work. It changes when work happens relative to user interactions. An update wrapped in `startTransition` is treated as non-urgent. React can interrupt it to process urgent updates (user input, animations). The expensive render still happens in full, just potentially delayed or interleaved with other work. It is appropriate when the expensive render is inherently necessary (new data must be shown) but should not block the user from interacting while it renders.
 
 Use `useMemo` when: the computation can be cached, its inputs do not change on every render, and the computation is provably expensive. Use `startTransition` when: the render is expensive and inherently necessary, the result can be briefly stale (old results showing while new ones compute), and you want to keep the UI responsive during the update. The two are complementary: `useMemo` reduces total work, `startTransition` schedules remaining necessary work to not block interaction.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** A profiler shows 10,000 components re-rendered in 150ms for a single checkbox click in a data table. You add `React.memo` to the row component and `useCallback` to the toggle handler. The profiler now shows 1 component re-rendered in 1ms. What did you verify before shipping this fix, and what new bugs could it have introduced?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Before shipping, verify: the checkbox interaction still works correctly after memoization (toggle actually changes the checked state), the initial render of the table is not slower (adding 10,000 `React.memo` wrappers adds mount overhead), and other interactions (sorting, filtering) still cause correct re-renders where needed (memoization should not prevent rows from updating when their data changes).
 
 New bugs the fix could introduce: if `useCallback` has an incorrect or incomplete dependency array, `toggleRow` could close over stale state and produce incorrect behavior. For example, if the handler needed to access some other state variable and that variable was omitted from deps, it would always use the value from when the callback was first created. Additionally, if the row `key` prop is the row id and a row's id changes (unusual but possible), `React.memo` would see the same key but new props and correctly re-render, but if the key is an index (wrong pattern), memoization behavior could be incorrect when rows are reordered. Finally, verify that the `row` object reference is correctly stable for unchanged rows and correctly new for changed rows: the `map` in the toggle handler must return the existing object reference for unchanged rows, not a spread of it.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q4.** You have a component that re-renders 30 times per second because it is subscribed to a real-time data feed. Each render takes 8ms. The frame budget is 16.6ms. Is this a problem? What are your options?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Yes, this is a problem. 30 renders per second at 8ms each means 240ms of render work per second. With a 16.6ms frame budget, a single 8ms render consumes almost half the frame budget. If the component is in the render path for every frame, other work (other component renders, effects, browser layout and paint) must fit in the remaining 8.6ms. This is tight and likely causing dropped frames.
 
 Four options in order of impact. First, reduce the component's render cost: profile what the 8ms is spent on. Is it a large subtree? Consider splitting the component so only the part that actually changes on each update re-renders. Is it an expensive computation? Cache with `useMemo`. Second, reduce the render frequency: does the component need to update 30 times per second? Many real-time feeds update faster than the human eye can track. Throttle the state updates to 10-15 per second using a throttle in the subscription handler. Third, use `useDeferredValue` or `startTransition` to mark the real-time updates as non-urgent, allowing React to skip frames and catch up, showing slightly stale data under load rather than blocking. Fourth, move the expensive work off the main thread using a Web Worker, passing only the final result to React for rendering. The computation happens in parallel with the browser's rendering pipeline.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q5.** The diagnostic process says "measure first." What specific measurements do you take, and what thresholds indicate a real problem versus normal behavior?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Measurements to take in order. First, the user symptom: identify the specific interaction that feels slow and reproduce it consistently. Vague "feels slow" is not enough. "Clicking the filter button has a 200ms delay before the list updates" is specific.
 
 Second, browser Performance panel: record the interaction, identify long tasks (tasks over 50ms block the main thread noticeably), find the task that contains the user interaction, and measure its total duration. If the total task is under 50ms, the browser handles it within 3 frames and the user likely cannot perceive it as slow.
@@ -610,8 +603,7 @@ Third, React DevTools Profiler: record the same interaction, find the commit tha
 Fourth, render count analysis: look at "Why did this render?" for each expensive component. If many components show "props changed" with reference changes for logically unchanged data, unstable references are the cause. If a few components show very high `actualDuration`, expensive computations are the cause.
 
 Thresholds: user-perceptible delay begins at roughly 100ms for discrete interactions and 16ms for continuous ones (animations, dragging). Any interaction over 100ms that shows preventable re-render work in the profiler is a candidate for optimization. Re-renders that complete in under 16ms total are below perception threshold regardless of count.
-
-</details>
+</Answer>
 
 ---
 

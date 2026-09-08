@@ -314,11 +314,11 @@ The compiler is the strategic direction. Manual memoization is the legacy approa
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: "The React Compiler means I never need to think about memoization again." Is this accurate?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Partially accurate but with important caveats.
 
 For the common cases (preventing unnecessary re-renders, stabilizing function references, caching derived values), the compiler handles memoization automatically and correctly. A developer writing clean, rule-following React code on React 19 with the compiler enabled does not need to manually add `React.memo`, `useCallback`, or `useMemo` for these scenarios.
@@ -332,16 +332,15 @@ The compiler cannot optimize code that violates React's rules. Components with p
 The compiler does not address architectural performance problems: a huge flat list still needs virtualization, a deeply nested context that changes frequently still causes widespread re-renders (the compiler memoizes consumers, but context changes still bypass `React.memo`), and fundamental data structure choices still affect algorithmic complexity.
 
 The accurate statement: the compiler eliminates the need to think about reference stability and manual memoization annotations for correctly written components. It does not eliminate the need to think about algorithmic complexity, architecture, or render scope.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: A developer runs the React Compiler on their codebase. 30% of components are skipped with "could not optimize" warnings. What does this tell you about the codebase, and what is the correct response?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 30% of components being skipped tells you that 30% of components violate React's rules in ways the compiler can detect. Common violations include: mutating props or state directly, calling hooks conditionally, using values in hooks without listing them as dependencies, and accessing mutable variables from outer scope inside render.
 
 These are not just compiler issues. Every one of them is a latent correctness bug independent of the compiler. A component that mutates a prop silently corrupts the parent's data. A component with stale hook dependencies shows stale values. The compiler's inability to optimize these components is a symptom of underlying code quality problems.
@@ -349,16 +348,15 @@ These are not just compiler issues. Every one of them is a latent correctness bu
 The correct response is to treat the compiler's skip list as a bug list. Fix each violation not to "make the compiler happy" but because the violations are independently incorrect. The ESLint plugin for the React Compiler provides specific, actionable errors for each violation. Work through them systematically. Each fixed violation is a correctness improvement that also happens to enable compiler optimization.
 
 Rushing to suppress warnings or add compiler opt-outs to skip problematic files is the wrong response. It removes the signal the compiler is providing and leaves the underlying bugs unfixed.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: Should you remove all `React.memo`, `useCallback`, and `useMemo` from a React 18 codebase in anticipation of upgrading to React 19 with the compiler?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 No, not preemptively. The correct sequence is: upgrade to React 19, enable the compiler, then remove manual memoization that the compiler now handles, verified by profiling.
 
 Removing memoization from a React 18 codebase before the compiler is active removes the optimizations that are currently preventing performance problems. If a `React.memo` is preventing 10,000 unnecessary renders per second, removing it in React 18 introduces a real performance regression regardless of future compiler plans.
@@ -366,48 +364,45 @@ Removing memoization from a React 18 codebase before the compiler is active remo
 Additionally, the compiler and manual memoization are not in conflict. The compiler is smart enough to recognize manual `React.memo` wrappers and either work with them or identify that they are redundant. When the compiler is active, it will handle components that were previously manually memoized. The manual annotations become redundant (not harmful) once the compiler is running.
 
 The correct sequence: enable the compiler in React 19, use the `eslint-plugin-react-compiler` to identify what it can and cannot optimize, profile to verify the compiler is producing correct memoization for your performance-sensitive components, then incrementally remove manual memoization that the compiler now handles. This gives you verification at each step rather than a speculative removal.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** What are the two fundamental limitations of manual memoization that the React Compiler addresses, and what property of the compiler makes it more reliable than developers at these tasks?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 First limitation: manual memoization requires complete, accurate knowledge of reference identity chains across the entire component tree at every moment. A developer adding a prop to a component must know every downstream memoized component that receives it and whether the new prop is reference-stable. As codebases grow, this knowledge is impossible to maintain reliably. The compiler has complete, simultaneous knowledge of the entire codebase via static analysis and makes correct decisions without gaps.
 
 Second limitation: dependency arrays must be manually kept in sync with the values they close over. Every `useMemo` and `useCallback` dep array is a manually maintained contract that can become stale as code evolves. Incorrect deps produce stale closures. The compiler tracks data flow through the AST and generates correct deps automatically. It cannot forget a dep or add a stale one because it derives deps from the actual code, not from a developer's mental model of the code.
 
 The compiler's reliability comes from analyzing the complete, current code rather than relying on developer memory and attention. It processes every file every build, with the same quality of analysis regardless of code size, developer experience, or time pressure.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** The compiler generates a cache array (`_cache`) rather than inserting `useMemo` calls. What is the advantage of using a lower-level cache primitive over the public `useMemo` API?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `useMemo` has specific semantics: it takes a function and a dependency array, stores `[value, deps]` in the hook linked list, and runs `areHookInputsEqual` on the deps array. The hook linked list position is determined by call order, and the Rules of Hooks restrict where and how it can be called.
 
 The compiler's `_cache` primitive is more flexible. It can be used multiple times in the same render path without being subject to the same positional constraints. It can cache individual sub-expressions within a component rather than whole computations. It can be generated at any granularity the dataflow analysis determines is beneficial, including caching individual JSX nodes or specific derived values that would be awkward to express as `useMemo` callbacks.
 
 More practically: if the compiler inserted `useMemo` calls, every added cache point would change the hook count and position. This would be fragile as the compiler's analysis evolved (adding or removing cache points would change hook positions and break the linked list). Using a separate `_cache` array outside the hook linked list avoids this coupling entirely. The compiler can adjust caching granularity without affecting hook positions or React's hook rules.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** A component violates React's rules and the compiler skips it. What is the independent reason this component likely has correctness bugs, beyond the compiler's inability to optimize it?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The compiler skips components that violate React's rules, specifically things like mutating props, mutating state directly, calling hooks conditionally, or closing over mutable external variables. Every one of these violations is independently a correctness bug under React's programming model.
 
 Mutating a prop corrupts the parent's data without the parent's knowledge, because props are passed by reference. The parent does not know its object was modified. On the next render, the parent may use the mutated value as if it were the original, or React's change detection (`Object.is`) may fail to detect a change that should have triggered a re-render.
@@ -419,16 +414,15 @@ Calling hooks conditionally corrupts the hook linked list, causing hooks after t
 Closing over mutable external variables inside a hook produces stale closures when the variable changes without triggering a re-render.
 
 The compiler's skip signal is a proxy for: this component is already broken in ways that manifest as subtle bugs under certain interaction sequences. The optimization failure is a symptom; the bugs are the actual problem.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q4.** You are working on a React 18 codebase with no compiler. A teammate proposes: "let's just add `React.memo` to every component as a baseline." Using what you know about the compiler's approach, explain why this is the wrong direction.
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The compiler's approach reveals why blanket `React.memo` is wrong: memoization is not a property of components in isolation. It is a property of the data flowing through the component tree. A component is worth memoizing only when its props are reference-stable in the renders you want to skip. `React.memo` without stable props is inert overhead.
 
 Adding `React.memo` to every component does not make props stable. It adds `shallowEqual` comparison overhead to every parent render for every wrapped component. When a component receives an inline object or function prop (which most components do in a typical codebase), `React.memo` fails on that prop and the component re-renders anyway. You have added cost without benefit.
@@ -436,8 +430,7 @@ Adding `React.memo` to every component does not make props stable. It adds `shal
 The compiler's approach is: analyze the data flow, identify which values are stable and which are not, and generate caching only where it actually works. This requires understanding the entire chain from state through props to each component. A component-local annotation (`React.memo`) cannot express this chain-level analysis.
 
 The correct approach on React 18 is: measure specific performance problems, trace them to specific re-render patterns, and apply targeted memoization with verified stable props. Or upgrade to React 19 and let the compiler do this analysis correctly.
-
-</details>
+</Answer>
 
 ---
 

@@ -269,6 +269,7 @@ Arrow functions: none of the above apply, always inherit lexically
 
 ### Self-test: 5 questions
 
+<Question>
 **Q1.** What does this log?
 
 ```js
@@ -282,7 +283,15 @@ const obj = {
 const fn = obj.getVal;
 console.log(fn());
 ```
+</Question>
 
+<Answer>
+`undefined` (strict) or empty string / error depending on environment. `fn` is called without an object, so implicit binding is lost. `this` becomes `window` or `undefined`, neither of which has `val`.
+</Answer>
+
+---
+
+<Question>
 **Q2.** What does this log?
 
 ```js
@@ -297,7 +306,15 @@ const p = new Person('shan');
 const say = p.sayName;
 say();
 ```
+</Question>
 
+<Answer>
+`"shan"`. The arrow function is defined inside the `Person` constructor when `new` is in effect, so `this` is the new `Person` instance. Arrow functions inherit `this` lexically, and `bind`/`call`/reassignment cannot change it.
+</Answer>
+
+---
+
+<Question>
 **Q3.** What does this log?
 
 ```js
@@ -310,7 +327,15 @@ const obj = {
 
 obj.greet();
 ```
+</Question>
 
+<Answer>
+`undefined`. The arrow function is defined at object literal construction time, in global scope. `this` is the global object (or `undefined` in strict mode), not `obj`. Classic trap.
+</Answer>
+
+---
+
+<Question>
 **Q4.** What does this log?
 
 ```js
@@ -324,7 +349,15 @@ const b = { name: 'b' };
 const bound = greet.bind(a);
 bound.call(b);
 ```
+</Question>
 
+<Answer>
+`"a"`. `bind` creates a permanently bound function. `call` on a bound function is silently ignored. `this` remains `a`.
+</Answer>
+
+---
+
+<Question>
 **Q5.** What does this log?
 
 ```js
@@ -340,20 +373,8 @@ const user = {
 
 user.showTasks();
 ```
+</Question>
 
----
-
-<details>
-<summary>Answers</summary>
-
-**A1.** `undefined` (strict) or empty string / error depending on environment. `fn` is called without an object, so implicit binding is lost. `this` becomes `window` or `undefined`, neither of which has `val`.
-
-**A2.** `"shan"`. The arrow function is defined inside the `Person` constructor when `new` is in effect, so `this` is the new `Person` instance. Arrow functions inherit `this` lexically, and `bind`/`call`/reassignment cannot change it.
-
-**A3.** `undefined`. The arrow function is defined at object literal construction time, in global scope. `this` is the global object (or `undefined` in strict mode), not `obj`. Classic trap.
-
-**A4.** `"a"`. `bind` creates a permanently bound function. `call` on a bound function is silently ignored. `this` remains `a`.
-
-**A5.** Logs `undefined: code` and `undefined: review`. The `forEach` callback is a regular function called without an object, so `this` inside it is `window`/`undefined`, not `user`. Fix: use an arrow function for the `forEach` callback, which would inherit `this` from `showTasks`.
-
-</details>
+<Answer>
+Logs `undefined: code` and `undefined: review`. The `forEach` callback is a regular function called without an object, so `this` inside it is `window`/`undefined`, not `user`. Fix: use an arrow function for the `forEach` callback, which would inherit `this` from `showTasks`.
+</Answer>

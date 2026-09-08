@@ -371,6 +371,7 @@ This is concurrent rendering: two renders, two lanes, one committed UI, one in-p
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: What is wrong with this transition, and what will the user experience?**
 
 ```jsx
@@ -398,20 +399,19 @@ function App() {
 ```
 
 `ProfileTab` suspends while loading. The user clicks the "Profile" tab.
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 With `startTransition`, the behavior is: the user clicks "Profile." `setTab('profile')` is enqueued in a Transition lane. React starts rendering the new tab in the background. `ProfileTab` suspends (throws a Promise). Normally this would show `<TabSkeleton />`. But because we are in a transition, React does not immediately show the fallback. Instead, React keeps the current committed tree visible (the "Home" tab content stays on screen) and waits. `isPending` becomes `true`, so the `TabBar` can show a pending indicator if it reads `isPending`. When `ProfileTab`'s data resolves, the transition render completes and React commits the new tree showing `ProfileTab`. The skeleton is never shown to the user. They see: Home tab → (pending indicator in TabBar) → Profile tab.
 
 Without `startTransition` (if `setTab` were called directly): React immediately tries to render `ProfileTab`, it suspends, React commits the `<TabSkeleton />` fallback immediately, then when the data resolves, React re-renders with `ProfileTab`. The user sees: Home tab → Skeleton → Profile tab. The skeleton flash is visible.
 
 The combination of `startTransition` and `Suspense` is what enables "no skeleton" navigation: React holds the current tree visible until the new one is fully ready (or until a timeout, after which the skeleton is shown anyway).
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: What is the difference between these two patterns? When would each be appropriate?**
 
 ```jsx
@@ -447,10 +447,9 @@ function Parent() {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Both patterns achieve similar results: the input responds immediately and `Results` renders with lower priority. The difference is ownership and timing.
 
 Pattern A uses `startTransition`, which wraps the state update itself. The update to `query` is assigned a Transition lane from the moment it is enqueued. `query` always has the transition-priority value. `isPending` is a React-managed boolean on a separate Fiber that is synchronously updated. This pattern is appropriate when you own the state that drives the expensive render and want to mark the state update as non-urgent at the source.
@@ -458,11 +457,11 @@ Pattern A uses `startTransition`, which wraps the state update itself. The updat
 Pattern B uses `useDeferredValue`, which accepts a value (not a setter) and returns a stale copy. `query` is always updated synchronously (in whatever lane `setQuery` uses, which is DefaultLane from a change event). `deferredQuery` is a delayed version that catches up in a lower-priority render. The staleness detection `deferredQuery !== query` is a manual comparison, not a React-managed flag. This pattern is appropriate when you do not own the state (the value comes from a prop or context) and you want the consuming component to render the value at lower priority.
 
 The practical distinction: use `startTransition` when you control the setter. Use `useDeferredValue` when you receive the value as a prop and want to defer how your component responds to it.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: Why does this code cause a problem, and what does it reveal about how Lanes interact with state?**
 
 ```jsx
@@ -494,10 +493,9 @@ function SearchPage() {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The problem is that `expensiveSearch(value)` runs inside `startTransition`, but the transition wrapper only affects the lane of the `setResults` call, not the computation inside the callback. `startTransition` does not defer JavaScript execution. It defers when the resulting state update is committed to the screen. The `expensiveSearch` computation still runs synchronously on the main thread inside the `startTransition` callback, blocking the browser for its full duration on every keystroke.
 
 `startTransition` is not a Web Worker. It is not `setTimeout`. It does not move computation off the main thread or defer its execution. It only changes the priority lane of the state update so that React can interrupt the render that results from it, not the computation itself.
@@ -523,18 +521,17 @@ const results = React.useMemo(() => expensiveSearch(deferredQuery), [deferredQue
 ```
 
 Here `expensiveSearch` runs during the deferred render, which React can interrupt if a higher-priority update arrives. The computation is still on the main thread, but it is interruptible at the render-phase level (React can abort the render and restart), not at the JavaScript level within a single function call.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** Why did expiration times fail as a priority model, and what two properties do Lanes have that expiration times lacked?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Expiration times failed because they were scalar values: one number per update. Scalar values can express ordering (process this before that) but not grouping (this and that are the same category of work and should be batched).
 
 The first failure: starvation. A continuous stream of high-priority updates (user typing) could keep assigning new expiration times, always pushing lower-priority work further into the future. The low-priority work would never be processed if high-priority work never stopped.
@@ -542,29 +539,27 @@ The first failure: starvation. A continuous stream of high-priority updates (use
 The second failure: no batching signal. Two updates that should be part of the same transition (same logical operation) were two independent scalar values. React could not determine they belonged together and should not be interleaved with work from a different priority.
 
 Lanes solve both with a bitmask. First property: grouping. Multiple updates in the same lane are batched together because they share the same bit. React processes all updates in a lane in one render pass. Second property: starvation prevention. Each lane has an expiration time independent of new updates in other lanes. A Transition lane is not pushed back by SyncLane updates arriving. After its expiration window, the lane is promoted to synchronous priority and processed regardless of other pending work.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** `startTransition` marks a state update as non-urgent. What specifically happens if a higher-priority update arrives while the transition render is in progress?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 React interrupts the transition render. The work-in-progress tree being built for the transition is not committed or discarded immediately. React pauses at the current Fiber boundary (between `beginWork` calls, at a yield point), sets the in-progress work aside, and starts a new render for the higher-priority update using the current committed tree as the base. When the higher-priority render completes and is committed, React restarts the transition render from scratch using the newly committed tree as the new base. The previous in-progress transition work is discarded because the base state has changed and the work-in-progress tree is no longer valid.
 
 The key consequence: a transition render may be started and discarded multiple times before it completes. Each new high-priority update causes a restart. The transition only commits when no higher-priority work arrives during its render phase. This is why transition renders must be pure: they may run multiple times, and if they have side effects, those effects would fire multiple times before commit.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** A component uses `useDeferredValue`. During a transition, `deferredQuery !== query` is `true`. What is happening internally, and what renders are occurring?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 During a transition where `deferredQuery !== query`, two renders of the component are occurring concurrently at different priorities.
 
 The current committed render has `deferredQuery` equal to the previous query value (the last one that completed rendering and was committed). This is the value the user currently sees on screen.
@@ -572,31 +567,28 @@ The current committed render has `deferredQuery` equal to the previous query val
 A deferred render is in progress in a lower-priority lane. This render will use the new `query` value as `deferredQuery`. React is working on this render in the background. It may be interrupted by higher-priority work. Until it commits, the component shows the stale `deferredQuery` value.
 
 The `deferredQuery !== query` comparison is `true` precisely during this window: after `query` updated (synchronously in its own lane) but before the deferred render committed the new `deferredQuery`. The component uses this comparison to show a visual indicator (reduced opacity, a spinner) that the displayed content is stale and being updated. When the deferred render commits, `deferredQuery` catches up to `query`, the comparison becomes `false`, and the stale indicator disappears.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q4.** What prevents low-priority Transition lane work from being starved indefinitely by a continuous stream of high-priority SyncLane updates?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Expiration times on lanes, separate from the expiration time model that was replaced. Each lane, when it first receives a pending update, is assigned an expiration timestamp: current time plus a priority-based offset. For Transition lanes, this window is typically around 5 seconds. React checks pending lanes against their expiration times on each render cycle in `markStarvedLanesAsExpired`. If a lane's expiration time has passed, the lane is moved to `root.expiredLanes`. Expired lanes are treated as synchronous: the work loop processes them with the same urgency as SyncLane updates, regardless of what other lanes are pending. This guarantees that any transition, no matter how many SyncLane updates arrive, will be processed within its expiration window. The window is long enough to allow smooth interaction while ensuring eventual progress.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q5.** Suspense without transitions shows a skeleton. Suspense with transitions does not. What is the mechanical reason?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Without a transition: when a component suspends, React needs to show something to the user immediately because it has already committed the parent component (the current tree is the suspended component's parent with the new props). The component cannot be shown in its loading state because it threw a Promise. React has no choice but to immediately commit the nearest Suspense boundary's fallback as the current tree. The user sees the skeleton.
 
 With a transition: React renders the new suspended component in a Transition lane in the work-in-progress tree. The current committed tree still shows the old content (the previous page, the previous tab, whatever was showing before the transition started). The work-in-progress tree is not committed until the transition render completes without suspending. As long as the suspended component is in the work-in-progress tree and not the committed tree, React simply does not commit it. The current tree remains on screen. React waits for the Promise to resolve, then re-renders the transition (now the component does not suspend), then commits. The skeleton fallback is never committed because the work-in-progress tree was never partial. It was either fully ready or not committed at all.
 
 The distinction: without a transition, React must commit something (the new tree or the fallback) because the current tree has already been replaced. With a transition, the current tree is never replaced until the new tree is fully ready. React can keep the old tree on screen indefinitely while preparing the new one.
-
-</details>
+</Answer>

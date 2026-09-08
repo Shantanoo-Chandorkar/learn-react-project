@@ -199,11 +199,11 @@ React avoids `innerHTML` entirely. Every DOM mutation is a targeted operation on
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: "React's Virtual DOM makes DOM operations faster." Correct this statement precisely.**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 React's Virtual DOM does not make individual DOM operations faster. A `setAttribute` call issued by React costs exactly the same as one issued by vanilla JS. The browser does not know or care who called it.
 
 What React's Virtual DOM does is reduce the number of DOM operations issued. By diffing two JS object trees before touching the DOM, React determines the minimal set of mutations required to bring the DOM from its current state to the desired state. A re-render that produces no visible change issues zero DOM mutations. A re-render that changes one text node issues one `textContent` assignment. A re-render that changes one attribute on one element issues one `setAttribute`.
@@ -211,16 +211,15 @@ What React's Virtual DOM does is reduce the number of DOM operations issued. By 
 Without diffing, a declarative rendering approach would rebuild the entire DOM subtree on every state change, issuing O(n) mutations where n is the subtree size. With diffing, it issues O(d) mutations where d is the number of differences. For most interactive state changes, d is much smaller than n.
 
 The correct statement: React's Virtual DOM reduces the number of DOM operations, which reduces the amount of rendering engine work (style recalculation, layout, paint) the browser performs per state change.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: If JS is fast and DOM is slow, why not avoid the DOM entirely and render to a canvas?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 You can, and some high-performance applications do. React Native on web and game engines use canvas rendering. The tradeoff is real.
 
 DOM rendering is slow but gives you the browser's entire accessibility tree, tab focus management, native form controls, text selection, scroll behavior, CSS animations, media queries, and screen reader support for free. These are not trivial. They represent years of platform work and are expected behavior for users, especially users who rely on assistive technology.
@@ -228,16 +227,15 @@ DOM rendering is slow but gives you the browser's entire accessibility tree, tab
 Canvas rendering is fast because it bypasses all layout and compositing overhead — you control every pixel. But you lose everything above. You must implement your own text layout, hit testing, focus management, and accessibility. You are writing a UI toolkit from scratch, not using one.
 
 React's answer is to minimize DOM operations, not eliminate them. The diffing approach brings DOM rendering close enough to canvas performance for most applications while retaining the full browser platform. For specific cases — data grids with tens of thousands of rows, real-time data visualizations — the answer is virtual scrolling, canvas layers, or `OffscreenCanvas`, applied surgically to the bottleneck, not globally.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: A developer sets `innerHTML` on a container to update a list, claiming it is faster than React because it is one operation instead of many. Under what conditions are they right, and under what conditions are they wrong?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 They are right in a narrow case: if the list is small, changes infrequently, contains no interactive elements, and no browser context (focus, transitions, selections) needs to be preserved. In that case, `innerHTML` is genuinely simpler and the performance difference is immeasurable.
 
 They are wrong in most real conditions. First, `innerHTML` is not one operation to the browser. It is HTML parsing, full subtree destruction, full subtree insertion, style recalculation, layout, and paint — an O(n) cascade where n is the subtree size, regardless of how much changed. A React diff for a one-item change in a 500-item list is O(500) for the comparison and O(1) for the DOM mutation. The `innerHTML` approach is O(500) for both.
@@ -247,31 +245,29 @@ Second, `innerHTML` destroys browser context. Any focused element loses focus. A
 Third, `innerHTML` requires event delegation or listener re-attachment after every render, because the old nodes with their listeners are gone. React retains DOM nodes for unchanged items and their attached listeners across renders.
 
 The developer's claim treats performance as a single axis. It is not. `innerHTML` wins on code simplicity for simple static content. React wins on correctness and performance for interactive, frequently-updating subtrees.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** Name the four stages of the browser rendering pipeline that a DOM mutation triggers. Which stage is typically the most expensive and why?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Style recalculation, layout (reflow), paint, composite.
 
 Layout is typically the most expensive. It is recursive: a node's dimensions depend on its children, which depend on their children. Changing the width or height of a parent can force recalculation of every descendant's layout. Inserting or removing a node from document flow forces layout recalculation for all subsequent siblings. For large subtrees with complex layout — flexbox, grid, absolutely positioned children — this can take milliseconds per reflow. Because it blocks the main thread, any reflow that exceeds the frame budget (16ms at 60fps) drops a frame. Style recalculation is also significant for large stylesheets, but layout is the more common bottleneck for DOM-heavy applications.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** What is layout thrashing? Write a code example that causes it, and a corrected version that avoids it.
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Layout thrashing occurs when JavaScript alternates between reading layout properties and writing to the DOM in a loop, forcing the browser to run a full layout recalculation on every iteration rather than batching mutations and running one layout pass at the end.
 
 Causing it:
@@ -300,31 +296,29 @@ boxes.forEach((box, i) => {
 ```
 
 All reads happen before any writes. The browser runs exactly one layout pass. This pattern — read batch, write batch — is the fundamental rule for avoiding layout thrashing in any DOM-heavy code.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** React separates its work into render, reconciliation, and commit phases. Which phases touch the real DOM, and why does separating them matter?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Only the commit phase touches the real DOM. The render phase calls component functions and produces Virtual DOM element trees — pure JavaScript computation, no browser involvement. The reconciliation phase diffs old and new Virtual DOM trees and produces an effect list — still pure JavaScript. The commit phase applies the effect list to the real DOM as a single synchronous mutation pass.
 
 Separating them matters for two reasons. First, it allows React to batch all DOM mutations into a single pass, avoiding the interleaved read-write patterns that cause layout thrashing. The commit phase only writes; it never reads layout properties mid-commit. The browser sees one batch of mutations and runs one style/layout/paint cycle.
 
 Second, it makes the render and reconciliation phases interruptible. Because they are pure JavaScript computation with no DOM side effects, React can pause them mid-tree, handle a higher-priority update, then resume or restart. If the work were applied directly to the DOM as it was computed, interrupting a partial render would leave the DOM in an inconsistent intermediate state. The separation of description from application is what makes Concurrent Mode possible.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q4.** A 1,000-row table re-renders. Only one cell's value changed. How many DOM mutations does React issue, and how does it know which ones to skip?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 React issues one DOM mutation: the `textContent` (or equivalent attribute) update on the single cell that changed.
 
 It knows which rows to skip through reconciliation. React compares the new Virtual DOM tree for the table against the previous one. For each row, it checks whether the type (`tr`) is the same and whether the props are referentially equal or shallowly equal. For 999 rows whose data did not change, the props object is identical — same column values, same key — so React marks those Fiber nodes as having no update work. It traverses past them without producing any effect entries.
@@ -332,5 +326,4 @@ It knows which rows to skip through reconciliation. React compares the new Virtu
 For the one row that changed, React finds the differing prop, traverses into its children to find the changed cell, and marks that cell's Fiber with an `Update` effect. The commit phase walks the effect list, finds one entry, and issues one `textContent` mutation.
 
 This is why `key` stability matters. If row keys change between renders — for example, using array index as key when rows are reordered — React cannot correlate old and new rows. It may destroy and recreate rows that could have been updated in place, converting one mutation into thousands.
-
-</details>
+</Answer>

@@ -349,6 +349,7 @@ The error message deliberately says "before initialization" rather than "not def
 
 ### Self-test: 5 questions
 
+<Question>
 **Q1.** What does this log?
 
 ```js
@@ -358,7 +359,17 @@ console.log(typeof bar);
 var foo = 1;
 function bar() {}
 ```
+</Question>
 
+<Answer>
+`"undefined"`, `"function"`.
+
+Creation phase for the global context: `foo` is registered as `undefined` (var). `bar` is registered as a complete function object. At the time `typeof foo` runs, `foo` is `undefined` so `typeof` returns `"undefined"`. `typeof bar` returns `"function"` because the entire function was hoisted in the creation phase.
+</Answer>
+
+---
+
+<Question>
 **Q2.** What does this log and why?
 
 ```js
@@ -371,7 +382,17 @@ function outer() {
 
 outer();
 ```
+</Question>
 
+<Answer>
+`undefined`.
+
+`var x` inside `outer` is hoisted to the top of `outer`'s creation phase. It shadows the global `x` immediately from the start of `outer`'s scope. At the `console.log` line, `outer`'s local `x` exists but has not been assigned yet, so it is `undefined`. The global `x` is completely unreachable inside `outer` due to shadowing. This is the hoisting + shadowing combination trap from Module 1.1 and 1.2 unified through the execution context lens.
+</Answer>
+
+---
+
+<Question>
 **Q3.** What does this log?
 
 ```js
@@ -385,7 +406,17 @@ var sayBye = function () {
   console.log('bye');
 };
 ```
+</Question>
 
+<Answer>
+`"hello"` logs, then `TypeError: sayBye is not a function`.
+
+Creation phase: `sayHello` is fully hoisted as a function declaration. `sayBye` is hoisted as `var sayBye = undefined`. Execution phase: `sayHello()` calls the fully hoisted function, logs `"hello"`. `sayBye()` tries to call `undefined` as a function, throws TypeError. The function expression's body is never hoisted, only the variable name.
+</Answer>
+
+---
+
+<Question>
 **Q4.** What does this log?
 
 ```js
@@ -396,7 +427,17 @@ function fn() {
 
 console.log(typeof fn);
 ```
+</Question>
 
+<Answer>
+`"string"`.
+
+Creation phase order: `var fn` is registered first, then `function fn` overwrites it with the function object. So after creation, `fn` is the function. But during execution, `var fn = "string"` runs and overwrites the function with the string. `console.log(typeof fn)` runs after the assignment, so it sees the string. Creation phase: function wins. Execution phase: assignment wins.
+</Answer>
+
+---
+
+<Question>
 **Q5.** How many execution contexts exist on the call stack when `multiply` is executing?
 
 ```js
@@ -412,28 +453,8 @@ function main() {
 
 main();
 ```
+</Question>
 
----
-
-<details>
-<summary>Answers</summary>
-
-**A1.** `"undefined"`, `"function"`.
-
-Creation phase for the global context: `foo` is registered as `undefined` (var). `bar` is registered as a complete function object. At the time `typeof foo` runs, `foo` is `undefined` so `typeof` returns `"undefined"`. `typeof bar` returns `"function"` because the entire function was hoisted in the creation phase.
-
-**A2.** `undefined`.
-
-`var x` inside `outer` is hoisted to the top of `outer`'s creation phase. It shadows the global `x` immediately from the start of `outer`'s scope. At the `console.log` line, `outer`'s local `x` exists but has not been assigned yet, so it is `undefined`. The global `x` is completely unreachable inside `outer` due to shadowing. This is the hoisting + shadowing combination trap from Module 1.1 and 1.2 unified through the execution context lens.
-
-**A3.** `"hello"` logs, then `TypeError: sayBye is not a function`.
-
-Creation phase: `sayHello` is fully hoisted as a function declaration. `sayBye` is hoisted as `var sayBye = undefined`. Execution phase: `sayHello()` calls the fully hoisted function, logs `"hello"`. `sayBye()` tries to call `undefined` as a function, throws TypeError. The function expression's body is never hoisted, only the variable name.
-
-**A4.** `"string"`.
-
-Creation phase order: `var fn` is registered first, then `function fn` overwrites it with the function object. So after creation, `fn` is the function. But during execution, `var fn = "string"` runs and overwrites the function with the string. `console.log(typeof fn)` runs after the assignment, so it sees the string. Creation phase: function wins. Execution phase: assignment wins.
-
-**A5.** Four execution contexts: global, `main`, `square`, `multiply`. The global context is always at the bottom. Each function call pushes a new context. When `multiply` is executing, the stack is `[global, main, square, multiply]`.
-
-</details>
+<Answer>
+Four execution contexts: global, `main`, `square`, `multiply`. The global context is always at the bottom. Each function call pushes a new context. When `multiply` is executing, the stack is `[global, main, square, multiply]`.
+</Answer>

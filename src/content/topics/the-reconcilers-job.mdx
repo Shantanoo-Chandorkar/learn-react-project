@@ -327,6 +327,7 @@ During reconciliation, the reconciler sets flags on Fibers. During the commit ph
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: What happens to the state of `InputA` when the condition flips?**
 
 ```jsx
@@ -338,10 +339,9 @@ function Form({ showAdmin }) {
 ```
 
 Both `AdminInput` and `UserInput` render an `<input>` element internally and manage their own `value` state.
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 When `showAdmin` flips from `false` to `true`, React compares the element at this position in the tree. Previously it was `<UserInput>`. Now it is `<AdminInput>`. Different type. React's rule 1 applies: destroy the old subtree, build a new one.
 
 `UserInput` unmounts: its Fiber is deleted, its effects are cleaned up, its DOM node is removed, and its state (the `value` hook) is destroyed. `AdminInput` mounts fresh: a new Fiber is created, its state initializes to its initial value, its DOM node is created and inserted.
@@ -358,11 +358,11 @@ If you need to preserve both inputs' state across the toggle, you must render bo
 ```
 
 Both are always mounted. Their state persists. The display is controlled externally.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: What is wrong with using array index as a key here, and what specific failure does it cause?**
 
 ```jsx
@@ -390,10 +390,9 @@ function TodoList() {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 When `deleteFirst` is called, `todos` becomes `[{ id: 2 }, { id: 3 }]`.
 
 With index keys, React matches by position: old index 0 to new index 0, old index 1 to new index 1. The Fiber at index 0 that previously represented "Buy milk" is now reused for "Walk dog". The Fiber at index 1 that represented "Walk dog" is reused for "Read book". The Fiber at index 2 ("Read book") is deleted.
@@ -401,11 +400,11 @@ With index keys, React matches by position: old index 0 to new index 0, old inde
 The `<input type="checkbox">` inside each `li` has its own DOM state (checked or unchecked) managed by the browser, not by React. If the first checkbox was checked before deletion, after deletion the checkbox at index 0 is still the same DOM node (reused Fiber), still checked, but now it is next to "Walk dog" text. The checkbox state did not follow the todo item. It followed the position.
 
 The result: checked state appears to jump between items. The todo you deleted never had its checkbox cleared from the user's perspective because its DOM node was reused for the next item. Using `key={todo.id}` tells React that the item with id 2 is the same item regardless of its position. When id 1 is deleted, the Fiber for id 2 is recognized, reused in its new position with its existing DOM state. The Fiber for id 1 is deleted along with its DOM node including the checkbox.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: Will this cause a remount of `UserProfile` on every render of `Parent`?**
 
 ```jsx
@@ -419,10 +418,9 @@ function Parent({ userId }) {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Yes. Every render of `Parent` creates a new function `UserComponent`. It is a new function object with a new reference. The element `<UserComponent />` has `type: UserComponent`. On the next render, `<UserComponent />` has `type: NewUserComponent` (a new function reference). React compares `previousFiber.type === newElement.type`. The two function references are different objects. They are not the same function. React's rule 1 applies: different type, destroy and rebuild. `UserProfile` unmounts and remounts on every `Parent` render.
 
 This is an extremely subtle and common bug. The component definition looks the same but is a new reference. React identifies component types by reference equality, not by function body content. Defining a component inside another component's render body creates a new type on every render.
@@ -443,57 +441,53 @@ function Parent({ userId }) {
 ```
 
 Now `UserComponent` is the same function reference across all renders of `Parent`. The type comparison passes. No remount.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** What are the two heuristic assumptions React's reconciler makes that reduce diffing from O(n³) to O(n)? What real-world condition would make each assumption fail?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 First assumption: elements of different types produce entirely different trees. React does not attempt to find common subtrees between a `<div>` and a `<section>`. When types differ, React destroys the old subtree entirely and builds the new one from scratch. This assumption fails when you have two fundamentally different component types that happen to produce very similar DOM. React will destroy and recreate even if the DOM output would be nearly identical, potentially losing state and triggering expensive mount/unmount effects unnecessarily. In practice this is acceptable because different types almost always warrant different state and behavior.
 
 Second assumption: list items with stable keys maintain their identity across renders. React uses keys to match old children to new children, assuming that the same key means the same logical item. This assumption fails when keys are unstable: randomly generated keys cause every item to be treated as new on every render, destroying and recreating every list item. Index keys fail when items are inserted or deleted at non-tail positions, causing React to match items by position instead of identity, leading to state corruption as described in the index key trap above.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** A list has 100 items. The user reorders them: item 50 moves to position 1. Without keys, what does React do? With stable keys, what does React do?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Without keys, React matches by position. Position 0 old vs position 0 new: same type, update props if different. Position 1 old vs position 1 new: same type, update props. This continues for all 100 positions. Item 50's data is now at position 1, so the Fiber at position 1 gets its props updated to reflect item 50's data. The Fiber at position 50 gets its props updated to reflect what was previously at position 51, and so on down. Every Fiber from position 1 to position 99 is updated. Potentially 99 DOM writes, plus any state stored in the reordered items is not moved with the items because the Fibers stay in their positions.
 
 With stable keys, React builds a map of old Fibers by key. Processing the new list, it finds the key for item 50 at position 0 in the new list and matches it to the Fiber that was previously at position 49. It marks that Fiber for repositioning. The other Fibers are matched to their keys and also marked for repositioning where needed. React performs one insertion (moving item 50's DOM node to position 1) and adjusts sibling pointers. The content of each Fiber is not changed because the data did not change. Minimal DOM operations. State follows the items because the Fibers follow the keys.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** During reconciliation, what is the purpose of the `flags` bitmask on a Fiber node, and how does it make the commit phase efficient?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The `flags` bitmask on a Fiber encodes what DOM work needs to be done for that node during the commit phase: `Placement` for insertion, `Update` for prop changes, `Deletion` for removal, and others for effects. During reconciliation, the reconciler sets these flags as it compares old and new trees. A Fiber with no flags needs no commit work.
 
 During the commit phase, React does not visit every Fiber in the tree. It uses the `subtreeFlags` field (a bitmask that is the union of all flags in a subtree) to skip entire subtrees that have no pending work. React walks from the root, at each node checks `subtreeFlags`, and if it is zero for that subtree, skips it entirely without visiting any of its descendants. Only the path from the root to flagged nodes is traversed. This makes the commit phase proportional to the number of changes, not the size of the tree. A tree with 10,000 nodes but only 3 DOM writes traverses roughly O(depth × 3) nodes during commit rather than O(10,000).
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q4.** What exactly does React compare when deciding whether two elements at the same position represent the "same" node?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 React checks two things in order.
 
 First, the key. If both the old and new element have an explicit key, they must be equal for React to consider them the same node. If the keys differ, React treats them as different nodes regardless of type: the old node is deleted and the new node is created fresh. If neither has an explicit key (both have `key: null`), React falls through to the second check.
@@ -501,5 +495,4 @@ First, the key. If both the old and new element have an explicit key, they must 
 Second, the type. The `type` field of the React element must be strictly equal (`===`) to the `type` of the existing Fiber. For DOM elements, this is a string comparison (`'div' === 'div'`). For component elements, this is a reference comparison (`UserCard === UserCard`). If types match, React updates the existing Fiber in place. If types differ (even with matching keys), React destroys the old Fiber and creates a new one.
 
 The order matters: key is checked first. A key change is treated as a complete identity change even if the type is the same. A type change with matching keys is treated as a complete identity change. Both conditions produce a destroy-and-recreate. Both conditions simultaneously also produce a destroy-and-recreate. Only matching key (or both null) AND matching type produces an in-place update.
-
-</details>
+</Answer>

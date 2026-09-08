@@ -279,6 +279,7 @@ React reserves the right to discard `useMemo` caches in the future (for features
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: Will `useMemo` save the computation here? What is the actual behavior?**
 
 ```jsx
@@ -296,20 +297,19 @@ function FilteredList({ category }) {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 No. `fetchItemsSync(category)` returns a new array on every call, even if `category` has not changed. Every render creates a new `items` reference. `useMemo`'s dep check: `Object.is(prevItems, nextItems)`. Different array references. `false`. The computation runs on every render.
 
 The `useMemo` wrapper adds: reading the hook node from the linked list, running `areHookInputsEqual`, creating the new `[value, deps]` array to store, and the cognitive overhead of the developer believing the computation is cached. For zero benefit.
 
 The correct fix depends on the root cause. If `fetchItemsSync` is itself expensive, memoize at that level: `const items = React.useMemo(() => fetchItemsSync(category), [category])`. Now `items` is stable when `category` is stable, and the filter's `useMemo` has a stable dep to work with. If `fetchItemsSync` is cheap (just reading from a cache), remove `useMemo` from `filtered` entirely and compute inline.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: What is wrong with this usage? What does the developer think is happening vs. what is actually happening?**
 
 ```jsx
@@ -328,10 +328,9 @@ function UserCard({ userId }) {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The developer likely thinks `useMemo` is caching an expensive object construction. In reality, `{ userId, name, age }` is an object literal with three property assignments, which takes nanoseconds. There is no expensive computation.
 
 What is actually happening: `useMemo` stores `[{ userId, name, age }, [userId, name, age]]` in the hook node. On every render, it runs `areHookInputsEqual`, calling `Object.is` three times. When `name` changes (button click), the dep check fails, the new object is created (which would have happened anyway), stored, and returned. When nothing changes and the parent re-renders, the dep check passes and the cached object is returned.
@@ -339,11 +338,11 @@ What is actually happening: `useMemo` stores `[{ userId, name, age }, [userId, n
 The useMemo overhead, reading the hook node, comparing three deps, is likely equal to or greater than just creating `{ userId, name, age }` directly. The only scenario where this `useMemo` provides value is if `UserCard` has a memoized child that receives `userObject` as a prop and the parent re-renders without `userId`, `name`, or `age` changing. In that case, the stable `userObject` reference prevents the child from re-rendering. But the developer did not write any memoized children, so this benefit does not exist in the shown code.
 
 If referential stability is the goal (for a memoized child), `useMemo` here is appropriate. If it is for "expensive computation," it is misapplied.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: This `useMemo` has a bug. What is it, and what does the user experience?**
 
 ```jsx
@@ -368,10 +367,9 @@ function SortedList({ items, userId }) {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `userId` is used inside the `useMemo` callback but is not listed as a dependency. This is a stale closure: the sort function captures `userId` from the render when `useMemo` first ran (or last recomputed). When `userId` changes (the current user switches), `useMemo` checks its deps: only `items`. `items` has not changed. Dep check passes. The cached sorted array is returned. It was sorted for the old `userId`. The current user's items are not prioritized. The list appears to show the wrong user's items at the top.
 
 The bug is silent: no error, no warning, just incorrect ordering. It surfaces only when `userId` changes while `items` stays the same.
@@ -391,46 +389,43 @@ const sorted = React.useMemo(
 ```
 
 Now when `userId` changes, the dep check fails, the sort reruns with the new `userId`, and the correct user's items are prioritized. The rule: every value from the component scope that the `useMemo` callback reads must be in the dependency array. The ESLint `react-hooks/exhaustive-deps` rule enforces this automatically.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** What are the three conditions that should all be true before applying `useMemo` to a computation?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 First, the computation is measurably expensive. A computation that takes under a millisecond does not benefit from caching. The `useMemo` overhead (hook node read, dep comparison) may exceed the computation cost. Measure with the profiler before adding `useMemo`.
 
 Second, the component re-renders for reasons unrelated to the computation's inputs. If the component only re-renders when the deps change, every render recomputes the value anyway. The cache is never hit. `useMemo` adds overhead with zero benefit.
 
 Third, the dependencies are stable references when the computation should not rerun. If a dep is an object or array recreated on every parent render, `Object.is` fails every time, the computation reruns every render, and `useMemo` is inert. The cache only helps when deps are genuinely stable between renders where the computation's output would not change.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** `useMemo` stores `[value, deps]` in the hook node. On every render, it compares deps even if the cache will be used. What does this mean for the decision to apply `useMemo` to cheap computations?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Every render pays the dep comparison cost regardless of whether the cache is hit or missed. For a `useMemo` with three deps, that is three `Object.is` calls plus reading the hook node from the linked list. For a computation that takes nanoseconds (string concatenation, property access, simple arithmetic), the dep comparison overhead is comparable to or greater than just running the computation directly. `useMemo` would make the render slower, not faster.
 
 The break-even point is where the computation cost exceeds the dep comparison overhead. For trivial computations, that point is never reached. For computations that take multiple milliseconds, the dep comparison overhead is negligible and the cache is a clear win. The practical guideline: do not apply `useMemo` to anything that does not show up as a measurable cost in the profiler.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** What is the difference between using `useState` with a lazy initializer and `useMemo` with an empty dependency array? When should you use each?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Both run the provided function once on mount and cache the result. The difference is the semantic intent and mutability.
 
 `useState(() => heavyCompute())` signals: this is state. The initial value is expensive to compute, so use the lazy form to avoid recomputing on every render (since `useState`'s argument is evaluated before the call, a lazy initializer prevents that). The value may later be changed via the setter. The component can evolve this value independently.
@@ -438,16 +433,15 @@ Both run the provided function once on mount and cache the result. The differenc
 `useMemo(() => heavyCompute(), [])` signals: this is a derived value that happens to never change (empty deps). It cannot be imperatively updated. It is recomputed if React discards the cache (a reserved right React has). It is semantically wrong for values that are state.
 
 Use `useState` with a lazy initializer for expensive initial state that will later be updated. Use `useMemo` with stable non-empty deps for computed values that derive from props or state. Using `useMemo` with empty deps as a substitute for `useState` initialization is technically functional but semantically misleading and may behave incorrectly if React exercises its right to discard `useMemo` caches.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q4.** A developer wraps every derived value in their component in `useMemo`. What is the concrete harm, beyond just "overhead"?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Three concrete harms beyond general overhead.
 
 First, stale closure bugs. Every `useMemo` callback captures values from its render scope. Every dependency array must be complete. In a component with 10 `useMemo` calls, each with their own dependency arrays, the surface area for missing dependencies is 10x larger than a component with no `useMemo`. A missed dependency produces a silently incorrect cached value that is impossible to notice in normal testing and surfaces only under specific state transition sequences.
@@ -455,5 +449,4 @@ First, stale closure bugs. Every `useMemo` callback captures values from its ren
 Second, increased cognitive load for maintenance. A future developer reading the component must understand what each `useMemo` is caching, why, and what its deps represent. In a component where most computations are trivial, the `useMemo` wrappers imply "this is expensive" when it is not, misleading the reader about where actual performance costs live.
 
 Third, the cache occupies memory for the component's lifetime. Each `useMemo` stores its result on the Fiber. For components that render many instances (a list of 1000 items, each with 10 `useMemo` calls), the cached values for all 10,000 hook nodes live in memory simultaneously. For trivial cached values (strings, small objects), this is negligible. For arrays or complex objects, multiplied by many instances, it becomes real memory pressure.
-
-</details>
+</Answer>

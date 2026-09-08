@@ -351,6 +351,7 @@ Context splitting reduces this cost not by making each walk cheaper but by reduc
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: A developer wraps every context consumer in `React.memo` to prevent context-triggered re-renders. Does it work?**
 
 ```jsx
@@ -359,20 +360,19 @@ const MemoizedCartBadge = React.memo(function CartBadge() {
   return <span>{cart.length}</span>;
 });
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 No. `React.memo` prevents re-renders caused by trigger 2 (parent re-render). Context changes are trigger 3, which directly marks the consumer Fiber with a force-update lane via `propagateContextChange`. This lane marking causes `beginWork` to process the Fiber unconditionally, bypassing the `React.memo` prop comparison.
 
 When `UserContext`'s value changes (any part of it, because it is a single object), `propagateContextChange` marks `CartBadge`'s Fiber. `React.memo`'s prop check is irrelevant: the Fiber has been directly scheduled for work. It re-renders regardless.
 
 `React.memo` is the wrong tool for context performance. The correct tools are: context splitting (so the consumer's specific context only changes when relevant data changes), memoized value objects (so the context value reference does not change when irrelevant internal state changes), and separating state from dispatch contexts (so action-only consumers never re-render on state changes).
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: This provider has two consumers. User changes. How many re-renders happen and why?**
 
 ```jsx
@@ -399,10 +399,9 @@ const Counter = React.memo(function Counter() {
 ```
 
 `setUser({ name: 'Ravi' })` is called. How many re-renders?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Both `UserDisplay` and `Counter` re-render. Three total renders: `AppProvider`, `UserDisplay`, and `Counter`.
 
 The sequence: `setUser` updates `user` in `AppProvider`. `AppProvider` re-renders. `useMemo` checks deps: `[user, count]`. `user` changed (new reference). `useMemo` recomputes. New object: `{ user: newUser, count: 0, setUser, setCount }`. New reference. `AppContext.Provider` receives a new `value`. `Object.is(oldValue, newValue)` is `false`. `propagateContextChange` walks the subtree, finds `UserDisplay` and `Counter` as consumers. Both are marked with force-update lanes.
@@ -412,11 +411,11 @@ The sequence: `setUser` updates `user` in `AppProvider`. `AppProvider` re-render
 `Counter` re-renders (unnecessary: `count` did not change, `setCount` is stable). But because both consume the same `AppContext`, which changed, both re-render. `React.memo` on `Counter` does not help because context trigger 3 bypasses it.
 
 This is exactly why context splitting matters: if `user` and `count` were in separate contexts, changing `user` would only re-render `UserDisplay`, not `Counter`.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: Is there a way to make a component consume context without re-rendering when the context changes?**
 
 ```jsx
@@ -427,10 +426,9 @@ function ActionButton() {
   return <button onClick={() => addToCart(item)}>Add</button>;
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Yes, by separating the dispatch function into its own context whose value never changes.
 
 `useReducer`'s `dispatch` is a stable reference: same function object for the entire lifetime of the component. If `addToCart` is derived from `dispatch`, and `dispatch` is provided through a separate `CartDispatchContext`, then `CartDispatchContext`'s value is `dispatch`, which never changes. `Object.is(dispatch, dispatch)` is `true` on every render. `propagateContextChange` is never called for `CartDispatchContext`. `ActionButton` is never re-rendered by context trigger 3.
@@ -458,18 +456,17 @@ function ActionButton() {
 ```
 
 The key insight: if the context value is a stable reference (a primitive, a stable function, or a memoized object whose deps never change), the context never triggers re-renders. Structuring contexts so that action-only consumers subscribe to stable dispatch values is the most reliable way to prevent unnecessary context re-renders without external state libraries.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** `React.memo` blocks trigger 2 re-renders. Why can it not block trigger 3 (context change) re-renders?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `React.memo` works by intercepting the render decision in `beginWork` for `MemoComponent` Fibers. It compares previous and current props using `shallowEqual`. If props are equal, it calls `bailoutOnAlreadyFinishedWork`, which skips calling the component function and reuses the previous render output.
 
 This interception happens only when the Fiber is being processed due to a parent re-render (trigger 2), where the Fiber's lanes were set because its parent is re-rendering.
@@ -477,35 +474,32 @@ This interception happens only when the Fiber is being processed due to a parent
 Context changes (trigger 3) work differently. `propagateContextChange` directly marks the consumer Fiber's `lanes` field with the current render lanes. When `beginWork` processes this Fiber, it finds pending work in the current render lanes (`includesSomeLane` returns `true`). The Fiber has been explicitly scheduled for work by the context propagation system, not by a parent re-render. This direct scheduling bypasses the `React.memo` prop comparison entirely. The component function is called regardless of what its props are.
 
 The two triggers use different mechanisms to schedule work. `React.memo` only intercepts the parent-propagated mechanism. Context changes use a direct scheduling mechanism that `React.memo` cannot observe.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** Context A and Context B are both provided by the same component. A consumer subscribes to both. Context A changes. Does the consumer re-render once or twice?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Once. React batches the work from both context changes into a single render pass.
 
 When Context A changes, `propagateContextChange` for Context A marks the consumer's Fiber with the current render lanes. When React subsequently processes the render (or when Context B also changes in the same render if both Providers are updated simultaneously), `propagateContextChange` for Context B marks the same Fiber again. The `mergeLanes` operation just sets the same lane bits again on the already-marked Fiber: it is idempotent. The Fiber is marked once, processed once, and the component function is called once.
 
 React's rendering model is: collect all work, process it in one pass. Multiple context changes, multiple parent re-renders, and state updates can all target the same component, but the component's function is called once per render pass. All pending updates for that render are processed in that single call.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** The state-dispatch separation pattern uses `useReducer` rather than `useState`. What property of `useReducer`'s dispatch makes it suitable for this pattern that `useState`'s setter shares?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Both `useReducer`'s `dispatch` and `useState`'s setter are guaranteed to be stable references: the same function object for the entire lifetime of the component. React creates these functions once at mount time, binds them to the specific Fiber and update queue, and returns the same reference on every subsequent render.
 
 The reason `dispatch` is highlighted in this pattern is that `useReducer` naturally separates the "how to update" logic (the reducer function) from the "trigger an update" mechanism (dispatch). This makes it natural to provide `dispatch` as the entire interface for the dispatch context, with consumers calling `dispatch({ type: 'ADD', item })` without knowing the current state. With `useState`, the setter is a function that takes either a new value or an updater function. It is equally stable. The pattern `const [count, setCount] = useState(0)` produces a stable `setCount` that can be placed in a dispatch context with the same guarantees.
 
 The selection of `useReducer` over `useState` for this pattern is often about the complexity of the state logic (many action types benefit from a reducer) rather than any difference in the stability of the update function.
-
-</details>
+</Answer>

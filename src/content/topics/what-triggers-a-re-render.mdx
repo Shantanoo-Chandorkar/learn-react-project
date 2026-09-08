@@ -355,6 +355,7 @@ React 18 optimized context propagation: it only walks the subtree below the chan
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: Will `Child` re-render when the button is clicked? Explain precisely.**
 
 ```jsx
@@ -375,20 +376,19 @@ function Parent() {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `Child` does not re-render after the first mount (in the normal case).
 
 When the button is clicked, `Parent`'s state (`count`) changes. This is trigger 1 for `Parent`. `Parent` re-renders. `Child` would normally re-render due to trigger 2 (parent re-render). But `Child` is wrapped in `React.memo`. React checks `prevProps.value === nextProps.value` using shallow equality. `value` is `'hello'` in both cases (same string primitive, `Object.is('hello', 'hello')` is `true`). The memo check passes. `Child` bails out. Zero renders for `Child` after mount.
 
 Caveat: in React 18 Strict Mode development, React double-invokes renders to detect impure components. You may see `Child rendered` twice on mount. This is not a production behavior.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: `React.memo` is applied. Does it prevent the re-render here?**
 
 ```jsx
@@ -408,10 +408,9 @@ function App() {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 No. `React.memo` does not prevent re-renders caused by context changes (trigger 3).
 
 When `theme` changes, `App` re-renders (trigger 1: own state change). `ThemeConsumer` would normally re-render due to trigger 2 (parent re-render). `React.memo` checks props. `ThemeConsumer` receives no props, so props are trivially equal. Trigger 2 is blocked by `React.memo`.
@@ -419,11 +418,11 @@ When `theme` changes, `App` re-renders (trigger 1: own state change). `ThemeCons
 However, `ThemeConsumer` also consumes `ThemeContext` via `useContext`. The context value changed. React marks `ThemeConsumer`'s Fiber with a `ForceUpdate` lane directly. This bypasses `React.memo`'s prop check. `ThemeConsumer` re-renders due to trigger 3 regardless of `React.memo`.
 
 `React.memo` only protects against trigger 2 (parent re-render propagation). It has no effect on trigger 3 (context changes).
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: How many times does `App` render, and what does each render's `console.log` show?**
 
 ```jsx
@@ -445,10 +444,9 @@ function App() {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 In React 18 with `createRoot`: two renders.
 
 Render 1 (mount): `render 0 0`. The component mounts. The effect has not run yet.
@@ -460,11 +458,11 @@ Render 2 (batched update): `render 1 1`. Both `a` and `b` are updated to `1` in 
 In React 17 (legacy root): three renders. Effects after mount in React 17 did not batch state updates made inside them (they ran in `flushPassiveEffects` which did not set the batching context). `setA(1)` would trigger render 2 (`render 1 0`), and `setB(1)` would trigger render 3 (`render 1 1`).
 
 In Strict Mode development (React 18): the mount render is doubled for purity checking. You would see `render 0 0` twice, then `render 1 1` once. In production, it is `render 0 0` once then `render 1 1` once.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 4: A developer adds `React.memo` to a component that uses `useContext`. They expect no more unnecessary re-renders. What is wrong with their expectation?**
 
 ```jsx
@@ -478,27 +476,25 @@ const UserCard = React.memo(function UserCard({ userId }) {
   );
 });
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `React.memo` protects against trigger 2 (parent re-renders with unchanged props) but not trigger 3 (context changes). `UserCard` consumes two contexts: `ThemeContext` and `NotificationContext`. Any change to either context value causes `UserCard` to re-render, regardless of `React.memo`. If `NotificationContext` updates its count every second (live notification badge), `UserCard` re-renders every second even if the theme never changes and the parent never re-renders.
 
 `React.memo` is not a general memoization shield. It shields against one specific trigger (parent re-render without prop changes). Components that consume frequently-changing contexts will re-render on those changes with or without `React.memo`.
 
 The solution for preventing unnecessary context re-renders is not `React.memo` but context splitting (separate `ThemeContext` from `NotificationContext` so they change independently), or selectors via `useMemo` to derive a stable value from the context, or a state library that supports granular subscriptions.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** List the four triggers that cause a React component to re-render. For each, state the specific condition and whether `React.memo` prevents it.
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Trigger 1: own state change. The component's `useState` setter or `useReducer` dispatch is called with a new value that differs from the current state under `Object.is`. `React.memo` does not apply: `React.memo` checks props, not internal state. A component always re-renders when its own state changes regardless of memoization.
 
 Trigger 2: parent re-render. The parent component re-renders and produces new JSX that includes this component. By default, React calls the child's function. `React.memo` prevents this: if all props are shallowly equal to the previous render's props, React bails out and skips the function call.
@@ -506,16 +502,15 @@ Trigger 2: parent re-render. The parent component re-renders and produces new JS
 Trigger 3: consumed context changes. A `Context.Provider` above this component in the tree updates its value, and this component called `useContext` for that context. React marks the component's Fiber with a force-update lane. `React.memo` does not prevent this: context changes bypass `React.memo`'s prop check.
 
 Trigger 4: external subscription via `useSyncExternalStore`. The subscribed external store changes and notifies React. This is mechanically trigger 1 (a state update is scheduled on the component's Fiber). `React.memo` does not prevent it for the same reason as trigger 1.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** A component has no state, no context, and its props never change. Its parent re-renders 100 times per second (an animation). The component re-renders 100 times per second too. Is this a problem, and what is the fix?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Whether it is a problem depends on what the component does. If it is a simple component that renders a few DOM nodes and the reconciler finds nothing to update in the DOM, each render costs a function call plus a diff of a small element tree, which may be microseconds per render. 100 renders per second of a trivial component is not a problem.
 
 If the component is expensive (large subtree, complex calculations in the function body, many children to reconcile), 100 renders per second is a problem.
@@ -523,44 +518,40 @@ If the component is expensive (large subtree, complex calculations in the functi
 The fix: `React.memo`. Wrapping the component in `React.memo` converts trigger 2 from "parent re-renders" to "parent re-renders AND at least one prop changed." If the props truly never change, `React.memo` causes React to skip the function call entirely on every parent re-render. The component renders once on mount and is then skipped for all 100 renders per second.
 
 The deeper fix: if the animation state is the cause of the 100 renders per second, consider whether that state can be colocated in a smaller component that does not render the expensive component as a child. State colocation and the children-as-props pattern can isolate animation re-renders to a small subtree without `React.memo`.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** What is `childLanes` on a Fiber node and why does React propagate it up the tree when state changes?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `childLanes` is a bitmask on a Fiber node that indicates whether any component in the subtree below it has pending work. When `scheduleUpdateOnFiber` is called for a specific Fiber, React walks from that Fiber to the root, merging the update's lane into each ancestor's `childLanes`. This creates a trail of "there is pending work somewhere below me" markers up the entire ancestor chain to the root.
 
 During the render phase, when React processes a Fiber using `beginWork`, it checks if the Fiber itself has pending work (own `lanes`) and if its subtree has pending work (`childLanes`). If neither has pending work for the current render's lanes, React bails out the entire subtree without visiting any of its children. This allows React to skip arbitrarily large parts of the Fiber tree that are irrelevant to the current update, making reconciliation efficient even for large applications. Without `childLanes`, React would have to visit every node in the tree on every update to check if it needs work.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q4.** A parent re-renders. A child is wrapped in `React.memo`. The child receives one prop: an object `{ id: 1, name: 'Shan' }` created inline in the parent's JSX. Does `React.memo` prevent the re-render?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 No. `React.memo` uses shallow equality by default, comparing each prop with `Object.is`. The object `{ id: 1, name: 'Shan' }` is an object literal created inline in the parent's JSX. Every time the parent renders, a new object is created with a new memory reference. Even though the contents are identical, `Object.is(previousObject, newObject)` is `false` because they are two different objects. The shallow equality check fails on this prop, and `React.memo` does not bail out. The child re-renders.
 
 The fix is to stabilize the object reference: move it outside the component if it is constant, or wrap it in `useMemo` if it depends on state or props. This is the same issue as passing inline functions as props: new reference on every render, defeating `React.memo`. Effective use of `React.memo` requires that the props passed to the memoized component are stable references.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q5.** Two components consume the same context. One is high in the tree, one is deep. The context value changes once. Which one re-renders first, and why?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The one higher in the tree re-renders first. React's render phase processes the Fiber tree in depth-first order, starting from the root and working downward. When a context value changes, React walks the subtree below the Provider marking consumer Fibers with a force-update lane. During the subsequent render phase, React processes Fibers in their depth-first order. The consumer higher in the tree (closer to the root) is encountered before the consumer deeper in the tree, and its function is called first.
 
 This ordering matters when a context consumer higher in the tree changes its own state during render in response to the new context value (though this is rare and usually a design smell). More practically, it means the full subtree of the higher consumer (including the lower consumer) is processed in one top-down pass, maintaining the invariant that parents are always rendered before their children in any given render pass.
-
-</details>
+</Answer>

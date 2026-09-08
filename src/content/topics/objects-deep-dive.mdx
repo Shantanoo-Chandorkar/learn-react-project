@@ -410,6 +410,7 @@ All answers are hidden. Attempt each before expanding.
 
 ### Section 3.1: Property descriptors (4 questions)
 
+<Question>
 **Q1.** What does this log?
 
 ```js
@@ -422,18 +423,17 @@ Object.defineProperty(obj, 'x', {
 obj.x = 99;
 console.log(obj.x);
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **`10`**
 
 `writable: false` prevents reassignment. In non-strict mode this silently fails. In strict mode it throws a `TypeError`. The value stays `10`. Note: `configurable` defaults to `false` when using `defineProperty`, so you cannot redefine it either.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** What does this log?
 
 ```js
@@ -448,18 +448,17 @@ console.log('c' in obj);
 console.log(Object.keys(obj));
 console.log(obj.c);
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **`true`, `["a", "b"]`, `3`**
 
 `in` checks for property existence across the entire object and its prototype chain, regardless of enumerability. `Object.keys` only returns own enumerable keys, so `c` is excluded. Directly accessing `obj.c` still works, enumerability only controls visibility in iteration and spread, not direct access.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** What does this log?
 
 ```js
@@ -477,18 +476,17 @@ Object.defineProperty(obj, 'id', { writable: false });
 obj.id = 3;
 console.log(obj.id);
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **`2`, `2`**
 
 Even though `configurable` is `false`, you can still change `writable` from `true` to `false` (one-way only). Once `writable` is set to `false`, the direct assignment `obj.id = 3` silently fails. The value stays `2`. The one-way rule: `configurable: false` allows tightening (`writable: true → false`) but never loosening.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q4.** What does this log?
 
 ```js
@@ -503,20 +501,19 @@ console.log(descriptor.enumerable);
 console.log(descriptor.writable);
 console.log(descriptor.configurable);
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **`true`, `true`, `true`**
 
 Properties created via normal assignment inside a constructor (or anywhere via `=`) get all four descriptor defaults: `value` as assigned, `writable: true`, `enumerable: true`, `configurable: true`. Only `Object.defineProperty` lets you override these defaults. Normal assignment always produces a fully open descriptor.
-
-</details>
+</Answer>
 
 ---
 
 ### Section 3.2: Key methods (4 questions)
 
+<Question>
 **Q5.** What does this log?
 
 ```js
@@ -530,18 +527,17 @@ console.log(obj.a);
 console.log(obj.c);
 console.log(obj.b);
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **`99`, `undefined`, `2`**
 
 `seal` prevents additions and deletions but allows modification of existing values. `obj.a = 99` works because the property exists and is still writable. `obj.c = 3` silently fails, `c` is never added. `delete obj.b` silently fails, `b` stays. This is the core distinction between `seal` (can edit, can't add/delete) and `freeze` (can't do anything).
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q6.** What does this log?
 
 ```js
@@ -558,18 +554,17 @@ for (let key in dog) {
   process.stdout.write(key + ' ');
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **`["name"]`, `["rex"]`, `"name legs "`**
 
 `Object.keys` and `Object.values` only return own enumerable properties. `legs` is on the prototype, not the instance, so it is excluded. `for...in` walks the full prototype chain and includes inherited enumerable properties, so `legs` appears. To filter in `for...in`: use `dog.hasOwnProperty(key)`.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q7.** What does this log?
 
 ```js
@@ -586,18 +581,17 @@ Object.assign(target, source);
 console.log(target.b);
 console.log(target.c);
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **Throws `TypeError`**, then `target.c` would be `3` if the error were caught.
 
 `Object.assign` copies properties by invoking the setter on the target. `b` on the target has `writable: false`. When `assign` tries to write `99` to it, it triggers a `TypeError` because writing to a non-writable property in any context other than `defineProperty` throws in strict mode and `assign` internally operates in strict mode. This is a key difference from spread, which would create a new object and not trigger this issue.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q8.** What does this log?
 
 ```js
@@ -609,20 +603,19 @@ console.log(dict.hasOwnProperty);
 console.log('toString' in dict);
 console.log(Object.keys(dict));
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **`"shan"`, `undefined`, `false`, `["name"]`**
 
 `Object.create(null)` produces an object with no prototype at all, not even `Object.prototype`. There is no `hasOwnProperty`, no `toString`, no `constructor`, nothing. `"toString" in dict` is `false` because there is no prototype chain to walk. `Object.keys` still works because it is a static method on `Object` itself, not called through the instance. This is why `Object.create(null)` is safe for arbitrary key dictionaries.
-
-</details>
+</Answer>
 
 ---
 
 ### Section 3.3: Shallow vs deep copy (4 questions)
 
+<Question>
 **Q9.** What does this log?
 
 ```js
@@ -640,18 +633,17 @@ console.log(typeof copy.d);
 console.log(copy.nested.b);
 console.log(copy.nested === original.nested);
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **`undefined`, `"string"`, `2`, `false`**
 
 `JSON.stringify` silently drops functions. `copy.fn` is `undefined`. `Date` objects are serialized to their ISO string representation, so `copy.d` is a string, not a `Date`. `copy.nested.b` is `2`, correctly deep copied. `copy.nested === original.nested` is `false` because `JSON` round-trip creates entirely new objects, so it is a true deep clone for plain values.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q10.** What does this log?
 
 ```js
@@ -663,18 +655,17 @@ Object.defineProperty(obj, 'a', { enumerable: false });
 console.log(Object.keys(copy));
 console.log(Object.keys(obj));
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **`["a"]`, `[]`**
 
 Spread copies own enumerable properties at the moment of spreading. At that point `a` was enumerable, so `copy` gets `a` as a normal enumerable property. Later making `a` non-enumerable on `obj` has no effect on `copy`, it already has its own independent `a`. `Object.keys(obj)` returns `[]` because `a` is now non-enumerable on `obj`.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q11.** What does this log?
 
 ```js
@@ -688,18 +679,17 @@ spread.nested.b = 50;
 
 console.log(obj.nested.b);
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **`50`**
 
 Two operations happen. `structuredClone` creates a true deep copy, so `copy.nested.b = 99` does not affect `obj`. Then spread creates a shallow copy, so `spread.nested` is the same reference as `obj.nested`. Setting `spread.nested.b = 50` directly mutates `obj.nested.b`. The final value is `50`.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q12.** What does this log?
 
 ```js
@@ -712,20 +702,19 @@ b.x = 1;
 console.log(a.x);
 console.log(c.x);
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **`1`, `undefined`**
 
 `b = a` is not a copy at all. Both `a` and `b` point to the same object in memory. Mutating `b.x` is mutating `a.x`. `c = { ...a }` was spread at the point when `a` had no properties, creating an empty independent object. The subsequent mutation through `b` does not affect `c`. This distinguishes assignment (reference sharing) from spread (snapshot copy).
-
-</details>
+</Answer>
 
 ---
 
 ### Section 3.4: Optional chaining & nullish coalescing (4 questions)
 
+<Question>
 **Q13.** What does this log?
 
 ```js
@@ -737,18 +726,17 @@ console.log(user.getName?.());
 console.log(user.getAge?.());
 console.log(user.address?.city ?? 'unknown');
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **`"shan"`, `undefined`, `"unknown"`**
 
 `user.getName?.()` checks if `getName` exists before calling it, it does, so it returns `"shan"`. `user.getAge?.()` sees `getAge` is `undefined`, short-circuits, returns `undefined`, no TypeError. `user.address` is `undefined`, `?.city` short-circuits to `undefined`, then `?? "unknown"` returns `"unknown"` because `undefined` triggers the nullish fallback.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q14.** What does this log?
 
 ```js
@@ -765,18 +753,17 @@ console.log(settings.label ?? 'default');
 console.log(settings.enabled ?? true);
 console.log(settings.missing ?? 'fallback');
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **`"dark"`, `0`, `""`, `false`, `"fallback"`**
 
 `??` only triggers on `null` or `undefined`. `null` triggers → `"dark"`. `0` is not null/undefined → `0`. `""` is not null/undefined → `""`. `false` is not null/undefined → `false`. `settings.missing` is `undefined` → `"fallback"`. If these were `||`, the answers would be `"dark"`, `16`, `"default"`, `true`, `"fallback"`, catching all falsy values.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q15.** What does this log?
 
 ```js
@@ -788,18 +775,17 @@ const result = obj?.method(count++);
 console.log(result);
 console.log(count);
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **`undefined`, `0`**
 
 `obj` is `null`, so `?.` short-circuits immediately. The entire right side of the `?.`, including the argument `count++`, is never evaluated. `count++` never runs, so `count` remains `0`. This is the short-circuit evaluation behavior of `?.`, it is not just a null guard, it actively prevents evaluation of anything to its right.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q16.** What does this log?
 
 ```js
@@ -811,20 +797,19 @@ console.log(data.users[0]?.address?.city ?? 'no city');
 console.log(data.users[1]?.name ?? 'no user');
 console.log(data.users[0]?.name ?? 'no name');
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **`"no city"`, `"no user"`, `"shan"`**
 
 First: `data.users[0]` exists, `address` is `null`, `?.city` on `null` short-circuits to `undefined`, `?? "no city"` triggers. Second: `data.users[1]` is `undefined` (only index 0 exists), `?.name` short-circuits to `undefined`, `?? "no user"` triggers. Third: `data.users[0]` exists, `name` is `"shan"`, `?? "no name"` does not trigger because `"shan"` is not null/undefined.
-
-</details>
+</Answer>
 
 ---
 
 ### Section 3.5: Computed properties & shorthand (4 questions)
 
+<Question>
 **Q17.** What does this log?
 
 ```js
@@ -841,18 +826,17 @@ console.log(obj.getName());
 console.log(typeof obj.getName);
 console.log(Object.keys(obj));
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **`"shan"`, `"function"`, `["getName"]`**
 
 The template literal inside `[]` is evaluated at object creation time, producing the key `"getName"`. The method shorthand creates a function under that key. `typeof obj.getName` is `"function"`. `Object.keys` returns it because methods defined via shorthand are enumerable by default. This differs from `Object.defineProperty` where `enumerable` defaults to `false`.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q18.** What does this log?
 
 ```js
@@ -870,18 +854,17 @@ console.log(player.best_score);
 console.log(player[key]);
 console.log(player[`best_${key}`]);
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **`100`, `200`, `100`, `200`**
 
 `score` uses property shorthand, equivalent to `score: score`. ``[`best_${key}`]`` evaluates the template at creation time, producing key `"best_score"`. `player[key]` is `player["score"]` which is `100`. ``player[`best_${key}`]`` is `player["best_score"]` which is `200`. Both bracket notations work because the keys were set the same way.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q19.** What does this log?
 
 ```js
@@ -896,18 +879,17 @@ const obj = {
 console.log(obj);
 console.log(i);
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **`{ 0: 0, 1: 1, 2: 2 }`, `3`**
 
 Computed property keys and values are evaluated left to right. For each entry, the key expression is evaluated first, then the value expression. First entry: key `i` = `0`, value `i++` = `0` (i becomes `1`). Second: key `i` = `1`, value `i++` = `1` (i becomes `2`). Third: key `i` = `2`, value `i++` = `2` (i becomes `3`). No duplicate keys, so nothing is overwritten.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q20 (Mixed: 3.1 + 3.2 + 3.3 + 3.5)** What does this log?
 
 ```js
@@ -933,12 +915,10 @@ console.log(Object.keys(spread));
 console.log('2' in clone);
 console.log('2' in spread);
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 **`2`, `["0","1"]`, `["0","1"]`, `["0","1"]`, `false`, `false`**
 
 `n` ends at `2` after two `n++` evaluations. `base` has three properties: `"0"` and `"1"` (enumerable), `"2"` (non-enumerable via `defineProperty`). `Object.keys(base)` returns only enumerable own keys: `["0","1"]`. `JSON.stringify` serializes only own enumerable properties, so key `"2"` is dropped entirely. `clone` has no key `"2"`, so `"2" in clone` is `false`. Spread also copies only own enumerable properties, so `spread` also has no key `"2"`. All three `Object.keys` calls return `["0","1"]` for the same reason.
-
-</details>
+</Answer>

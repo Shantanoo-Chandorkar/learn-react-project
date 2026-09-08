@@ -11,6 +11,7 @@ order: 34
 
 ---
 
+<Question>
 ### Q1 — JavaScript in Head (async vs defer)
 
 Two scripts are in `<head>`: `file1.js` and `file2.js`. `file2.js` depends on `file1.js`. Loading them is slowing down rendering. The HTML can render without JS (fallbacks exist). Which statements are true? (Pick all that apply)
@@ -20,10 +21,9 @@ Two scripts are in `<head>`: `file1.js` and `file2.js`. `file2.js` depends on `f
 3. This problem can be fixed by using `defer` on both `<script>` tags
 4. This problem can be fixed by using `async` for file1.js and `defer` for file2.js
 5. This problem can be fixed by using `defer` for file1.js and `async` for file2.js
+</Question>
 
-<details>
-<summary>Answer (expand after you've thought through it)</summary>
-
+<Answer>
 **Answer: Option 3 only**
 
 - `async`: parallel download, executes immediately when ready, order NOT guaranteed
@@ -33,11 +33,11 @@ Two scripts are in `<head>`: `file1.js` and `file2.js`. `file2.js` depends on `f
 - ✅ Option 3: `defer` on both — no render blocking + order preserved
 - ❌ Option 4: `async` on file1 could execute after file2 (defer)
 - ❌ Option 5: `async` on file2 could fire before file1 resolves
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 ### Q2 — JavaScript Selector
 
 Consider `<div id="abc" class="def">xyz</div>`. Which is the correct way to select this element using pure JavaScript? (Select closest option)
@@ -46,21 +46,20 @@ Consider `<div id="abc" class="def">xyz</div>`. Which is the correct way to sele
 2. `document.getElementByClass("def")`
 3. `document.getElementById("#abc")`
 4. `document.getElementById("abc")`
+</Question>
 
-<details>
-<summary>Answer (expand after you've thought through it)</summary>
-
+<Answer>
 **Answer: Option 4**
 
 - ❌ `$("#abc")`: jQuery, not pure JS
 - ❌ `document.getElementByClass("def")`: wrong method name + returns a collection
 - ❌ `document.getElementById("#abc")`: should not include `#`
 - ✅ `document.getElementById("abc")`: correct syntax, selects unique element
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 ### Q3 — Async Callback (doStuff)
 
 `doStuff(callback)` is an async function that calls `callback(results, err)`. If error, `err` is non-null. Consider:
@@ -83,10 +82,9 @@ Which output sequences can NEVER be produced? (Pick all that apply)
 - A D C
 - A D B C
 - None of the above
+</Question>
 
-<details>
-<summary>Answer (expand after you've thought through it)</summary>
-
+<Answer>
 **Answer: A B C D and A C D can NEVER be produced**
 
 - D always logs synchronously before the callback ever fires
@@ -94,11 +92,11 @@ Which output sequences can NEVER be produced? (Pick all that apply)
 - ❌ `A C D`: D cannot come after C
 - ✅ `A D C`: Possible — no error case
 - ✅ `A D B C`: Possible — error case
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 ### Q4 — setTimeout
 
 Consider `setTimeout(f, 2000)`. Which statement most accurately describes when `f` is guaranteed to be called? (Select closest option)
@@ -108,20 +106,19 @@ Consider `setTimeout(f, 2000)`. Which statement most accurately describes when `
 3. More than 1999ms but less than 2001ms after setTimeout
 4. More than 2000ms but less than 2001ms after setTimeout
 5. More than 2000ms after setTimeout — but there is no guarantee of how much more
+</Question>
 
-<details>
-<summary>Answer (expand after you've thought through it)</summary>
-
+<Answer>
 **Answer: Option 5**
 
 - `setTimeout(f, 2000)` is a minimum delay, not an exact one
 - Callback only runs when the call stack is empty
 - If the main thread is busy, `f` can be delayed well beyond 2000ms
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 ### Q5 — Noscript
 
 The `<noscript>` tag: (Select closest option)
@@ -131,16 +128,14 @@ The `<noscript>` tag: (Select closest option)
 3. Is executed when the page is loaded with scripts disabled
 4. Was used in IE6 and older browsers, no longer supported by newer browsers
 5. Was used with HTML4.0, no longer supported by HTML5
+</Question>
 
-<details>
-<summary>Answer (expand after you've thought through it)</summary>
-
+<Answer>
 **Answer: Option 3**
 
 - `<noscript>` renders fallback content when JS is disabled or unsupported
 - Still valid and fully supported in HTML5
-
-</details>
+</Answer>
 
 ---
 
@@ -148,6 +143,7 @@ The `<noscript>` tag: (Select closest option)
 
 ---
 
+<Question>
 ### Q6 — ES6 const
 
 ```javascript
@@ -163,19 +159,18 @@ What is the result? (Select closest option)
 3. It will print 1
 4. It will print 3
 5. It will print undefined
+</Question>
 
-<details>
-<summary>Answer (expand after you've thought through it)</summary>
-
+<Answer>
 **Answer: Option 4 — prints 3**
 
 - `const` prevents reassignment of `X` itself, not mutation of its properties
 - `X.a = 3` is valid → prints 3
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 ### Q7 — ES6 for..of
 
 ```javascript
@@ -195,20 +190,19 @@ What is the result? (Select closest option)
 3. Prints `123foo`
 4. Prints `012foo`
 5. Prints `foo012`
+</Question>
 
-<details>
-<summary>Answer (expand after you've thought through it)</summary>
-
+<Answer>
 **Answer: Option 2 — prints 123**
 
 - `for...of` iterates only indexed elements (1, 2, 3), not custom properties
 - `a.x = "foo"` is skipped entirely
 - `b = "" + 1 + 2 + 3 = "123"` (string concatenation)
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 ### Q8 — ES6 Let
 
 ```javascript
@@ -228,20 +222,19 @@ What is the result? (Select closest option)
 3. Prints Yes
 4. Prints No
 5. Prints undefined
+</Question>
 
-<details>
-<summary>Answer (expand after you've thought through it)</summary>
-
+<Answer>
 **Answer: Option 2 — ReferenceError**
 
 - `let` is block-scoped — both declarations are inside `{ }` blocks
 - `b` does not exist outside the if/else blocks
 - With `var` this would work fine (function-scoped)
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 ### Q9 — Promises with async/await
 
 ```javascript
@@ -262,10 +255,9 @@ Where `promised_function` resolves after 3 seconds. What happens? (Select closes
 3. done is printed immediately. After 3 seconds, first and second are both printed together.
 4. After 3 seconds, first is printed. After 3 more seconds, second and done are printed together.
 5. done is printed immediately. 6 seconds later, first and second are both printed together.
+</Question>
 
-<details>
-<summary>Answer (expand after you've thought through it)</summary>
-
+<Answer>
 **Answer: Option 1**
 
 - Both `p1` and `p2` timers start concurrently before any `await`
@@ -273,8 +265,7 @@ Where `promised_function` resolves after 3 seconds. What happens? (Select closes
 - `await p2` is already resolved by then → prints `second` almost instantly
 - `console.log('done')` fires right after
 - All three print at the ~3 second mark
-
-</details>
+</Answer>
 
 ---
 
@@ -282,6 +273,7 @@ Where `promised_function` resolves after 3 seconds. What happens? (Select closes
 
 ---
 
+<Question>
 ### Q10 — React.js Error
 
 ```javascript
@@ -298,20 +290,19 @@ This code has an error. What is the problem? (Pick all that apply)
 3. The function attr should return a string or JS object, not HTML/JSX
 4. `attr` needs to be capitalized as `Attr`
 5. None of the above
+</Question>
 
-<details>
-<summary>Answer (expand after you've thought through it)</summary>
-
+<Answer>
 **Answer: Option 4**
 
 - JSX treats lowercase names as native HTML elements
 - `<attr .../>` is treated as an unknown HTML tag, not the function
 - Fix: rename to `Attr` and use `<Attr value="v1"/>`
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 ### Q11 — useState #3
 
 ```javascript
@@ -331,20 +322,19 @@ Which statement is true? (Pick all that apply)
 3. First time MyComp is called, it will print `cnt is 1`
 4. First time MyComp is called, it will print `cnt is 2`
 5. This is illegal because useState cannot be used in a for loop
+</Question>
 
-<details>
-<summary>Answer (expand after you've thought through it)</summary>
-
+<Answer>
 **Answer: Option 5 only**
 
 - Violates React's Rules of Hooks: hooks must not be called inside loops
 - Hook call order must be consistent across every render
 - React will throw a rules-of-hooks violation at runtime
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 ### Q12 — React preventDefault
 
 ```javascript
@@ -368,19 +358,18 @@ function eventAction() {
 3. The doClick function should call `e.preventDefault()` instead of returning false
 4. Replace `href={someUrl}` with `href="#"`
 5. None of the above
+</Question>
 
-<details>
-<summary>Answer (expand after you've thought through it)</summary>
-
+<Answer>
 **Answer: Option 3**
 
 - In React, `return false` does nothing to prevent default behavior
 - React's synthetic event system requires `e.preventDefault()` explicitly
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 ### Q13 — Sibling State
 
 Component `Money` has two children: `Rupees` and `Paisa`, both with an `amount` state. You need `addPaisa(amt)` in `Paisa` to increment `Paisa`'s amount, and if total > 100, decrement it by 100 and increment `Rupees`' amount by 1. What is the right way for `addPaisa` in `Paisa` to access `Rupees`' state? (Select closest option)
@@ -390,20 +379,19 @@ Component `Money` has two children: `Rupees` and `Paisa`, both with an `amount` 
 3. Using `this.getParent().getChildren()[0].setState`
 4. Using `window.Money.rupees.setState`
 5. It is not possible for a component to access a sibling component's state
+</Question>
 
-<details>
-<summary>Answer (expand after you've thought through it)</summary>
-
+<Answer>
 **Answer: Option 5**
 
 - State is private and local to the component that owns it
 - Correct pattern: lift state up to parent `Money`, pass state and update callback as props
 - `this.parent`, `this.getParent()`, `window.Money` are not valid React APIs
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 ### Q14 — Counter HTML
 
 ```javascript
@@ -435,18 +423,16 @@ What code should replace `// ?????` to efficiently update only the counter span 
 3. `ReactDOM.render(counter_html(), document.getElementById('root'));`
 4. `$('#counter').update(counter_var)`
 5. This cannot be done without modifying counter_html
+</Question>
 
-<details>
-<summary>Answer (expand after you've thought through it)</summary>
-
+<Answer>
 **Answer: Option 3**
 
 - `counter_html()` is called fresh each time, reading the updated `counter_var`
 - `ReactDOM.render` diffs new VDOM against previous — only updates the changed node
 - React's reconciliation handles the efficiency, no need to target `#counter` directly
 - Options 1 and 4 use non-existent APIs
-
-</details>
+</Answer>
 
 ---
 
@@ -454,6 +440,7 @@ What code should replace `// ?????` to efficiently update only the counter span 
 
 ---
 
+<Question>
 ### Q15 — Expensive Service
 
 Given a JSON string like:
@@ -471,10 +458,9 @@ Given a JSON string like:
 ```
 
 Write a JavaScript function that takes such a string and returns the name of the service with the highest average payment. For the above input, it should return "Swiggy". Aim for O(n) time complexity.
+</Question>
 
-<details>
-<summary>Answer (expand after you've thought through it)</summary>
-
+<Answer>
 ```javascript
 // Time complexity: O(n)
 function mostExpensiveService(jsonString) {
@@ -511,5 +497,4 @@ function mostExpensiveService(jsonString) {
 - Dunzo: 131 / 1 = 131
 
 Returns "Swiggy" ✓
-
-</details>
+</Answer>

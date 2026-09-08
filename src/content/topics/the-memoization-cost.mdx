@@ -316,6 +316,7 @@ For components with many instances (a list of 1,000 items, each with `useMemo`),
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: A developer adds `useCallback` to every event handler "to be safe." What are the two concrete ways this makes things worse?**
 
 ```jsx
@@ -351,20 +352,19 @@ function Form() {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Two concrete ways this makes things worse.
 
 First, performance overhead with zero benefit. `handleEmailChange` and `handlePasswordChange` are passed to native `input` elements via `onChange`. Native DOM event handlers are not checked for reference equality. React uses event delegation: all events are handled at the root, and React dispatches them internally. A new function reference on an `onChange` prop does not cause any component to re-render. `useCallback` on these handlers adds hook node reads and dep comparisons on every render while preventing exactly nothing.
 
 Second, a real bug in `handleSubmit`. `login(email, password)` uses `email` and `password` from the closure. Both are state variables. The empty dep array means `handleSubmit` is created once on mount, capturing `email = ''` and `password = ''`. When the user types, `email` and `password` state update, the component re-renders, but `handleSubmit` is the same function from mount. It always calls `login('', '')` regardless of what the user typed. This is the stale closure bug introduced by `useCallback` with incorrect deps. Without `useCallback`, `handleSubmit` would be created on every render, always closing over the current `email` and `password`, and the bug would not exist.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: Which memoizations in this component are net negatives? Which, if any, are appropriate?**
 
 ```jsx
@@ -405,10 +405,9 @@ function ProductPage({ productId }) {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 A: `product` via `useMemo` for an O(1) map lookup. Net negative. An O(1) map lookup is a single hash computation and property access, taking nanoseconds. The `useMemo` dep check costs the same or more. No profiler will show this as a bottleneck. Remove it: `const product = getProductById(productId)`.
 
 B: `averageRating` via `useMemo`. Potentially appropriate, depends on the size of `reviews`. For 10 reviews, a reduce is nanoseconds, remove it. For 10,000 reviews (a highly reviewed product with full history loaded), the reduce is measurable and `useMemo` prevents it from running when only `quantity` changes. If `reviews` is always small, remove it. If it can be large, keep it with a comment explaining why.
@@ -418,16 +417,15 @@ C: `handleAddToCart` via `useCallback`. Potentially appropriate, but only if `Re
 D: `buttonLabel` via `useMemo` for a ternary string expression. Net negative. A ternary and string template literal take nanoseconds. Remove it: ``const buttonLabel = quantity === 1 ? 'Add to cart' : \`Add ${quantity} to cart\``.
 
 Summary: A, C (as written), and D are net negatives. B is contextually appropriate only for large `reviews` arrays. A well-profiled version of this component would have zero `useMemo`/`useCallback` calls for typical product pages.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: A team removes all `useMemo` and `useCallback` from a component that was "well-optimized." The component now re-renders more frequently. Is this necessarily a regression?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 No. More re-renders is not necessarily a regression. It depends entirely on what each re-render costs and whether users experience any degradation.
 
 The relevant measurement is not re-render count. It is time spent in React rendering that affects the user's frame budget. If the component function executes in 0.1ms and reconciliation adds another 0.1ms, 100 additional re-renders per second adds 20ms of work per second, spread across many frames, imperceptible to the user.
@@ -435,67 +433,62 @@ The relevant measurement is not re-render count. It is time spent in React rende
 The team should profile two things. First, frame rate: does the animation timeline show dropped frames (tasks exceeding 16.6ms) that were not present before removing memoization? Second, interaction latency: do user interactions (clicks, typing) feel slower? If neither degrades, the removal is not a regression, it is an improvement in code clarity and a reduction in stale closure risk.
 
 If profiling does show degradation, the team has a specific, evidence-based case for re-adding targeted memoization. But "the component re-renders more" is not that evidence. Re-render count is a proxy metric, and like all proxy metrics, it can mislead.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** Name the three cost categories of memoization that apply regardless of whether the cache is hit or missed.
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 First, comparison overhead. Every `React.memo`, `useMemo`, and `useCallback` runs its equality check on every render. `React.memo` runs `shallowEqual` over all props. `useMemo` and `useCallback` run `areHookInputsEqual` over the dependency array. These comparisons are paid on every render, whether the cache is hit (no recomputation) or missed (recomputation happens anyway).
 
 Second, memory cost. `useMemo` stores the cached value in the hook node on the Fiber for the component's lifetime. The cached value occupies memory regardless of whether it is being used or would have been garbage-collected earlier. `useCallback` and `useMemo` also allocate a `[value, deps]` array on every cache miss, creating GC pressure.
 
 Third, cognitive and correctness overhead. Every dependency array is a contract that must be maintained. Every `useMemo` and `useCallback` call increases the surface area for incorrect dependencies and stale closure bugs. This cost is paid in developer time (reasoning about correctness) and potentially in user experience (incorrect behavior from stale closures). This cost exists regardless of the runtime performance of the memoization.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** What is "the removal test" and how do you apply it to a `React.memo` wrapper?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The removal test asks: "if I remove this memoization, what specific, measurable harm occurs?" For a `React.memo` wrapper, you answer by asking three questions in order.
 
 Does the wrapped component re-render more frequently without the wrapper? Yes, by definition: it re-renders whenever the parent does. Does that increased re-rendering cause a measurable performance problem? This requires profiling: open React DevTools Profiler, record the relevant interaction without the wrapper, and check if the component's `actualDuration` during unnecessary re-renders consumes a meaningful fraction of the frame budget. If the component function runs in 0.1ms and re-renders 5 extra times per second, the total cost is 0.5ms per second. Not measurable. If the component has a large subtree and runs in 15ms and re-renders 10 extra times per second, the total cost is 150ms per second. Measurable and worth addressing.
 
 If the removal causes no measurable harm, do not add `React.memo`. The wrapper adds `shallowEqual` overhead to every parent render, increases code complexity, and signals "this component has performance concerns" to future readers when it does not. If removal does cause measurable harm, add `React.memo` with a comment explaining the specific measurement that justified it.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** The "hierarchy of fixes before memoization" puts structural changes before memoization. What are the two structural changes and why do they eliminate the need for memoization without requiring any equality checks?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The first structural change is state colocation: moving state to the lowest component in the tree that needs it. When state lives lower, the subtree that re-renders on state change is smaller. Components above the state owner and sibling subtrees never re-render on that state change. No child of those components needs memoization to avoid re-renders triggered by this state, because the re-renders never happen at all. This is elimination of the problem, not management of it.
 
 The second structural change is the children-as-props pattern: passing a component's children as a prop rather than defining them in the component's JSX. When a component with changing state receives `children` as a prop, the `children` React element objects were created by the parent, which does not re-render on the state change. The element objects are the same references across renders. React recognizes the children as unchanged and does not re-render them. No `React.memo` or equality checks are needed because the children's element objects are already stable by construction.
 
 Both work by preventing re-render triggers from reaching certain components in the first place, which is always more efficient than running equality checks to decide whether to skip a re-render after the trigger has already fired.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q4.** A `useMemo` has three dependencies. One of them is an object created inline in the component. Under what conditions is every single render a cache miss, and what does this mean for the value of the memoization?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 When the inline object is created as a literal in the component's render body (for example `const options = { threshold: 0.5 }`), a new object with a new reference is allocated on every render. `areHookInputsEqual` compares this dep with `Object.is(prevOptions, nextOptions)`. Two distinct object references are never `Object.is`-equal regardless of their contents. The check returns `false` on every render.
 
 The consequence: every single render is a cache miss. `useMemo` runs the computation on every render. It also allocates a new `[value, deps]` array on every render to store the new result and deps. This is strictly worse than not using `useMemo` at all, because you get both the computation cost AND the hook overhead AND the allocation cost, with zero cache hits.
 
 The correct fix is to stabilize the object dep: move it outside the component if it is a constant (`const OPTIONS = { threshold: 0.5 }` at module level), or wrap it in its own `useMemo` if it depends on props or state. Only with a stable dep reference can the outer `useMemo` have any cache hits. Until that is fixed, the memoization is purely negative.
-
-</details>
+</Answer>

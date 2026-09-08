@@ -248,6 +248,7 @@ user.loginCount; // undefined, no direct access
 
 ### Self-test: 5 questions
 
+<Question>
 **Q1.** What does this log?
 
 ```js
@@ -261,7 +262,15 @@ console.log(inc());
 console.log(inc());
 console.log(inc());
 ```
+</Question>
 
+<Answer>
+`1`, `2`, `3`. All three calls close over the same `x` binding. `++x` pre-increments and returns the new value each time.
+</Answer>
+
+---
+
+<Question>
 **Q2.** What does this log and why?
 
 ```js
@@ -273,7 +282,15 @@ for (var i = 0; i < 3; i++) {
 
 console.log(funcs[0]() + funcs[1]() + funcs[2]());
 ```
+</Question>
 
+<Answer>
+`9`. All three functions close over the same `var i`. By the time they're called, `i` is `3`. So `3 + 3 + 3 = 9`.
+</Answer>
+
+---
+
+<Question>
 **Q3.** What does this log?
 
 ```js
@@ -291,7 +308,15 @@ function outer() {
 
 console.log(outer());
 ```
+</Question>
 
+<Answer>
+`2`. `inner` closes over `outer`'s `count` binding directly. Two calls increment it to `2`. `outer` then returns `count`.
+</Answer>
+
+---
+
+<Question>
 **Q4.** What is the output?
 
 ```js
@@ -306,7 +331,15 @@ function run() {
 
 run();
 ```
+</Question>
 
+<Answer>
+`"global"`. Lexical scope rules: `foo` is defined in global scope, so it resolves `x` from global, regardless of being called inside `run`.
+</Answer>
+
+---
+
+<Question>
 **Q5.** Fix this without using `let` in the loop:
 
 ```js
@@ -314,21 +347,10 @@ for (var i = 0; i < 3; i++) {
   setTimeout(() => console.log(i), 0);
 }
 ```
+</Question>
 
----
-
-<details>
-<summary>Answers</summary>
-
-**A1.** `1`, `2`, `3`. All three calls close over the same `x` binding. `++x` pre-increments and returns the new value each time.
-
-**A2.** `9`. All three functions close over the same `var i`. By the time they're called, `i` is `3`. So `3 + 3 + 3 = 9`.
-
-**A3.** `2`. `inner` closes over `outer`'s `count` binding directly. Two calls increment it to `2`. `outer` then returns `count`.
-
-**A4.** `"global"`. Lexical scope rules: `foo` is defined in global scope, so it resolves `x` from global, regardless of being called inside `run`.
-
-**A5.** Wrap in an IIFE:
+<Answer>
+Wrap in an IIFE:
 
 ```js
 for (var i = 0; i < 3; i++) {
@@ -339,5 +361,4 @@ for (var i = 0; i < 3; i++) {
 ```
 
 Each IIFE call creates a new `j` binding with the current value of `i` frozen in it.
-
-</details>
+</Answer>
