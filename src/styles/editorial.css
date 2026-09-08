@@ -22,18 +22,10 @@
   color: var(--text-color);
 }
 
-.editorial-hero p {
-  font-family: var(--font-sans);
-  font-size: 1.125rem;
-  line-height: 1.6;
-  color: var(--secondary-color);
-  max-width: 42rem;
-  margin: 0;
-}
-
+.editorial-hero p,
 .editorial-hero strong {
   font-family: var(--font-sans);
-  font-size: 1.125rem;
+  font-size: 1rem;
   line-height: 1.6;
   color: var(--secondary-color);
   max-width: 42rem;
