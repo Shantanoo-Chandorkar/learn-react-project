@@ -25,7 +25,7 @@
 .mdx-content-wrapper {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 1rem;
 }
 
 /* Sidebar Styles - Rail Mode Support */
@@ -108,7 +108,7 @@
   color: var(--secondary-color);
   border-radius: 0.375rem;
   transition: all 0.2s;
-  font-size: 0.875rem;
+  font-size: 1rem;
   font-weight: 500;
   margin-bottom: 2px;
 }
@@ -119,9 +119,17 @@
   gap: 0;
 }
 
-.is-closed .sidebar-accordion-trigger {
+.is-closed .sidebar-category-row {
+  justify-content: center;
+}
+
+.is-closed .sidebar-category-link {
   padding: 0.5rem;
   justify-content: center;
+}
+
+.is-closed .sidebar-accordion-chevron-trigger {
+  display: none;
 }
 
 .sidebar-nav a:hover {
@@ -147,6 +155,7 @@
 }
 
 .sidebar-link-label {
+  font-size: 0.9rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -159,27 +168,46 @@
   width: 0;
 }
 
-/* Accordion Trigger Styling */
-.sidebar-accordion-trigger {
+/* Split into link + button: Accordion.Trigger renders a <button>, which can't contain the <a>. */
+.sidebar-category-row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   width: 100%;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--secondary-color);
-  background: none;
-  border: none;
   border-radius: 0.375rem;
-  cursor: pointer;
-  text-align: left;
-  transition: all 0.2s;
+  transition: background-color 0.2s;
   margin-top: 4px;
 }
 
-.sidebar-accordion-trigger:hover {
+.sidebar-category-row:hover,
+.sidebar-category-row:has(.sidebar-category-link.active) {
   background-color: var(--surface-2);
+}
+
+.sidebar-category-link {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  padding: 0.6rem 0.75rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--secondary-color);
+  text-decoration: none;
+}
+
+.sidebar-category-link.active {
+  color: var(--primary-color);
+}
+
+.sidebar-accordion-chevron-trigger {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0.75rem;
+  background: none;
+  border: none;
+  cursor: pointer;
 }
 
 .sidebar-category-header {
@@ -214,7 +242,9 @@
 
 .sidebar-accordion-content {
   overflow: hidden;
-  padding-left: 1rem;
+  padding-left: 0.75rem;
+  margin-left: 1.25rem;
+  border-left: 1px solid var(--border-color);
 }
 
 .is-closed .sidebar-accordion-content {
@@ -253,14 +283,20 @@
   justify-content: space-between;
   align-items: center;
   width: 100%;
-  padding: 0.4rem 0.75rem;
-  font-size: 0.8rem;
+  padding: 0.75rem 0.5rem;
+  font-size: 1rem;
   font-weight: 500;
+  letter-spacing: 0.02em;
   color: var(--secondary-color);
   background: none;
   border: none;
   cursor: pointer;
   text-align: left;
+  transition: opacity 0.2s;
+}
+
+.sidebar-nested-accordion-trigger:hover {
+  opacity: 1;
 }
 
 .sidebar-subcategory-label {
@@ -271,36 +307,8 @@
 
 .sidebar-nested-accordion-content {
   padding-left: 0.5rem;
-}
-
-/* Radix Tooltip Styles */
-.TooltipContent {
-  background-color: var(--text-color);
-  color: var(--surface-1);
-  padding: 0.4rem 0.75rem;
-  border-radius: 0.375rem;
-  font-size: 0.75rem;
-  font-weight: 500;
-  line-height: 1;
-  user-select: none;
-  box-shadow: 0 4px 12px var(--shadow-color);
-  z-index: 2000;
-  animation-duration: 0.2s;
-  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
-  will-change: transform, opacity;
-}
-
-.TooltipContent[data-side='top'] {
-  animation-name: slideDownAndFade;
-}
-.TooltipContent[data-side='right'] {
-  animation-name: slideLeftAndFade;
-}
-.TooltipContent[data-side='bottom'] {
-  animation-name: slideUpAndFade;
-}
-.TooltipContent[data-side='left'] {
-  animation-name: slideRightAndFade;
+  margin-left: 0.75rem;
+  border-left: 1px solid var(--border-color);
 }
 
 .app-toast {
@@ -342,58 +350,9 @@
   padding: 0;
 }
 
-.TooltipArrow {
-  fill: var(--text-color);
-}
-
-@keyframes slideUpAndFade {
-  from {
-    opacity: 0;
-    transform: translateY(2px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes slideRightAndFade {
-  from {
-    opacity: 0;
-    transform: translateX(-2px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes slideDownAndFade {
-  from {
-    opacity: 0;
-    transform: translateY(-2px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes slideLeftAndFade {
-  from {
-    opacity: 0;
-    transform: translateX(2px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
 /* Mobile Responsive Styles */
 @media (max-width: 1024px) {
-  .layout-content,
-  .mdx-content-wrapper {
+  .layout-content {
     padding: 1rem;
   }
 

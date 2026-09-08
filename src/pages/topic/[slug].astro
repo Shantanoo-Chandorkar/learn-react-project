@@ -12,7 +12,6 @@
  */
 import { getCollection } from 'astro:content';
 import MainLayout from '../../layouts/MainLayout.astro';
-import ArticleFooter from '../../components/ArticleFooter.jsx';
 import MDXComponents from '../../components/mdx/MDXComponents.jsx';
 
 export async function getStaticPaths() {
@@ -52,7 +51,6 @@ const pageUrl = `https://welcome-react-tutorial.netlify.app/topic/${slug}`;
     <div class="topic-container">
         <div class="mdx-content-wrapper">
             <Content components={MDXComponents} />
-            <ArticleFooter slug={slug} client:load />
         </div>
     </div>
 </MainLayout>
