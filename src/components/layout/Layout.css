@@ -18,15 +18,15 @@
   flex: 1;
   padding: 2rem;
   overflow-y: auto;
-  background-color: #ffffff;
+  background-color: var(--surface-1);
 }
 
 /* Sidebar Styles - Rail Mode Support */
 .collapsible-sidebar {
   position: relative;
   width: 280px; /* Expanded width */
-  background-color: #fcfcfc;
-  border-right: 1px solid #e5e7eb;
+  background-color: var(--surface-1);
+  border-right: 1px solid var(--border-color);
   transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   flex-direction: column;
@@ -56,7 +56,7 @@
 }
 
 .sidebar-inner-content:hover::-webkit-scrollbar-thumb {
-  background-color: #e5e7eb;
+  background-color: var(--border-color);
 }
 
 .sidebar-header {
@@ -71,7 +71,7 @@
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
-  color: #94a3b8;
+  color: var(--secondary-color);
   letter-spacing: 0.05rem;
   white-space: nowrap;
   opacity: 1;
@@ -98,7 +98,7 @@
   gap: 0.75rem;
   padding: 0.5rem 0.75rem;
   text-decoration: none;
-  color: #475569;
+  color: var(--secondary-color);
   border-radius: 0.375rem;
   transition: all 0.2s;
   font-size: 0.875rem;
@@ -118,13 +118,13 @@
 }
 
 .sidebar-nav a:hover {
-  background-color: #f1f5f9;
-  color: #0f172a;
+  background-color: var(--surface-2);
+  color: var(--text-color);
 }
 
 .sidebar-nav a.active {
-  background-color: #f1f5f9;
-  color: #2563eb;
+  background-color: var(--surface-2);
+  color: var(--primary-color);
   font-weight: 600;
 }
 
@@ -132,11 +132,11 @@
   width: 1.25rem;
   height: 1.25rem;
   flex-shrink: 0;
-  color: #64748b;
+  color: var(--secondary-color);
 }
 
 .active .sidebar-category-icon {
-  color: #2563eb;
+  color: var(--primary-color);
 }
 
 .sidebar-link-label {
@@ -161,7 +161,7 @@
   padding: 0.5rem 0.75rem;
   font-size: 0.875rem;
   font-weight: 500;
-  color: #475569;
+  color: var(--secondary-color);
   background: none;
   border: none;
   border-radius: 0.375rem;
@@ -172,7 +172,7 @@
 }
 
 .sidebar-accordion-trigger:hover {
-  background-color: #f1f5f9;
+  background-color: var(--surface-2);
 }
 
 .sidebar-category-header {
@@ -197,7 +197,7 @@
 .sidebar-accordion-chevron {
   width: 1rem;
   height: 1rem;
-  color: #94a3b8;
+  color: var(--secondary-color);
   transition: transform 0.2s;
 }
 
@@ -241,7 +241,7 @@
   padding: 0.4rem 0.75rem;
   font-size: 0.8rem;
   font-weight: 500;
-  color: #64748b;
+  color: var(--secondary-color);
   background: none;
   border: none;
   cursor: pointer;
@@ -260,15 +260,15 @@
 
 /* Radix Tooltip Styles */
 .TooltipContent {
-  background-color: #1e293b;
-  color: #ffffff;
+  background-color: var(--text-color);
+  color: var(--surface-1);
   padding: 0.4rem 0.75rem;
   border-radius: 0.375rem;
   font-size: 0.75rem;
   font-weight: 500;
   line-height: 1;
   user-select: none;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px var(--shadow-color);
   z-index: 2000;
   animation-duration: 0.2s;
   animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
@@ -281,7 +281,7 @@
 .TooltipContent[data-side='left'] { animation-name: slideRightAndFade; }
 
 .TooltipArrow {
-  fill: #1e293b;
+  fill: var(--text-color);
 }
 
 @keyframes slideUpAndFade {
@@ -314,13 +314,13 @@
     width: 280px;
     transform: translateX(-100%);
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    background-color: #ffffff;
+    background-color: var(--surface-1);
     box-shadow: none;
   }
 
   .collapsible-sidebar.is-open {
     transform: translateX(0);
-    box-shadow: 10px 0 15px -3px rgba(0, 0, 0, 0.1);
+    box-shadow: 10px 0 15px -3px var(--shadow-color);
   }
 
   .collapsible-sidebar.is-closed {
@@ -344,7 +344,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.4);
+  background-color: var(--overlay-color);
   backdrop-filter: blur(2px);
   z-index: 99;
   animation: fadeIn 0.2s ease;

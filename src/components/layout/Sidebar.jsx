@@ -148,7 +148,7 @@ const Sidebar = ({ currentPath = '' }) => {
                         <span className="sidebar-link-label">{topic.title}</span>
                         {isCompleted && (
                             <CheckCircleIcon
-                                style={{ width: '1rem', height: '1rem', color: '#10b981' }}
+                                style={{ width: '1rem', height: '1rem', color: 'var(--success-text)' }}
                                 className="sidebar-link-status"
                             />
                         )}

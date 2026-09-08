@@ -11,8 +11,8 @@ const Question = (props) => (
             marginTop: '1.5rem',
             marginBottom: '0.75rem',
             padding: '0.875rem 1rem',
-            borderLeft: '4px solid #2563eb',
-            backgroundColor: '#eff6ff',
+            borderLeft: '4px solid var(--primary-color)',
+            backgroundColor: 'var(--primary-tint)',
             borderRadius: '0 0.375rem 0.375rem 0',
         }}
         {...props}
