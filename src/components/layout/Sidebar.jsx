@@ -5,23 +5,18 @@ import useStore from '../../store/useStore';
 import useSidebarNavigation from '../../Hooks/useSidebarNavigation';
 import CollapsibleSidebar from './CollapsibleSidebar';
 
-import { 
-    HomeIcon, 
-    Squares2X2Icon, 
-    AcademicCapIcon, 
-    BookOpenIcon, 
-    BeakerIcon, 
+import {
+    HomeIcon,
+    Squares2X2Icon,
+    AcademicCapIcon,
+    BookOpenIcon,
     IdentificationIcon,
-    BriefcaseIcon
 } from '@heroicons/react/24/outline';
 
 const categoryIcons = {
-    'hooks': BeakerIcon,
-    'related-topics': Squares2X2Icon,
     'interview-prep': AcademicCapIcon,
     'react': IdentificationIcon,
     'nextjs': BookOpenIcon,
-    'other-resources': BriefcaseIcon,
 };
 
 const CheckCircleIcon = ({ style, className }) => (
@@ -106,36 +101,7 @@ const Sidebar = ({ currentPath = '' }) => {
         setPathname(window.location.pathname);
     }, []);
 
-    // Combine dynamic topics with hardcoded "Other Resources"
-    const navigation = [
-        ...dynamicNavigation,
-        {
-            id: 'other-resources',
-            name: 'Other Resources',
-            subcategories: [],
-            ungrouped: [
-                {
-                    id: 'rr-demo',
-                    title: 'React Router Demo',
-                    slug: 'react-router',
-                    customPath: '/topic/react-router',
-                },
-                { id: 'rf', title: 'React Form', slug: 'react-form', customPath: '/react-form' },
-                {
-                    id: 'mf',
-                    title: 'Multi-Page Form',
-                    slug: 'multi-form',
-                    customPath: '/multi-form',
-                },
-                {
-                    id: 'msf',
-                    title: 'Multi-Step Flow',
-                    slug: 'multi-step-flow',
-                    customPath: '/multi-step-flow',
-                },
-            ],
-        },
-    ];
+    const navigation = dynamicNavigation;
 
     /**
      * Returns true when the given href matches the current pathname.
