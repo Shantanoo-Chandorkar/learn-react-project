@@ -62,41 +62,6 @@ const GA_MEASUREMENT_ID = import.meta.env.VITE_GA_MEASUREMENT_ID;
             </>
         )}
 
-        <style is:inline>
-            :root {
-                --primary-color: #2563eb;
-                --bg-color: #f8fafc;
-                --text-color: #1e293b;
-                --font-serif: 'Georgia', 'Times New Roman', Times, serif;
-            }
-            body {
-                margin: 0;
-                font-family: system-ui, -apple-system, sans-serif;
-                background-color: #f8fafc;
-                color: #1e293b;
-                line-height: 1.5;
-            }
-            .layout-root {
-                display: flex;
-                flex-direction: column;
-                height: 100vh;
-                overflow: hidden;
-            }
-            .layout-body {
-                display: flex;
-                flex: 1;
-                overflow: hidden;
-            }
-            .layout-content {
-                flex: 1;
-                padding: 2rem;
-                overflow-y: auto;
-            }
-            @media (max-width: 1024px) {
-                .layout-content { padding: 1rem; }
-            }
-        </style>
-
         {ogTitle && <meta property="og:type" content="article" />}
         {ogTitle && <meta property="og:title" content={ogTitle} />}
         {ogTitle && <meta property="og:description" content={description} />}
