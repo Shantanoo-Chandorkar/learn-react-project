@@ -25,7 +25,7 @@
 .mdx-content-wrapper {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 1rem;
 }
 
 /* Sidebar Styles - Rail Mode Support */
@@ -314,8 +314,7 @@
 
 /* Mobile Responsive Styles */
 @media (max-width: 1024px) {
-  .layout-content,
-  .mdx-content-wrapper {
+  .layout-content {
     padding: 1rem;
   }
 
