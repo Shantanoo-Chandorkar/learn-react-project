@@ -106,6 +106,25 @@
   color: var(--text-color);
 }
 
+.install-trigger {
+  background: none;
+  border: none;
+  color: var(--secondary-color);
+  padding: 0.5rem;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  margin-right: 0.5rem;
+}
+
+.install-trigger:hover {
+  background-color: var(--surface-2);
+  color: var(--text-color);
+}
+
 .reading-mode-panel {
   position: absolute;
   top: calc(100% + 0.5rem);
