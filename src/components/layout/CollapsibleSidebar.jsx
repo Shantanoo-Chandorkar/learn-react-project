@@ -1,41 +1,28 @@
 import React from 'react';
-import useStore from '../../store/useStore';
-
-const CloseIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" style={{ width: '1.25rem', height: '1.25rem' }}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-    </svg>
-);
-
-const OpenIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" style={{ width: '1.25rem', height: '1.25rem' }}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-    </svg>
-);
 
 /**
  * CollapsibleSidebar Shell Component
- * 
- * A reusable container for sidebar content that handles its own 
- * open/closed state and provides a toggle button on the right edge.
- * 
+ *
+ * A reusable container for sidebar content. Purely presentational — open
+ * state lives in the parent (Sidebar.jsx) and is passed down as props.
+ *
  * @param {Object} props
  * @param {React.ReactNode} props.children - The content to render inside the sidebar
+ * @param {boolean} props.isOpen - Whether the sidebar is expanded
+ * @param {() => void} props.onClose - Called when the mobile overlay is clicked
  */
-const CollapsibleSidebar = ({ children }) => {
-    const { isSidebarOpen, closeSidebar } = useStore();
-
+const CollapsibleSidebar = ({ children, isOpen, onClose }) => {
     return (
         <>
-            <aside className={`collapsible-sidebar ${isSidebarOpen ? 'is-open' : 'is-closed'}`}>
+            <aside className={`collapsible-sidebar ${isOpen ? 'is-open' : 'is-closed'}`}>
                 <div className="sidebar-inner-content">
                     {children}
                 </div>
             </aside>
 
             {/* Mobile overlay */}
-            {isSidebarOpen && (
-                <div className="mobile-overlay" onClick={closeSidebar} />
+            {isOpen && (
+                <div className="mobile-overlay" onClick={onClose} />
             )}
         </>
     );

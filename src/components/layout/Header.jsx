@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import useStore from '../../store/useStore';
+import { SIDEBAR_TOGGLE_EVENT } from '../../utils/sidebarToggleEvent';
 import '../../Header/style.css';
 import SearchModal from './SearchModal';
 import ReadingModeControls from './ReadingModeControls';
@@ -34,7 +35,7 @@ const SidebarIcon = () => (
 );
 
 const Header = () => {
-  const { toggleSidebar, setLastVisitedTopicSlug } = useStore();
+  const { setLastVisitedTopicSlug } = useStore();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const { needsRefresh, applyUpdate, dismiss } = useServiceWorkerUpdate();
 
@@ -57,7 +58,7 @@ const Header = () => {
       <div className="header-left-section">
         <button
           className="sidebar-toggle-trigger"
-          onClick={toggleSidebar}
+          onClick={() => window.dispatchEvent(new CustomEvent(SIDEBAR_TOGGLE_EVENT))}
           aria-label="Toggle sidebar"
         >
           <SidebarIcon />
