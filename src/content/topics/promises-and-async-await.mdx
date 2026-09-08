@@ -372,6 +372,7 @@ Always do something in `catch`, even if it's just `console.error(e)`.
 
 ### Self-test: 5 questions
 
+<Question>
 **Q1.** What does this log and in what order?
 
 ```js
@@ -385,7 +386,17 @@ async function run() {
 run().then(console.log);
 console.log('D');
 ```
+</Question>
 
+<Answer>
+`A`, `D`, `B`, `C`.
+
+`run()` executes sync until `await`. `A` logs. Execution yields. `D` logs sync. Microtask fires, `run` resumes, `B` logs. `run` returns `"C"` wrapped in a Promise. The `.then(console.log)` fires as a microtask, logging `C`.
+</Answer>
+
+---
+
+<Question>
 **Q2.** What does this log?
 
 ```js
@@ -393,7 +404,17 @@ Promise.all([Promise.resolve(1), Promise.reject('err'), Promise.resolve(3)])
   .then((vals) => console.log(vals))
   .catch((e) => console.log('caught:', e));
 ```
+</Question>
 
+<Answer>
+`caught: err`.
+
+`Promise.all` fast-fails on the first rejection. The `.then` is skipped entirely. The `.catch` receives the rejection reason directly, which is the string `"err"`, not an Error object.
+</Answer>
+
+---
+
+<Question>
 **Q3.** What does this log?
 
 ```js
@@ -401,7 +422,17 @@ Promise.allSettled([Promise.resolve(1), Promise.reject('err'), Promise.resolve(3
   (results) => console.log(results.map((r) => r.status)),
 );
 ```
+</Question>
 
+<Answer>
+`["fulfilled", "rejected", "fulfilled"]`.
+
+`allSettled` never rejects. It waits for all three to settle and returns their status objects. Mapping over `r.status` gives the three strings.
+</Answer>
+
+---
+
+<Question>
 **Q4.** What is wrong with this code?
 
 ```js
@@ -414,7 +445,15 @@ async function getAll(ids) {
   return results;
 }
 ```
+</Question>
 
+<Answer>
+`forEach` is not `await`-aware. The `async` callback returns a Promise that `forEach` ignores. `getAll` will return an empty `results` array immediately, before any `fetch` completes. Fix: use `Promise.all(ids.map(...))` or a `for...of` loop with `await`.
+</Answer>
+
+---
+
+<Question>
 **Q5.** What does this log?
 
 ```js
@@ -429,28 +468,10 @@ async function foo() {
 
 foo().then((v) => console.log('resolved:', v));
 ```
+</Question>
 
----
-
-<details>
-<summary>Answers</summary>
-
-**A1.** `A`, `D`, `B`, `C`.
-
-`run()` executes sync until `await`. `A` logs. Execution yields. `D` logs sync. Microtask fires, `run` resumes, `B` logs. `run` returns `"C"` wrapped in a Promise. The `.then(console.log)` fires as a microtask, logging `C`.
-
-**A2.** `caught: err`.
-
-`Promise.all` fast-fails on the first rejection. The `.then` is skipped entirely. The `.catch` receives the rejection reason directly, which is the string `"err"`, not an Error object.
-
-**A3.** `["fulfilled", "rejected", "fulfilled"]`.
-
-`allSettled` never rejects. It waits for all three to settle and returns their status objects. Mapping over `r.status` gives the three strings.
-
-**A4.** `forEach` is not `await`-aware. The `async` callback returns a Promise that `forEach` ignores. `getAll` will return an empty `results` array immediately, before any `fetch` completes. Fix: use `Promise.all(ids.map(...))` or a `for...of` loop with `await`.
-
-**A5.** `caught: boom`, then `resolved: recovered`.
+<Answer>
+`caught: boom`, then `resolved: recovered`.
 
 `await Promise.reject(...)` triggers the `catch` block. `catch` logs the message and returns `"recovered"`. An `async` function that returns from inside a `catch` block produces a fulfilled Promise with that value. So `.then(v => console.log("resolved:", v))` receives `"recovered"`.
-
-</details>
+</Answer>

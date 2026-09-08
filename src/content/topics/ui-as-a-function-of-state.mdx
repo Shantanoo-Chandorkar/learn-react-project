@@ -190,6 +190,7 @@ React 18's Strict Mode deliberately calls your render function twice in developm
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: What will this component do on every render?**
 
 ```jsx
@@ -199,16 +200,15 @@ function Timer() {
   return <div>Started at: {start}</div>;
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 This is technically fine but reveals a misunderstanding. `Date.now()` inside render runs on every render, so the displayed time will change every time the component re-renders for any reason (parent re-render, any state change). The real trap is if a developer treats `start` as a stable value, like a timestamp for when the component first mounted. It's not. It's recalculated on every render. To get a stable value you'd use `useRef` or `useState` with an initializer. The deeper lesson: render is a pure function called repeatedly. Any computation inside it runs repeatedly.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: Why is this component broken?**
 
 ```jsx
@@ -228,16 +228,15 @@ function UserCard() {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The variable `isVisible` is a local variable inside the function body. It is created fresh every time the component renders. Clicking the button does flip it from `false` to `true`, and the `console.log` confirms it. But because `isVisible` is not React state, flipping it does not schedule a re-render. React never calls `UserCard` again. The DOM never updates. The UI = f(state) contract is broken here because `isVisible` is not part of state. It's local mutation inside the function, which has no effect on what React renders. This is the exact failure mode that `useState` exists to solve, which we'll cover in next section.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: React Strict Mode double-invokes render. Which of these components will have a problem?**
 
 ```jsx
@@ -260,71 +259,64 @@ function TrackedComponent() {
   return <div>Rendered {renderCount} times</div>;
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Component A is fine. Same state in, same output. Calling it twice with the same state produces the same result, no problem.
 
 Component B will log twice in Strict Mode instead of once. This is not a "problem" in the sense that it breaks anything, but it surprises developers who see duplicate console logs in development and assume something is wrong. React is deliberately surfacing that renders happen more than once.
 
 Component C is actually broken. `renderCount` is a module-level variable that persists across renders. When React calls `TrackedComponent` twice in Strict Mode, `renderCount` becomes 2 after the first mount, and the display says "Rendered 2 times" instead of 1. This is exactly the kind of impurity Strict Mode is designed to catch. The component's output depends on something other than its state and props, which violates `UI = f(state)`. External mutable variables inside render are a bug.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** In one sentence, what is wrong with using the DOM as the source of truth for application state?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The DOM can drift from your JavaScript variables because mutations applied to the DOM are not automatically reflected back, and any bug that causes a mutation to be skipped leaves the DOM in a state that no longer matches your data, with no automatic way to detect or recover from the inconsistency.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** What does "render must be pure" mean in the context of `UI = f(state)`, and what does React rely on this purity for?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 A pure render means the component function depends only on its props and state and produces no side effects. React relies on this purity to safely interrupt, restart, and repeat renders without changing the world. If render had side effects, interrupting it partway through and restarting it would run those effects twice, or leave effects half-executed. Purity is what makes concurrent rendering possible.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** You have a component that reads from `localStorage` directly inside its function body and returns different JSX based on the result. What React principle does this violate, and what should you do instead?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 It violates the pure function requirement. The output of the component now depends on an external data source that is not props or state. If that `localStorage` value changes between renders, the component would return different JSX for the same props and state. The correct approach is to read the `localStorage` value once and store it in state (via `useState` with an initializer), making it part of the declared input to the function. Then the component's output is again fully determined by its state.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q4.** Transitions vs states: in the imperative model you write code about transitions. In the declarative model you write code about states. What does this change about how you handle a new conditional feature?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 In the imperative model, adding a new conditional feature (like the "Welcome back!" banner) requires updating every transition function that could affect it. The `login` function needs to know to add it, the `logout` function needs to know to remove it, and any other function that could change the relevant data needs to handle it. Each new feature multiplies the number of places you must update. In the declarative model, you add the condition once in the render function: "if this state condition is true, include this element." Every transition, which now just means "update the state variable," automatically causes the render to re-evaluate with the new state, and the UI reflects it correctly without any manual coordination.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q5.** React Strict Mode double-invokes render in development. A developer says "this is a performance bug, it's making my app render twice." Are they right?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 No. Strict Mode double-invocation only happens in development. It is intentionally disabled in production builds. The purpose is correctness checking, not measurement. A component that behaves differently when rendered twice has a bug, and Strict Mode is designed to surface that. The developer's concern about performance is misplaced because the double invocation never reaches production. If they're seeing unexpected behavior from it, the correct response is to fix the impure component, not to disable Strict Mode.
-
-</details>
+</Answer>

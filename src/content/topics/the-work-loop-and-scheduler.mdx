@@ -328,6 +328,7 @@ The 5ms default is a deliberate balance. Human perception of input latency becom
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: A developer wraps an expensive computation in `startTransition` expecting it to run off the main thread. It does not. Why?**
 
 ```jsx
@@ -344,10 +345,9 @@ function App() {
   return <button onClick={handleClick}>Compute</button>;
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `startTransition` does not move work off the main thread. It does not use Web Workers. It does not defer execution of the callback. It executes the callback synchronously, immediately, on the main thread when called.
 
 What `startTransition` does: it marks the state update (`setResult`) as belonging to a Transition lane instead of a Default or Sync lane. This affects when the resulting render is scheduled and whether it can be interrupted by higher-priority work.
@@ -355,93 +355,86 @@ What `startTransition` does: it marks the state update (`setResult`) as belongin
 `veryExpensiveComputation()` runs synchronously inside the callback and takes 500ms regardless of `startTransition`. The button click handler blocks the main thread for 500ms. The user experiences 500ms of lag on the click, then a non-urgent state update that React processes in a Transition lane.
 
 `startTransition` only helps if the expensive work is the React render itself (reconciling a large tree), not arbitrary JavaScript computation inside the callback. To move a 500ms computation off the main thread, use a Web Worker. To prevent a large React render from blocking the UI, use `startTransition` so the render is interruptible and the browser can handle input between Fiber processing chunks.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: Why does React use `MessageChannel` instead of `requestAnimationFrame` for scheduling, and what problem would `requestAnimationFrame` cause?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `requestAnimationFrame` fires once per display refresh, at approximately 60fps (16.6ms intervals). Using it for scheduling would mean React can only resume its work loop once per frame. For a large tree that requires 200ms of render work split into 5ms chunks, React needs to resume 40 times. With `requestAnimationFrame`, that would take 40 frames at 16.6ms each, approximately 660ms of wall time for 200ms of actual work. The frame-rate coupling introduces massive artificial latency.
 
 `MessageChannel` macrotasks run as fast as the browser's event loop allows between frames, not synchronized to the display refresh. React can perform multiple work units between frames if the component work is fast and the browser has no pending paint. This means a 200ms render does take roughly 200ms of wall time plus small scheduling overhead, not 660ms.
 
 `requestAnimationFrame` would also prevent React from doing any background work at all in the intervals between frames, since it only fires at frame boundaries. `MessageChannel` allows React to use every available macrotask slot, yielding periodically for browser work but not being constrained to frame-rate granularity.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: The Scheduler uses a min-heap for its task queue. A developer proposes replacing it with a sorted array for "simplicity." What is the performance implication?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 A sorted array requires O(n) insertion (finding the correct position and shifting elements) versus O(log n) for the min-heap. Peeking at the highest-priority task is O(1) for both. Removing the top element is O(n) for sorted array (shift operation) versus O(log n) for the heap.
 
 For the Scheduler, the critical operation is inserting new tasks as they arrive (state updates, effects, user events) and retrieving the highest-priority task efficiently. With many pending tasks (a busy application with many concurrent updates), the O(n) insertion cost of a sorted array becomes meaningful. The Scheduler processes tasks from the heap frequently: every 5ms yield potentially re-inserts the current task (if it has more work) and retrieves the next one. For n tasks, the heap makes this O(log n) per cycle. The sorted array would make it O(n) per cycle. At 60fps with many tasks, this difference compounds.
 
 More practically, the min-heap also correctly handles the case where a new high-priority task arrives while lower-priority work is in progress. The heap re-orders in O(log n). The sorted array would require O(n) insertion at the correct position. The heap is the correct data structure for a priority queue with frequent insertion and removal.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** What are the three reasons `setTimeout(fn, 0)` is an inadequate scheduling mechanism for React's work loop?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 First, the minimum delay. Browsers clamp `setTimeout` to at least 1ms, and nested calls or background tabs clamp it to 4ms. Breaking a large render into 100 chunks of 10 Fibers with `setTimeout` introduces 100ms to 400ms of artificial latency, making renders slower than if they had run synchronously. The overhead of the scheduling mechanism exceeds the benefit of yielding.
 
 Second, fixed quantum problem. `setTimeout` cannot say "run until 5ms have elapsed." It runs the entire callback. If you put 10 Fibers in each callback, but 3 of them are expensive components, the callback might take 50ms, blocking the browser just as badly as the synchronous version. The work unit must be time-based, not count-based.
 
 Third, no cooperation with the browser frame budget. The browser targets 16.6ms frames. `setTimeout` has no knowledge of the current frame budget or how much time the browser needs for style, layout, and paint. React needs to yield with enough time remaining for the browser to complete its rendering work. `setTimeout` provides neither the timing information nor the mechanism to make this determination.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** The work loop checks `shouldYield()` on every iteration. What is `shouldYield` checking, and what happens to the work-in-progress Fiber when the loop exits?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `shouldYield` checks whether the current wall clock time (`performance.now()`) has exceeded the deadline set by the Scheduler at the start of the current time slice (typically `currentTime + 5ms`). It may also check a `needsPaint` flag that signals the browser is about to render a frame and needs the thread.
 
 When `shouldYield()` returns `true`, the `while` loop condition `workInProgress !== null && !shouldYield()` becomes `false` and the loop exits. The `workInProgress` variable still holds a reference to the next Fiber that needs processing. This is a module-level variable in `ReactFiberWorkLoop.js`, stored in the heap, not on the call stack. The work loop function returns to `performConcurrentWorkOnRoot`, which returns `true` to the Scheduler indicating there is more work. The Scheduler schedules another `MessageChannel` macrotask. When that macrotask fires, `performConcurrentWorkOnRoot` is called again, which calls `workLoopConcurrent`, which resumes the `while` loop with `workInProgress` still pointing to where it left off. The traversal continues from the exact Fiber where it paused.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** Why must `useEffect` callbacks use `MessageChannel` macrotasks rather than `Promise.then` microtasks for their scheduling?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Microtasks (Promise callbacks, `queueMicrotask`) run to exhaustion in the microtask checkpoint before the browser processes its rendering pipeline. If React scheduled `useEffect` callbacks as microtasks, and those effects called `setState`, which scheduled more microtask work, the entire chain would complete before the browser had any chance to paint. The user would not see the committed DOM until all effects had run and all their resulting state updates had been processed. This defeats the purpose of separating effects from the commit phase: the user should see the rendered output before effects run.
 
 `MessageChannel` macrotasks run after the current task completes, after all microtasks complete, and after the browser processes its rendering pipeline (style, layout, paint) if there is pending visual work. This guarantees the sequence: commit phase ends → browser paints the new DOM → MessageChannel fires → `useEffect` callbacks run. The user sees the committed UI before any effect runs. Effects that cause state updates trigger new renders that go through the full scheduling pipeline, subject to normal priority rules, not blocking the current frame.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q4.** What is the difference between `workLoopSync` and `workLoopConcurrent`? When does React use each?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `workLoopSync` processes the entire Fiber tree without yielding. It has no `shouldYield()` check. It runs from the root Fiber to the last leaf Fiber in one continuous synchronous execution, then calls the commit phase. It is used for SyncLane updates, which includes user event handlers (clicks, typing), `flushSync`-wrapped updates, and updates triggered in the legacy (non-`createRoot`) rendering mode. These updates require immediate completion because the user is waiting for direct feedback or because the update must be applied before the browser paints the current frame.
 
 `workLoopConcurrent` processes Fibers one at a time, checking `shouldYield()` after each one. When the deadline is exceeded, it exits, saves the `workInProgress` pointer, and returns control to the Scheduler. It resumes on the next Scheduler macrotask. It is used for all non-sync lanes: Transition lanes, Default lane updates that are not SyncLane, deferred work. These are updates where it is acceptable to take multiple frames to complete the render, as long as the user interface remains responsive between chunks.
 
 The key distinction: sync mode guarantees atomicity between state change and commit (no browser work happens between them) at the cost of potentially blocking. Concurrent mode guarantees responsiveness (browser can work between chunks) at the cost of the render potentially spanning multiple frames.
-
-</details>
+</Answer>

@@ -365,11 +365,11 @@ However, the compiler does not eliminate the `propagateContextChange` walk (the 
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: "We should put everything in Redux because it makes state management consistent." Evaluate this claim and name the specific cost.**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The claim conflates consistency of tooling with correctness of state placement. Using one tool for all state is consistent only in the sense that every file imports from the same library. It is not architecturally consistent: form state in a global Redux store has the wrong scope, UI state (modal open/close) in Redux is over-engineered, and server data in Redux duplicates what a data-fetching library does better.
 
 The specific costs:
@@ -381,21 +381,20 @@ UI state in Redux: opening a modal dispatches `{ type: 'OPEN_MODAL', id: 'checko
 Server data in Redux: Redux has no built-in mechanism for caching, revalidation, deduplication, or background refetching. Implementing these in Redux requires significant boilerplate (thunks, sagas, custom caching logic). React Query or SWR solve this problem completely with far less code.
 
 The correct principle: each piece of state should use the simplest tool that meets its requirements. Local state for local concerns, Context for broadly shared but stable configuration, state libraries for complex cross-cutting state with performance requirements, data-fetching libraries for server data.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: An application uses Context for the cart. The cart updates frequently (every add/remove triggers a re-render of all 12 consumers). A developer proposes splitting the cart context into "cart state" and "cart dispatch" contexts. Will this solve the re-render problem?**
 
 ```jsx
 const CartStateContext = React.createContext([]);
 const CartDispatchContext = React.createContext(null);
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Partially. The state-dispatch split solves the problem only for components that need to trigger cart actions without reading the cart state. Components consuming `CartDispatchContext` (which holds `dispatch`, a stable reference) never re-render due to cart changes. If 6 of the 12 consumers only dispatch (add to cart, remove from cart) without displaying cart data, those 6 components are fixed.
 
 The remaining 6 consumers that read `CartStateContext` (to display cart item count, total, individual items) still re-render on every cart mutation. `CartStateContext`'s value is the cart array, which changes on every add/remove. All 6 consumers re-render on every change.
@@ -403,16 +402,15 @@ The remaining 6 consumers that read `CartStateContext` (to display cart item cou
 For these state-reading consumers, the split does not help. If each of these 6 consumers needs a different slice (one needs `cart.length`, one needs the full array, one needs the total), they still all re-render when any part of the cart changes.
 
 The complete solution for high-frequency cart updates with multiple consumers needing different slices is a state library with selectors. The dispatch split is a useful half-measure that eliminates unnecessary re-renders for action-only consumers, which may be sufficient if those consumers are expensive. For granular subscription to cart state slices, only a selector-based system can eliminate unnecessary re-renders.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: When should you use neither Context nor a state library, but simply lift state up?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Lift state up when the components that need to share it are close enough in the tree that prop drilling is not painful, and the data is genuinely part of the shared parent's concern.
 
 The specific conditions: two or three sibling components need the same state (the classic counter with two display components, the form with validation messages shared between fields), or a parent component legitimately coordinates the behavior of its direct children (a tab group where the parent decides which tab is active, a form that submits all its child fields).
@@ -420,18 +418,17 @@ The specific conditions: two or three sibling components need the same state (th
 In these cases, Context adds unnecessary indirection and Provider boilerplate for data that is naturally local to a subtree. A state library adds global infrastructure for data that is logically owned by one component. Lifting state to the lowest common ancestor is simpler, explicit, and requires no additional APIs.
 
 The signal that you should lift rather than use Context or a library: you can draw a box around all the components that need the state, and that box corresponds to one component in your existing tree that could naturally own it. The data is local to that subtree, not cross-cutting. Lifting state is always the correct first option before reaching for any distribution mechanism.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** Name the three properties of data that determine which tool to use. For each property, describe what value of that property pushes you toward each tool.
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The three properties are reach, volatility, and shape.
 
 Reach: how many components need the data and how far apart are they. Low reach (one to three levels, related components) pushes toward prop drilling. High reach (many components, spread across unrelated subtrees) pushes toward Context or a state library.
@@ -441,16 +438,15 @@ Volatility: how often the data changes and whether all consumers must update on 
 Shape: whether the data is one coherent value or multiple independently-changing slices needed by different components. Simple shape (one coherent value, all consumers need the same thing) pushes toward Context. Complex shape (multiple independent slices, different components need different parts) pushes toward a state library where each component subscribes to its specific slice.
 
 When all three properties are low or simple (close components, stable data, simple shape), prop drilling is correct. When reach is high but volatility and shape are simple, Context is correct. When reach is high and either volatility or shape is complex, a state library is correct.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** Form state is always local state. Why is putting form state in Context or a global store always the wrong choice?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Form state has zero logical reason to be globally accessible. A form's field values, validation state, and submit status are meaningful only to the form component and its direct child fields. No other part of the application should need to read or write the form's in-progress state. The form is a self-contained unit of user interaction.
 
 Putting form state in Context creates an unnecessary Provider wrapping the form, makes the form's internal state visible to and potentially modifiable by any descendant of the Provider, and re-renders every context consumer on every keystroke. A form with 10 fields generates a re-render on every character typed, 10 re-renders per second at fast typing speed. With Context, every consumer of that Context re-renders on every keystroke.
@@ -458,16 +454,15 @@ Putting form state in Context creates an unnecessary Provider wrapping the form,
 Putting form state in a global store is worse: every field update dispatches an action, every other component subscribed to any part of the store whose selector touches the form slice re-renders, and the form's ephemeral state (which should disappear on submit or unmount) pollutes the global application state.
 
 The correct model: `useState` or `useReducer` in the form component, with props for field values and change handlers drilled to the form fields. The state is destroyed when the form unmounts. It is never visible outside the form. No context, no store, no overhead.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** A developer argues: "The React Compiler makes Context as performant as a state library because it automatically memoizes component outputs." Is this accurate?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Partially accurate but importantly incomplete. The compiler addresses one dimension of Context performance but not the other.
 
 What the compiler does: it automatically memoizes component outputs. If a context consumer re-renders (function is called) but its output is identical to the previous render, the compiler's memoization prevents reconciliation and DOM updates for that component. A component that reads `theme` from context but whose visual output did not change (because the theme value was the same) produces no DOM writes.
@@ -477,16 +472,15 @@ What the compiler does not do: it does not prevent the component function from b
 A state library with selectors prevents the component function from being called at all when the selected slice did not change. For components with expensive function bodies (complex computations, large render trees), this is a meaningful difference even with the compiler. For components with simple function bodies (a few property reads and a trivial JSX return), the compiler closes most of the gap.
 
 The accurate statement: the compiler reduces the performance cost of Context re-renders for components whose outputs are unchanged, but does not eliminate the subtree walk or prevent consumer function execution. For high-frequency updates with many consumers, a state library with selectors remains more efficient.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q4.** What is the single signal that most reliably indicates you need a state library rather than Context?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The signal is: different components need to subscribe to different slices of the same logical data, and re-rendering a component when its specific slice has not changed is either measurably harmful or logically incorrect.
 
 This signal identifies the fundamental capability gap between Context and state libraries. Context has one value per Provider. When that value changes, all consumers re-render. There is no way to say "this consumer only cares about `cart.length`, not `cart.items[0].price`." Every consumer gets the whole value and re-renders on any change.
@@ -494,8 +488,7 @@ This signal identifies the fundamental capability gap between Context and state 
 A state library with selectors allows each component to declare exactly which slice it depends on. The library runs each selector on every state update and re-renders only the components whose selected slice changed. This is the capability that Context architecturally cannot replicate regardless of how the context is structured, how many times it is split, or what the React Compiler does.
 
 When you find yourself splitting a context into five separate contexts to avoid unnecessary re-renders, and each context has one or two consumers, and some consumers need combinations of the split contexts, the architecture is fighting the tool. That is the moment to switch to a state library: the selector model is what you are manually approximating with context splitting.
-
-</details>
+</Answer>
 
 ---
 

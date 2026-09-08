@@ -131,6 +131,7 @@ The actual DOM write only happens in the commit phase, which is synchronous and 
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: "The Virtual DOM is faster than the real DOM."**
 
 ```
@@ -138,16 +139,15 @@ Is this statement true or false?
 
 "React is fast because the Virtual DOM is faster than the real DOM."
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 False, and this is a very common misconception. The Virtual DOM itself adds overhead, not reduces it. Creating and diffing JS objects takes time. The reason React can be faster in practice is that it batches and minimizes real DOM operations. A naive implementation that directly touched the DOM optimally would be faster than React. React's advantage is that it does the optimization for you automatically, so you don't have to think about it. If you directly manipulated the DOM with perfect efficiency, you wouldn't need the Virtual DOM at all. React trades some raw performance for developer ergonomics and correctness.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: What does this code do to browser performance?**
 
 ```js
@@ -158,10 +158,9 @@ boxes.forEach((box) => {
   box.style.width = width * 2 + 'px'; // write
 });
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 This triggers layout thrashing. For each box, it reads `offsetWidth` (which forces the browser to flush pending style changes and recalculate layout to return an accurate value), then immediately writes a new style (which invalidates the layout again). For N boxes this is N reflows instead of 1. The fix is to separate reads from writes: collect all widths first, then apply all writes.
 
 ```js
@@ -172,11 +171,11 @@ boxes.forEach((box, i) => {
 ```
 
 This results in 1 reflow instead of N.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: Predict the render behavior.**
 
 ```jsx
@@ -192,69 +191,62 @@ function App() {
 ```
 
 "When the button is clicked, React re-renders the entire DOM. True or false?"
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 False. React re-renders the component, meaning it calls the `App` function again and gets a new Virtual DOM tree. Then the reconciler diffs the new tree against the previous tree. The only real DOM node that changed is the text content inside `<p>`. React will update exactly that one text node. The `<div>`, `<p>` element itself, and `<button>` are untouched in the real DOM because they didn't change in the Virtual DOM diff.
 
 This is the exact value proposition of the Virtual DOM: component-level re-renders don't mean page-level DOM repaints.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** What is the structural difference between the Virtual DOM and the real DOM, in terms of where each lives and what it costs to read from?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The real DOM is a C++ structure maintained by the browser engine, exposed to JS via a bridge. Every read or write crosses that bridge and can trigger layout recalculation. The Virtual DOM is a plain JavaScript object in the JS heap. Reading and writing JS objects costs only memory allocation and property access, no bridge, no layout engine. That's why diffing in JS is cheap and DOM manipulation is expensive.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** You call `element.offsetWidth` immediately after changing `element.style.padding`. What does the browser have to do before it can return a value?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The browser has to flush all pending style mutations and run a full layout recalculation (reflow) before it can return an accurate `offsetWidth`. Because `style.padding` changes the element's size, the previously computed layout is now invalid, and the browser must recompute it to give you a correct answer. This is a forced synchronous layout.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** React's Fiber tree uses a linked list instead of a recursive tree. What specific capability does this enable that a recursive tree cannot support?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Interruptibility. A recursive function call stack cannot be paused partway through, because the execution state lives on the call stack, which belongs to the JS engine. A linked list traversal is just a pointer walk through heap objects. React can stop walking, save where it is (the current Fiber pointer), yield control back to the browser to handle a higher-priority task (like a user input event), and then resume from the saved pointer. This is the mechanical foundation of Concurrent Mode.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q4.** If the Virtual DOM adds overhead compared to doing nothing, why does React still use it?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Because the alternative is you, manually tracking which DOM nodes to update when data changes. At any non-trivial scale, developers consistently get this wrong, miss updates, or do redundant updates. The Virtual DOM trades a small, predictable overhead (JS object creation and diffing) for correctness and the elimination of an entire class of manual synchronization bugs. It also enables batching: React can accumulate multiple state changes and apply them in a single pass rather than updating the DOM after every individual change.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q5.** What are the two distinct costs of touching the DOM? Name them precisely.
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 First, the bridge crossing cost: JavaScript and the DOM live in different worlds (JS heap vs browser's C++ rendering engine), and every property access or method call crosses a boundary with overhead. Second, the layout and paint cost: certain DOM reads and writes trigger the browser to recalculate element geometry (reflow) and repaint pixels on screen (repaint). Reflow is particularly expensive because changing one element's size can cascade and affect the layout of its ancestors and siblings.
-
-</details>
+</Answer>

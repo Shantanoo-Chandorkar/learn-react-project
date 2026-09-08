@@ -294,6 +294,7 @@ This is why `useEffect` is the right place for side effects that do not need to 
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: Why is this `useLayoutEffect` dangerous, and what should it be replaced with?**
 
 ```jsx
@@ -310,20 +311,19 @@ function Modal({ isOpen, onMeasure }) {
   return isOpen ? <div ref={ref}>Modal content</div> : null;
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `useLayoutEffect` fires synchronously before paint. `onMeasure(height)` calls `setState` in the parent. This schedules another synchronous render inside the layout phase, before the browser has painted. React will process this new update immediately, in the same synchronous block. The user sees neither the first render nor the intermediate state, only the final result after all synchronous updates resolve. This is actually the intended use case for `useLayoutEffect`: reading DOM measurements and synchronously updating state to reflect them, preventing the user from ever seeing the un-measured state.
 
 However, there is a risk: if `onMeasure` triggers an expensive computation or a chain of state updates, all of this blocks paint. The user sees the old UI for the entire duration. For heavy operations, this is worse than using `useEffect` (which would show the first render briefly, then update), because `useLayoutEffect` holds the browser hostage.
 
 The dangerous case is when `onMeasure` triggers multiple renders or slow work. If it is cheap (one `setState` call that updates a height variable), `useLayoutEffect` is appropriate and correct. If it is expensive or triggers cascading updates, use `useEffect` and accept the brief visual flash, or restructure to avoid measuring.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: In the commit phase, what does React do with the Fibers for deleted components, and in what order?**
 
 ```jsx
@@ -344,10 +344,9 @@ function App() {
 ```
 
 When the button is clicked and `show` becomes `false`, `Parent` and `Child` are deleted. In what order do their effects run?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 During the mutation phase, `commitDeletion` is called for the deleted subtree. React performs a depth-first traversal of the deleted subtree to run cleanup effects. The order is bottom-up: children before parents.
 
 Sequence for this example:
@@ -360,11 +359,11 @@ Sequence for this example:
 6. After paint, passive effects phase runs: `Child`'s `useEffect` cleanup, then `Parent`'s `useEffect` cleanup
 
 The bottom-up order for `useLayoutEffect` cleanups ensures that a parent's layout effect cleanup does not depend on child DOM nodes that have already been cleaned up. The child's cleanup runs while the parent's DOM is still intact. The parent's cleanup runs after the child is fully cleaned up. This mirrors the mount order in reverse: components mount parent first (parent `useLayoutEffect` fires before child), and unmount child first.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: A developer runs this code. The console shows "effect" before "layout effect" logged. Is this correct?**
 
 ```jsx
@@ -380,10 +379,9 @@ function App() {
   return <div>Hello</div>;
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 No, this is incorrect output. The correct order is `'layout effect'` first, then `'effect'`.
 
 `useLayoutEffect` fires during the layout sub-phase of the commit, synchronously before the browser paints. It fires before `useEffect`.
@@ -393,42 +391,39 @@ No, this is incorrect output. The correct order is `'layout effect'` first, then
 The correct sequence: mount → commit phase → layout phase fires `useLayoutEffect` callback (logs "layout effect") → commit completes → browser paints → MessageChannel task fires → `useEffect` callback runs (logs "effect").
 
 If the console shows "effect" before "layout effect", something is wrong: either the code is running in an environment where the distinction does not apply (server-side rendering, where `useLayoutEffect` is replaced with `useEffect`), the developer misread the output order, or there is a code error where the logs are in the wrong hooks. In a normal browser environment with `createRoot`, "layout effect" is always logged before "effect" on mount, and `useLayoutEffect` cleanups always run before `useEffect` cleanups on unmount.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** What makes the render phase safe to interrupt, and what makes the commit phase unsafe to interrupt? Answer at the mechanical level.
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The render phase is safe to interrupt because it has no observable side effects. It operates entirely on the work-in-progress Fiber tree, which is a JavaScript data structure in heap memory. No DOM nodes are created, modified, or deleted during the render phase. No refs are attached. No effects fire. The current tree (what is visible on screen) is not touched. If React pauses mid-render and the user sees the old UI, the old UI is still fully consistent and correct. If React throws away the in-progress work and restarts, the render function is pure (same inputs produce same output) so the restart produces an identical result. The interruption has no user-visible consequence and no correctness consequence.
 
 The commit phase is unsafe to interrupt because it modifies the real DOM, which is immediately visible to the user. If React inserts 5 of 10 planned DOM nodes and then pauses, the user sees a partially updated UI: some components showing new state, others showing old state simultaneously. The DOM may be structurally invalid: a parent node might exist without its expected children, breaking layout and CSS rules. There is no "rollback": DOM operations are not transactional. The only safe option is to complete all planned mutations atomically. This is why the commit phase runs synchronously to completion once it starts.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** The `root.current` pointer swaps from the old tree to the new tree during the mutation phase, not before or after. Why is the exact timing of this swap important?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The swap must happen after `getSnapshotBeforeUpdate` (before mutation) and before `componentDidMount`/`useLayoutEffect` (layout phase). `getSnapshotBeforeUpdate` is explicitly designed to read the current (old) DOM state before mutations occur. If `root.current` already pointed to the new tree when `getSnapshotBeforeUpdate` ran, it would read from the new (not yet committed) tree instead of the old one, producing incorrect snapshot values. Conversely, `componentDidMount` and `useLayoutEffect` are designed to read and interact with the newly committed DOM. If `root.current` still pointed to the old tree when they ran, any code that traverses the current tree (reading refs, checking component state) would see stale values. Placing the swap inside the mutation phase, after deletions and insertions but before layout effects, ensures each lifecycle sees the tree it was designed to see: before-mutation reads the old tree, layout reads the new tree.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** A developer needs to animate an element expanding from height 0 to its natural height immediately on mount, without the user seeing it at height 0 first. Which hook should they use and why?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `useLayoutEffect`. The sequence with `useEffect` would be: commit (DOM inserted at height 0 or unset) → browser paints (user sees element at height 0) → `useEffect` fires (animation starts). The user would see a flash of the collapsed state before the animation begins.
 
 With `useLayoutEffect`: commit (DOM inserted) → `useLayoutEffect` fires synchronously (sets the starting animation state, triggers CSS transition or sets initial transform) → browser paints (user sees the element in its animated state from frame 1). The user never sees height 0 because `useLayoutEffect` runs before the browser gets a chance to paint.
@@ -448,16 +443,15 @@ React.useLayoutEffect(() => {
 ```
 
 The `requestAnimationFrame` inside `useLayoutEffect` defers the actual height change to the next animation frame, but the transition setup (height 0, transition rule) is applied before paint. The user sees the element start at 0 and animate to its full height smoothly from the first frame.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q4.** If `useEffect` fires after paint and a `useEffect` calls `setState`, the component re-renders. How many total renders happen on mount for a component with one `useState` and one `useEffect` that calls `setState`?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Three renders, or two in React 18 with automatic batching in specific cases.
 
 In the general case: render 1 is the initial mount (state at initial value). The component function runs, JSX is returned, the Fiber tree is built and committed to the DOM. The browser paints. `useEffect` fires. `setState` is called inside the effect. React schedules a re-render. Render 2 is the re-render with the new state. The reconciler diffs the new output against the mounted output. Changes are committed. The browser paints again.
@@ -465,5 +459,4 @@ In the general case: render 1 is the initial mount (state at initial value). The
 In development with Strict Mode (React 18): the component function is called twice on mount to detect impurities (the double-invocation behavior). This does not produce two visible renders (React discards the first call's output), but you see the component function execute twice. This is development-only.
 
 The practical implication: if a `useEffect` unconditionally calls `setState` on mount, the user always experiences two renders: the initial mount and the post-effect update. This is why patterns that fetch data in `useEffect` show a loading state first (initial render with null data) and then update (second render after fetch completes). If the initial render shows a loading indicator, this two-render sequence is intentional and correct. If the initial render shows broken UI before the effect runs, the architecture should be reconsidered: perhaps initialize state to its correct value using a lazy initializer or a server-side data source.
-
-</details>
+</Answer>

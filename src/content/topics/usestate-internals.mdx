@@ -359,6 +359,7 @@ React maintains two Fiber trees: the current tree (what is on screen) and the wo
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: Why does this throw in development, and what is the precise internal reason?**
 
 ```jsx
@@ -380,20 +381,19 @@ function Counter({ showExtra }) {
 ```
 
 First render: `showExtra = true`. Second render: `showExtra = false`.
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 On the first render with `showExtra = true`, React creates three hook nodes in the linked list: Hook0 (`count = 0`), Hook1 (`extra = 'hello'`), Hook2 (`flag = false`). The list has three nodes.
 
 On the second render with `showExtra = false`, React switches to the update dispatcher. It walks the existing list. First `useState` call: cursor reads Hook0, returns `[0, setCount]`. Correct. The `if` block is skipped, so the second `useState` call does not happen. Third `useState` call is now the second call: cursor reads Hook1, which holds `'hello'`. `flag` is set to `'hello'`, not `false`. React renders `flag.toString()` which calls `.toString()` on the string `'hello'`, rendering `'hello'` instead of `'false'`.
 
 React detects this in development by counting the number of hook calls and comparing it to the previous render. When the count changes, React throws "Rendered fewer hooks than expected." In production without this check, you get silent data corruption: wrong state values for every hook after the conditional one. The Rules of Hooks are enforced by this detection in development, but the fundamental failure is the cursor misalignment in the linked list.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: Calling `setState` with the same value. How many re-renders happen?**
 
 ```jsx
@@ -406,10 +406,9 @@ function App() {
 ```
 
 The button is clicked three times. How many times does `'rendered'` appear in the console?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Once on mount, then once on the first click, then zero additional times on subsequent clicks.
 
 On mount: `'rendered'` logs once.
@@ -417,11 +416,11 @@ On mount: `'rendered'` logs once.
 On first click: `setCount(0)` is called. React's `dispatchSetState` computes the eager state: `basicStateReducer(0, 0) = 0`. It compares with `Object.is(0, 0)` which is `true`. React bails out immediately without scheduling a re-render. So `'rendered'` does not log.
 
 Wait, there is a subtlety. React's bail-out on the first call after mount is not guaranteed in all React versions. React may re-render once to confirm the bail-out, then stop. In React 18, clicking the button once may log `'rendered'` once (the confirmation render), then subsequent clicks with the same value do not log again. This is an implementation detail: React performs one "eager bail-out check" and one possible confirmation render, then fully bails out for subsequent identical updates. The mental model: `setState` with the same value by reference or primitive equality causes React to skip re-renders, but the first such call may still trigger one render for internal bookkeeping. Subsequent identical calls do not.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: What is the bug in this custom hook, and how does it relate to the linked list?**
 
 ```jsx
@@ -438,10 +437,9 @@ function Form({ isEditing }) {
   return <input value={text || ''} onChange={(e) => setText(e.target.value)} />;
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The `useState` call inside `useConditionalState` is inside an `if (condition)` block. React does not know or care that the conditional is inside a custom hook rather than directly in the component. The Rules of Hooks apply to the entire call chain: the linked list position is determined by the call order during the component's render, and any hook called anywhere in the render call stack (including in custom hooks) occupies a slot in the list.
 
 When `isEditing` changes from `true` to `false` between renders, the `useState` inside the custom hook is skipped on the second render. The linked list has one fewer node than the previous render. Every hook after this position in `Form` reads the wrong slot. React throws in development.
@@ -459,62 +457,56 @@ function useConditionalState(condition, initialValue) {
 ```
 
 The hook always occupies its slot. The condition only affects what is returned to the caller.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** React uses a linked list for hook state instead of a plain array with string keys. What is the tradeoff, and what invariant must be maintained as a consequence?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 A linked list with position-based identification requires no developer-provided keys, avoids key collision bugs, and keeps the API minimal. The tradeoff is that position becomes load-bearing: every hook call must occur in the same order on every render. If the number or order of hook calls changes between renders, the cursor misaligns and every hook after the mismatch point reads wrong state. The invariant that must be maintained: hook calls must be unconditional, must not be inside loops with variable iteration counts, and must not be inside conditionals that may change between renders. This invariant is enforced by React's development-mode hook count comparison and by ESLint's `eslint-plugin-react-hooks` rule.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** What does the dispatcher mechanism (`ReactCurrentDispatcher.current`) achieve, and why is it set before calling your component function rather than being determined inside `useState` itself?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The dispatcher is a global pointer that routes `useState` calls to either the mount implementation (creates new nodes) or the update implementation (reads existing nodes). It is set before calling your function because the decision of which implementation to use is a property of the render context (is this a mount or an update?), not a property of the individual hook call. If `useState` determined this itself, it would need to check some global state on every call anyway. By setting the dispatcher once before the function runs, all hook calls during that render automatically use the correct implementation without any per-call checking. It also means React can swap the dispatcher for other contexts, for example a "server" dispatcher for React Server Components that disallows stateful hooks, or a "re-render" dispatcher for state updates triggered during render, without changing the hook implementations themselves.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** `dispatchSetState` performs an eager bail-out check using `Object.is` before scheduling a re-render. What does this mean for objects and arrays passed to state setters?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `Object.is` for objects and arrays is a reference equality check. Two distinct objects with identical contents are not equal under `Object.is`. This means: passing a new object to the setter always schedules a re-render, even if the contents are identical. And passing a mutated version of the same object never schedules a re-render, because the reference is unchanged. The consequence is the immutability requirement: always create new objects and arrays when updating state. `setUser({ ...user, name: 'Ravi' })` creates a new reference, passes the `Object.is` check as different, and schedules a re-render. `user.name = 'Ravi'; setUser(user)` passes the same reference, `Object.is` returns `true`, and no re-render is scheduled. The UI never updates. The eager bail-out is correct behavior, but it requires you to understand that React's change detection is reference-based, not deep equality.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q4.** What is the `alternate` Fiber, and why does React need two Fiber trees instead of one?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Every Fiber node has an `alternate` pointer to a corresponding Fiber in a second tree. React maintains two trees: the current tree, which represents what is currently on screen, and the work-in-progress tree, which is being built for the next render. When a re-render starts, React builds the work-in-progress tree by processing components and updating hook state. During this process it reads from `fiber.alternate` (the current tree) to get previous state and props for comparison. When the render is complete and committed, the trees swap: the work-in-progress tree becomes current and vice versa. This double-buffering ensures the user always sees a complete, consistent UI. The current tree is never partially modified. Changes are prepared in the work-in-progress tree and applied atomically by swapping the tree pointer. If a render is interrupted (in concurrent mode), the work-in-progress tree is discarded and rebuilt, and the current tree remains on screen unchanged.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q5.** A developer writes a custom hook that calls `useState` inside a `for` loop: `for (let i = 0; i < fields.length; i++) { useState('') }`. The array `fields` always has the same length. Is this safe?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 It is technically safe if and only if `fields.length` is guaranteed to never change across renders. The loop with a constant iteration count calls `useState` the same number of times in the same order on every render. The linked list cursor advances consistently. However, this is dangerous in practice because nothing in the code structure enforces the constant-length guarantee. If `fields` is a prop or derived from state, a parent could pass a different-length array on a future render, the hook count changes, and the list corrupts. The correct pattern is to manage an array as a single state value: `useState(fields.map(() => ''))`, storing the entire collection in one slot. This is one `useState` call regardless of collection size, safe unconditionally. The loop approach violates the spirit of the Rules of Hooks even when it technically works, because it creates a hidden invariant that is not visible at the call site and cannot be linted or enforced.
-
-</details>
+</Answer>

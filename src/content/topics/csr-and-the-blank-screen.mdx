@@ -307,26 +307,25 @@ This boundary is the core architectural concept of the App Router and is covered
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: "Next.js eliminates the need for useEffect for data fetching." Is this accurate?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Partially accurate, but the precision matters. In the App Router with Server Components, you fetch data directly in the component using `async/await` without `useEffect`. This works because the component runs on the server where async operations are fully supported at the top level. `useEffect` does not exist on the server. For server components, data fetching is just `await fetchData()` in the function body.
 
 However, `useEffect` for data fetching is still valid and sometimes necessary in Client Components. If you need to fetch data in response to user interaction, after mount (for data that does not need to be server-rendered), or when the component is a Client Component that cannot be converted to a Server Component, `useEffect` remains appropriate.
 
 The accurate statement: Next.js App Router eliminates `useEffect` for initial page data fetching in Server Components by allowing direct async data access in the component body. For client-side data fetching driven by user interaction or Client Component constraints, `useEffect` or a data fetching library (React Query, SWR) remains the correct tool.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: A developer says "hydration just means React re-renders the page in the browser after SSR." What is wrong with this?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 "Re-render" implies React discards the server-rendered HTML and creates new DOM nodes from scratch. Hydration does not do this. Hydration is React walking the existing server-rendered DOM, matching each DOM node to the corresponding component in the component tree, and attaching JavaScript behavior (event listeners, state, refs) to the existing nodes.
 
 The existing DOM nodes are not replaced. They are adopted. This is what makes hydration fast: the browser has already parsed and laid out the HTML from the server response. Hydration does not trigger a repaint or reflow for matching nodes. It is purely a JavaScript operation that attaches behavior to existing structure.
@@ -334,16 +333,15 @@ The existing DOM nodes are not replaced. They are adopted. This is what makes hy
 If React did re-render (destroy and recreate DOM nodes), the user would see a flash as the DOM was torn down and rebuilt, CSS animations would reset, input focus would be lost, and scroll position would jump. Hydration is specifically designed to avoid all of this by preserving the existing DOM.
 
 The caveat: if the server HTML does not match what the client render produces (a hydration mismatch), React does fall back to re-rendering the mismatched subtree, which can produce a visible flash. This is the failure mode hydration is designed to prevent when the server and client renders are in sync.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: When should you NOT use Next.js and stick with a pure React CSR setup?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Three specific scenarios where CSR is the correct choice.
 
 First, fully authenticated applications with no public pages. A dashboard, admin panel, or internal tool where every route requires login has no SEO requirement. Search engines should not and cannot index pages behind authentication. The blank screen on first load is mitigated by a loading skeleton. SSR adds server infrastructure complexity without any benefit.
@@ -353,52 +351,48 @@ Second, highly dynamic real-time applications. Applications that subscribe to We
 Third, applications where you control the deployment environment completely and it does not support Node.js. Next.js requires a Node.js server (or an edge runtime) to render on the server. If your hosting is purely static (S3, GitHub Pages) and you cannot add a server, CSR is the only option. Next.js's static export mode (`output: 'export'`) produces static files but loses all SSR, SSG with revalidation, Server Actions, and Middleware capabilities.
 
 The heuristic: if SEO matters or first meaningful paint on a slow connection matters to your users, use Next.js. If neither matters, the added complexity of Next.js is not justified.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** What is the specific reason data fetching in a CSR React app cannot begin until the JavaScript bundle has been fully downloaded and executed?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Data fetching in CSR React applications lives in `useEffect` (or in custom hooks that use `useEffect`). `useEffect` fires after a component mounts. Components mount after React has executed and rendered the component tree. React executes after the JavaScript bundle has been downloaded and parsed by the browser. The bundle download is a prerequisite for React to exist in the browser at all.
 
 This creates a sequential waterfall: bundle download → bundle parse → React execute → component mount → `useEffect` fire → fetch request → data arrives → re-render. Each step cannot begin until the previous step completes. The fetch request, which is usually the slowest meaningful step in terms of user-perceived content, is at position six in this chain. On a slow connection, the first five steps alone can take 2-3 seconds before the network request for actual content even begins.
 
 Next.js breaks this waterfall by moving data fetching to the server, where it happens before the HTML is sent. The fetch request runs in parallel with or before the HTML transmission, not after the entire JavaScript bundle has been processed by the client.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** What is hydration, and what problem would occur if React re-created all DOM nodes from scratch instead of hydrating?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Hydration is the process of React running in the browser on a page that was already rendered to HTML by the server. Instead of creating new DOM nodes, React walks the existing server-rendered DOM, matches each node to the corresponding component in the component tree, and attaches JavaScript behavior: event listeners, state initialization, and refs. The DOM structure is preserved; only the JavaScript layer is added.
 
 If React re-created all DOM nodes from scratch (a full client-side re-render), several problems would occur. The user would see a flash as the existing DOM is destroyed and rebuilt, even if the result looks identical. CSS transitions and animations that began during the server-rendered state would reset. Any input element the user had started interacting with during the brief window before JavaScript loaded would lose its focus and any typed content. Scroll position would reset to the top. The browser would need to run a full reflow and repaint for the entire page. For content-heavy pages, this reflow could take hundreds of milliseconds, making the page feel unresponsive immediately after the JavaScript loads.
 
 Hydration avoids all of this by treating the server-rendered HTML as the correct initial DOM state and building React's internal representation on top of it without touching the actual DOM nodes for matching elements.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** What data does Next.js embed in the page alongside the server-rendered HTML, and why is it necessary for hydration?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Next.js embeds the data used to render the page as a JSON payload in a `<script id="__NEXT_DATA__">` tag (Pages Router) or as inline script tags containing serialized React flight data (App Router). This data is the server-side props, query parameters, and fetched data that were used to produce the server-rendered HTML.
 
 It is necessary because React must produce an identical component tree during hydration as the server produced during rendering. If the client React render were to re-fetch the data independently, several problems arise: the data could have changed between the server render and the client hydration (prices, stock levels, user names), producing a mismatch between the existing server-rendered HTML and the new client render. React would detect the mismatch and re-render the mismatched subtrees, causing a visible flash of incorrect content.
 
 By embedding the server data in the page, the client React render can use the exact same data the server used, producing the exact same component output, and hydration completes without any DOM corrections. The user sees consistent content from the moment the HTML loads through the completion of hydration.
-
-</details>
+</Answer>

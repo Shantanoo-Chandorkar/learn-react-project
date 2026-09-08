@@ -215,22 +215,22 @@ This is what "React owns the DOM" means mechanically. The `stateNode` on the `bu
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: What is the difference between a React element and a React component?**
 
 ```jsx
 const element = <UserCard user={user} onFollow={fn} />;
 const component = UserCard;
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 A React component is a function (or class) that accepts props and returns JSX. It is a definition, a blueprint. A React element is the result of calling JSX syntax with a component type and props. It is a plain JavaScript object describing what to render: `{ type: UserCard, props: { user, onFollow }, key: null }`. The component is the factory. The element is what the factory produces. React takes elements and uses the `type` field to know which component function to call during reconciliation. A common confusion is thinking `<UserCard />` calls the function. It does not. It creates an element object. React calls the function during the render phase when it processes the Fiber for that element.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: What does this render?**
 
 ```jsx
@@ -242,16 +242,15 @@ function Wrapper() {
   return <div>{card}</div>;
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 It renders the output of `UserCard` as JSX, so visually it appears correct. But this is a critical mistake. Calling `UserCard(props)` directly bypasses React's component system entirely. React does not create a Fiber node for `UserCard`. There is no reconciliation for it. Hooks inside `UserCard` would either fail or attach to the wrong Fiber (the `Wrapper`'s Fiber), because React's hook dispatcher tracks which component is currently rendering via the current Fiber. If `UserCard` has any hooks like `useState` or `useEffect`, they would behave incorrectly or throw. The correct way is `<UserCard user={...} onFollow={...} />`, which creates a React element that React processes through its reconciler, creating a proper Fiber and calling the function in the right context.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: What is wrong with this component, and will it cause a bug?**
 
 ```jsx
@@ -289,67 +288,60 @@ function Feed({ users }) {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `React.memo` wraps `UserCard` to skip re-renders when props haven't changed. But it will never actually skip re-renders here, because `handleFollow` is defined inside `Feed`. Every time `Feed` re-renders (when `filter` changes), a new `handleFollow` function is created with a new reference. `React.memo` does a shallow equality check on props. The `user` prop hasn't changed, but `onFollow` has a new reference, so the check fails and `UserCard` re-renders anyway. `React.memo` is effectively useless here. The fix is `useCallback` wrapping `handleFollow`. This trap is the exact reason `React.memo` alone is often not enough, and why functions being recreated on every render is a meaningful problem.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** What are the two things `createUserCard` (the vanilla JS approach) cannot do that a React component can, and what is the mechanical reason for each?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 First, it cannot update when data changes. `createUserCard` is called once and returns a DOM node. That DOM node has no link back to the `user` object. If `user` changes, there is no mechanism to re-run `createUserCard` for that specific node and patch the DOM. A React component can update because React holds the Fiber node, which holds the previous props. When new props arrive, React calls the function again with the new props, gets a new description, and diffs it against the previous one to find changes. Second, it cannot communicate upward without global coupling. A vanilla factory function either reads global state or reaches into global DOM to communicate changes. A React component communicates upward through callback props, which are provided by the parent. The component signals intent, the parent decides what to do. This works because React enforces a tree structure where parents always know about their children.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** A colleague says "JSX compiles to `document.createElement` calls." Is this accurate?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 No. JSX compiles to `React.createElement` calls (or the newer JSX transform equivalent, `_jsx`), which produce plain JavaScript objects called React elements. `document.createElement` creates actual DOM nodes in the browser. `React.createElement` creates lightweight description objects in JavaScript memory. The distinction matters because React elements are cheap to create, can be thrown away, can be diffed against each other, and do not cause any browser layout or paint work. Real DOM nodes are expensive, trigger layout recalculation, and must be managed carefully. JSX is a description language. The DOM is the eventual output, managed by React after reconciliation.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** What is `stateNode` on a Fiber node, and why is it `null` for function components?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `stateNode` holds a reference to the "instance" associated with a Fiber node. For host components like `div`, `button`, `p`, it holds the actual DOM node created by the browser. For class components it holds the class instance. For function components it is `null` because function components have no instance. A function component is just a function. It has no persistent object that gets created and stored. Every render is a fresh function call. React manages all the persistence (state, effects, refs) through the Fiber node itself, not through any instance on the component. This is one of the core differences between function components and class components, and it's why hooks like `useState` need to store state on the Fiber rather than on `this`.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q4.** You need to render a list of 100 `UserCard` components. A teammate says "let's just call `UserCard(props)` in a loop and collect the results instead of using JSX, it's faster because it skips React's element creation overhead." Evaluate this claim.
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The performance claim is false and the approach introduces correctness bugs. The overhead of creating a React element object (`{ type, props, key }`) is negligible, it's just an object literal. Calling `UserCard(props)` directly bypasses Fiber creation for each card, which means React cannot reconcile them individually. On re-render, React cannot tell which card corresponds to which previous render. If any card uses hooks, those hooks attach to the current rendering component's Fiber instead of individual card Fibers, which breaks hooks entirely. The small perceived optimization eliminates React's ability to do targeted, minimal DOM updates, and likely breaks the entire component. Using JSX is not overhead, it's the mechanism that makes React's reconciliation work.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q5.** What is the structural reason that `onFollow` as a callback prop solves the global DOM coupling problem that the vanilla `createUserCard` had?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 In the vanilla version, `createUserCard` needed to know about the outside world to communicate changes, so it reached into global DOM by ID. This hardcoded an assumption about page structure inside a reusable function, destroying reuse. With a callback prop, `UserCard` makes no assumptions about the outside world. It only knows: "when the follow button is clicked, call `onFollow` with the user ID." What `onFollow` does is entirely the caller's responsibility. The caller might update a global count, make an API call, update local state, or do nothing. `UserCard` doesn't care and doesn't need to know. This is the dependency inversion principle applied to UI: high-level behavior is injected by the parent, not hardcoded in the child.
-
-</details>
+</Answer>

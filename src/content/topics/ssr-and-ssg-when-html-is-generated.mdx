@@ -356,11 +356,11 @@ The `buildId` is checked on the client. If the user navigates between pages usin
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: What is the difference between `getServerSideProps` and `getStaticProps`? When would you use each?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `getServerSideProps` runs on every request. It has access to the full HTTP context: headers, cookies, query parameters. It is appropriate for pages that require authentication (reading session cookies), personalization (different content per user), or real-time data (stock prices, live scores, inventory that changes by the minute). The tradeoff is performance: every request pays the cost of running the function, which typically includes a database query or API call.
 
 `getStaticProps` runs once at build time (and optionally on a schedule via `revalidate`). It has no access to the HTTP request context, only to the route parameters. It is appropriate for content that is the same for all users and changes infrequently: marketing pages, blog posts, product catalogs, documentation. The benefit is performance: the HTML is a static file served from a CDN with no per-request computation.
@@ -368,46 +368,43 @@ The `buildId` is checked on the client. If the user navigates between pages usin
 The deciding question: does the page content depend on who is requesting it or when they are requesting it? If yes, `getServerSideProps`. If no, `getStaticProps`.
 
 An important nuance: `getStaticProps` with `revalidate` is ISR (covered in Phase 1.4), which gives you a middle ground: static file performance with automatic background regeneration when the data changes.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: A developer uses `getStaticPaths` with `fallback: false`. A new product is added to the database after the build. What happens when a user requests that product's page?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The user receives a 404 page. `fallback: false` tells Next.js that any route not pre-rendered at build time does not exist. There is no mechanism to generate it on demand. The pre-rendered paths list is exhaustive: anything not in it returns a 404.
 
 This is appropriate when the set of valid paths is known completely at build time and does not change between builds (a documentation site with a fixed set of pages, a blog where new posts require a new build). It is wrong for content where new items can be added without a build: an e-commerce catalog where products are added by a content team, a blog where posts are published continuously.
 
 For continuously growing content, `fallback: 'blocking'` or `fallback: true` is correct: new paths not covered by the initial build are generated on demand on the first request, then cached as static files. Subsequent requests to the new path are served the cached file. `fallback: 'blocking'` makes the first user wait for generation. `fallback: true` immediately shows a loading state (the component receives `router.isFallback === true`) while generation happens in the background, then the page is replaced with the generated content.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: Can you use `getServerSideProps` and `getStaticProps` in the same page file?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 No. A Next.js page can export only one of these at a time. They represent mutually exclusive rendering strategies. Exporting both from the same file will cause a build error.
 
 The rationale is that they represent fundamentally different contracts about when the page is rendered. `getServerSideProps` says "render at request time." `getStaticProps` says "render at build time." These cannot be simultaneously true for the same page.
 
 However, you can mix strategies across different pages in the same application. `/products/[id]` can use `getStaticProps` (pre-render product pages), while `/dashboard` uses `getServerSideProps` (authenticate and personalize), and `/about` exports neither (fully static, rendered at build time with no data). Next.js applies the rendering strategy per page, not per application.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 4: In the App Router, how do you explicitly opt a Server Component into SSR (re-render on every request) vs. SSG (render at build time)?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The mechanism is the `cache` option on `fetch` calls within the Server Component.
 
 For SSR behavior (fresh data on every request): use `cache: 'no-store'` on the fetch call. This tells Next.js's extended `fetch` to bypass all caching and always make a fresh network request. The route will not be pre-rendered at build time and will be rendered dynamically on every request.
@@ -426,31 +423,29 @@ const data = await fetch(url, { cache: 'force-cache' }); // explicit
 Additionally, you can use `next: { revalidate: N }` for ISR behavior: cache the result and regenerate after N seconds. The `noStore()` function from `next/cache` is an alternative to `cache: 'no-store'` that opts the entire route out of static generation.
 
 There is also a route-level override: exporting `export const dynamic = 'force-dynamic'` from a route segment file forces the entire route to SSR regardless of individual fetch configurations. `export const dynamic = 'force-static'` forces SSG even if the route would otherwise be dynamic.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** A page shows a user's personalized feed of posts. The feed is different for every logged-in user and updates when new posts are published. Should this be SSR or SSG? Justify using the deciding question.
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 SSR. Applying the deciding question: "does every user who requests this page at the same time need a different HTML response?" Yes. The feed is personalized per user: user A and user B requesting the same URL at the same time need different HTML because their feeds contain different posts. SSG cannot produce different HTML per user because it generates one HTML file per route, shared by all users. SSR is required because the page content depends on who is requesting it (their session/identity determines their feed content).
 
 Additionally, the feed updates when new posts are published, meaning the correct response changes over time based on external events not controlled by the page request itself. This further confirms SSR: the data must be fetched fresh on each request to reflect the latest posts for that specific user.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** What does `getStaticPaths` return, and what happens at build time vs. request time for paths not included in its return value when `fallback: 'blocking'` is set?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `getStaticPaths` returns an object with two fields: `paths` (an array of parameter objects representing the routes to pre-render at build time) and `fallback` (the behavior for routes not in the `paths` array).
 
 At build time: Next.js calls `getStaticPaths`, collects the returned paths, and calls `getStaticProps` for each one. Each call produces a pre-rendered HTML file stored on disk. These files are served instantly to users who request those routes.
@@ -458,20 +453,18 @@ At build time: Next.js calls `getStaticPaths`, collects the returned paths, and 
 For routes not in the `paths` array with `fallback: 'blocking'`: at request time, the first user to request that route triggers on-demand generation. Next.js calls `getStaticProps` for the specific route parameters, renders the component, produces HTML, stores it on disk (the same as if it had been built at build time), and sends it to the user. The user waits for this generation, which is why it is called "blocking." All subsequent users who request the same route receive the cached static file immediately.
 
 The practical implication: with `fallback: 'blocking'`, you can pre-render your most important or most visited routes at build time (fast for users who matter most) while allowing the full catalog to be generated on demand (new routes generated once, then cached forever until the next build or revalidation).
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** Why can SSG pages be served faster than SSR pages even when both produce the same HTML output?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 SSG pages are pre-built HTML files that can be stored on a CDN. When a user requests an SSG page, the request is handled by the nearest CDN edge node, which serves the file directly from its cache. There is no origin server round-trip, no Node.js process execution, no database query, no React rendering. The response is a file read and a network transmission: 10-30ms total.
 
 SSR pages cannot be stored on a CDN in this way because each request may produce different output (different user, different time). Even in cases where the output would be identical for all users at a given moment, the server cannot know this ahead of time without executing the data fetching. The request must travel to an origin server, which runs a Node.js process, executes `getServerSideProps`, queries a database or API, renders the React component tree to HTML, and then sends the response. This chain typically adds 50-200ms of latency compared to a CDN-cached file.
 
 The performance gap is structural, not implementation-specific. A static file served from a CDN edge is fundamentally faster than any server-rendered response because it eliminates compute, network round-trips to the origin, and data fetching from the critical path.
-
-</details>
+</Answer>

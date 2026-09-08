@@ -256,11 +256,11 @@ The confusion collapses when you look at what `useEffect` is actually for: synci
 
 ---
 
+<Question>
 **Q1.** Give the precise definition of a side effect. Using that definition, classify each of the following as a side effect or pure computation: filtering an array, writing to `localStorage`, deriving a formatted date string from a prop, opening a WebSocket connection, computing a total price from a cart array.
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 A side effect is any operation that reads from or writes to something outside the function's own scope, or is not safe to run multiple times with the same inputs and produce the same result without consequence.
 
 - Filtering an array: pure. The array is passed in, a new array is returned, nothing outside the function changes.
@@ -268,16 +268,15 @@ A side effect is any operation that reads from or writes to something outside th
 - Deriving a formatted date string from a prop: pure. Same prop in, same string out, nothing external touched.
 - Opening a WebSocket connection: side effect. A connection to an external server is established. The outside world is now different. Running it twice opens two connections.
 - Computing a total price from a cart array: pure. Same array in, same number out, nothing external touched.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** A teammate puts a `fetch` call directly in a component's render body and says "it works in development, the data loads correctly." Explain the specific failure modes that will appear, and why they may not be immediately visible.
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Three failure modes:
 
 First, infinite loop risk. The fetch resolves and calls a state setter. The state setter triggers a re-render. The re-render runs the fetch again. This loops until the component unmounts or the browser tab crashes. In development this may appear intermittently if the component only renders once before user interaction, masking the loop until a state change occurs.
@@ -287,31 +286,29 @@ Second, race conditions. If a prop that the fetch depends on changes before the 
 Third, setting state on unmounted components. If the component unmounts before the fetch resolves — navigating away, conditional rendering — the fetch still calls the state setter on a component that no longer exists. React produces a warning and in some cases a runtime error. This is invisible unless the user navigates quickly.
 
 All three are timing-dependent and may not appear in simple local development scenarios, which is exactly why the pattern feels like it works until it is in production.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** React's rendering pipeline has two phases. Name them, describe what happens in each, and explain why side effects are prohibited in one but permitted in the other.
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The two phases are the render phase and the commit phase.
 
 In the render phase, React calls your component function and computes what the UI should look like. It diffs the new output against the previous Fiber tree to determine what DOM mutations are needed. In Concurrent Mode this phase can be interrupted, restarted, or executed speculatively and discarded. Because of this, it must be pure: React may call your component function multiple times for a single visible update, and any side effect would fire multiple times with no mechanism to undo it.
 
 In the commit phase, React applies the computed DOM mutations. This phase is synchronous and never interrupted. After the DOM is updated, React runs effect cleanup from the previous render and then effect setup from the current render. Side effects are permitted here because React has finished its work and is now in a controlled, sequential handoff to the outside world. The timing is guaranteed: effects always see the committed, current DOM.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q4.** What is the distinction between a side effect managed by `useEffect` and work done inside an event handler? Both are impure. Why does one require `useEffect` and the other does not?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The distinction is what triggers the work and what lifecycle it needs.
 
 `useEffect` is for work that must happen as a consequence of the component rendering — synchronizing an external system with the current render output. It is triggered by React's render cycle. Because it is tied to the render cycle, it needs React to manage when it runs (after commit), when it re-runs (when deps change), and when it cleans up (before the next effect or on unmount). Without `useEffect`, there is no mechanism for any of this.
@@ -319,20 +316,18 @@ The distinction is what triggers the work and what lifecycle it needs.
 Event handlers are triggered by user interaction, not by the render cycle. React dispatches them at a specific, synchronous moment in response to a DOM event. They run to completion. There is no "previous handler to clean up" and no "re-run when deps change" because they are not tied to the render cycle at all. React manages their lifecycle through the event delegation system automatically.
 
 The directional difference: effects synchronize React's output to the outside world. Event handlers bring the outside world's input into React. They are opposite directions and need different lifecycle management.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q5.** In React Strict Mode, a component's render function runs twice. A developer notices their `useEffect` only runs once in Strict Mode, but a `console.log` inside the render body prints twice. Explain precisely why this happens and what React is trying to demonstrate with each behavior.
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The `console.log` prints twice because Strict Mode intentionally double-invokes the render function to verify it is pure. If the render function is pure, running it twice produces the same output. The double log is a side effect of that double invocation — it is React demonstrating that something in your render body is reaching outside the function. The second invocation is the signal: your render has a side effect, and React is surfacing it by showing you the consequence of running it twice.
 
 `useEffect` runs once because Strict Mode does not double-invoke effects the same way. In React 18 Strict Mode, effects are actually mounted, unmounted, and remounted once — simulating a component being hidden and shown again — but the effect setup function still runs once per committed render from the developer's perspective. The purpose here is different: React is testing that your cleanup function correctly undoes your setup function, not testing that the effect is pure (effects are explicitly allowed to be impure).
 
 Together the two behaviors demonstrate React's two-phase contract: render must be pure (double-invoke to expose violations), effects are the designated escape hatch (one run, but with forced cleanup to verify correctness).
-
-</details>
+</Answer>

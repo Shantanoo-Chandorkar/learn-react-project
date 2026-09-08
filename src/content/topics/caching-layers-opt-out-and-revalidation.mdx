@@ -502,11 +502,11 @@ This is why `router.refresh()` only refreshes the current page: it re-requests o
 
 ### 9. Interview Traps
 
+<Question>
 **Trap 1: A developer adds `cache: 'no-store'` to all their fetch calls. They notice their Next.js application is now as slow as a regular Express server. Why, and what should they have done instead?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `cache: 'no-store'` on all fetch calls disables the Data Cache for every fetch. This means every request to every page executes every fetch call against the actual data source (database, external API). No caching occurs at the data level.
 
 More significantly, every route with `cache: 'no-store'` fetch calls is treated as dynamically rendered and bypasses the Full Route Cache. The server must re-execute all Server Component code, re-fetch all data, and re-render all components on every single request. This is exactly what a traditional Express server does, and it performs like one.
@@ -514,16 +514,15 @@ More significantly, every route with `cache: 'no-store'` fetch calls is treated 
 The correct approach is to match the cache configuration to the data's update frequency. Static or rarely-changing data (product catalogs, blog posts, configuration) should use `cache: 'force-cache'` or `next: { revalidate: N }` with appropriate windows. User-specific or real-time data should use `cache: 'no-store'`. The goal is to cache as aggressively as correctness allows: most applications have far more cacheable data than they cache.
 
 For data that needs to be fresh but is not per-user, on-demand revalidation with a generous `revalidate` window as a safety net is more efficient than `cache: 'no-store'`. The page is served from cache (fast) and invalidated precisely when data changes (correct), rather than re-fetched on every request regardless of whether data changed.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: A developer calls `revalidatePath('/products/42')` after updating a product. They immediately redirect the user to `/products/42`. The user sees stale data. Why?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `revalidatePath` marks the cache entry as stale but does not immediately regenerate the page. The stale-while-revalidate model applies: the next request to `/products/42` receives the currently cached (stale) response while background regeneration begins. The user who is redirected immediately after `revalidatePath` is called is that first request. They receive the stale page.
 
 The background regeneration completes typically within a second. A subsequent request to `/products/42` receives the fresh page.
@@ -531,16 +530,15 @@ The background regeneration completes typically within a second. A subsequent re
 Two approaches to ensure the redirected user sees fresh data. First, add a small delay between the revalidation and the redirect: allow the background regeneration to complete before redirecting. This is fragile because regeneration time varies. Second, structure the flow so the user is redirected to a page that fetches data dynamically (SSR with `cache: 'no-store'`) rather than a statically cached page. The confirmation page after an update is a natural candidate for SSR.
 
 In Server Actions (the common place for update-then-redirect flows), Next.js may handle this differently depending on the version: some versions complete the revalidation before the redirect rather than treating it as background work. Check the specific Next.js version behavior for the exact timing guarantees.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: What is the difference between the Data Cache and Request Memoization? Can they both be active simultaneously for the same fetch call?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Request Memoization is in-memory, request-scoped deduplication: within a single server render pass, identical fetch calls return the same result without making multiple network requests. It is cleared after each request completes. It has no configuration and cannot be opted out of for `fetch` calls.
 
 The Data Cache is persistent server-side storage: fetch results are stored across requests and deployments until invalidated. It persists between requests, survives server restarts (in production deployments), and can be configured with revalidation windows and tags.
@@ -548,33 +546,31 @@ The Data Cache is persistent server-side storage: fetch results are stored acros
 Yes, both can be active simultaneously for the same fetch call. The layers operate independently and in sequence. Within a single request: Request Memoization is checked first. If it is a miss (first call to this URL in this request), the Data Cache is checked. If the Data Cache has a valid entry, the cached response is returned and stored in Request Memoization for subsequent calls in the same request. If the Data Cache is also a miss, the actual fetch is made, the response is stored in the Data Cache (if not `cache: 'no-store'`), and also stored in Request Memoization.
 
 The practical interaction: two Server Components calling the same URL in the same request hit Request Memoization for the second call. One actual HTTP request is made regardless of what the Data Cache returns. The Data Cache handles persistence across requests. Request Memoization handles deduplication within a request.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** A user visits `/products/42`, sees fresh data. They navigate to `/about`, then navigate back to `/products/42` using the browser back button. Which cache layer serves this second visit, and is the data guaranteed to be fresh?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The Router Cache serves the second visit. The App Router stores RSC payloads for previously visited routes in browser memory. When the user navigates back to `/products/42`, the Router Cache checks whether it has a valid entry for that route. If the entry is within the cache duration (5 minutes for statically rendered routes, 30 seconds for dynamically rendered routes in Next.js 14), no server request is made. The RSC payload from the first visit is used to reconstruct the page.
 
 The data is not guaranteed to be fresh. It is the same data the user saw on the first visit, which may now be stale depending on how much time has passed and what has changed in the underlying data source. For a statically rendered route cached for 5 minutes, the user could see data that is up to 5 minutes plus the Full Route Cache age old.
 
 To ensure fresh data on back navigation, use `router.refresh()` programmatically, or in Next.js 15 where dynamic routes are not cached in the Router Cache by default. For static routes, the Router Cache duration cannot be configured in Next.js 14, so fresh data on back navigation is not guaranteed for static routes regardless of server-side cache configuration.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** A Server Action updates a product and calls `revalidateTag('product-42')`. List every cache layer that this affects and every layer it does not affect.
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Affected layers:
 
 The Data Cache is directly affected. `revalidateTag('product-42')` marks all Data Cache entries tagged with `'product-42'` as stale. The next request that hits these entries triggers a background re-fetch. This is the primary effect of `revalidateTag`.
@@ -586,16 +582,15 @@ Not affected layers:
 Request Memoization is not affected. It is scoped to the current request and is already cleared by the time `revalidateTag` is called. It does not store anything persistent and has no invalidation mechanism.
 
 The Router Cache in the browser is not affected. `revalidateTag` is a server-side operation. It has no knowledge of or communication with browser-side caches. The user's browser may still serve stale RSC payloads from the Router Cache until the cache entry expires or `router.refresh()` is called.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** What is the minimum change required to make a Next.js App Router route bypass the Full Route Cache and render dynamically on every request?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Any one of the following is sufficient to make a route dynamic and bypass the Full Route Cache:
 
 Adding `export const dynamic = 'force-dynamic'` as a route segment configuration export. This is the most explicit way: it signals intent clearly and applies regardless of what fetches are in the route.
@@ -609,8 +604,7 @@ Reading `searchParams` (the dynamic query string prop) in a page component. Sear
 Using `unstable_noStore()` from `next/cache` in any Server Component in the route.
 
 The minimum change in terms of code size is adding `export const dynamic = 'force-dynamic'` as one line to the route's `page.js` or `layout.js`. This is also the most readable because it explicitly declares the rendering intent at the route level rather than relying on implicit behavior from a specific fetch configuration.
-
-</details>
+</Answer>
 
 ---
 

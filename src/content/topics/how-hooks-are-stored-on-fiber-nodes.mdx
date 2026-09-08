@@ -538,6 +538,7 @@ COMMIT:
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: Why does this throw in development, and what exact internal check catches it?**
 
 ```jsx
@@ -557,10 +558,9 @@ function App({ show }) {
 ```
 
 First render: `show = true`. Second render: `show = false`.
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 On the first render with `show = true`, the hooks execute in this order:
 
 Hook 0: `useEffect` (from `useConditionalEffect`)
@@ -577,11 +577,11 @@ The update dispatcher's `updateHookTypesDev` checks: hook at position 0 should b
 In production without the type check, `updateWorkInProgressHook` at position 0 reads the hook node that was created for `useEffect` on mount. It has `memoizedState` containing an effect object, not a state value. `useState` processes this as its state, getting an object instead of `0`. `setCount` is undefined or wrong. The component behaves incorrectly without any error message.
 
 The internal check that catches it in development is the `_debugHookTypes` array comparison in `updateHookTypesDev`, which verifies that the hook type name at each position matches the type recorded during mount.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: Two instances of the same component are mounted. Do they share hook state? Trace exactly why or why not.**
 
 ```jsx
@@ -599,10 +599,9 @@ function App() {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 They do not share hook state. Each instance has its own Fiber node.
 
 When React mounts `<Counter />` the first time (instance A), it creates a Fiber node with a `memoizedState` linked list. `mountState(0)` creates a hook node on that Fiber: `fiberA.memoizedState = { memoizedState: 0, queue: queueA, next: null }`. The `dispatch` function is bound to `fiberA` and `queueA`.
@@ -612,11 +611,11 @@ When React mounts `<Counter />` the second time (instance B), it creates a separ
 `queueA` and `queueB` are different objects. `fiberA` and `fiberB` are different objects. The `memoizedState` linked lists are on different Fibers. Clicking button A calls the dispatch function bound to `fiberA.queueA`, which marks `fiberA` as having pending work and schedules a re-render of `fiberA`. `fiberB` is untouched. Clicking button B does the reverse.
 
 State is scoped per Fiber instance, not per component function. `Counter` is one function but can have thousands of independent Fiber instances, each with their own isolated hook state.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: What is wrong with this custom hook? What specific internal mechanism does it break?**
 
 ```jsx
@@ -634,10 +633,9 @@ function useAsyncData(url) {
   return data;
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The `React.useState(null)` call inside the `.then` callback will throw "Invalid hook call."
 
 After `renderWithHooks` completes (after the component function returns), React sets `ReactCurrentDispatcher.current = ContextOnlyDispatcher`. The `ContextOnlyDispatcher` is an object where every hook method throws: "Hooks can only be called inside of the body of a function component."
@@ -661,33 +659,31 @@ function useAsyncData(url) {
   return data;
 }
 ```
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** React uses position-based identification for hooks instead of string keys. What are the two concrete advantages of position-based identification, and what is the one constraint it imposes?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Advantage 1: zero developer overhead. No keys to invent, no collision risk, no naming convention required. The developer writes `useState(0)` and React handles the rest. String keys would require `useState('count', 0)` and the developer would be responsible for ensuring uniqueness per component. In large components with many hooks, key management would be a significant source of bugs.
 
 Advantage 2: per-instance scoping is automatic. Multiple instances of the same component each have their own Fiber and their own hook list. Position 0 in instance A's list is completely independent of position 0 in instance B's list, without any additional mechanism. String keys would require namespacing by instance, requiring either an instance identifier (which does not exist for function components) or global unique keys (which would prevent reuse of components).
 
 The one constraint: hook call order must be stable across renders. The same hook must be called in the same position on every render. Any variation in call count or order corrupts the list cursor alignment from that point forward, causing all subsequent hooks to read the wrong node. This is enforced by the Rules of Hooks.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** What is `currentlyRenderingFiber`, when is it set and cleared, and what would happen if hooks were called after it is cleared?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `currentlyRenderingFiber` is a module-level variable in `ReactFiberHooks.js` that holds a reference to the Fiber node currently being rendered. It is the "instance identifier" that hooks use to know which Fiber's linked list to attach to or read from.
 
 It is set at the beginning of `renderWithHooks`, before the component function is called: `currentlyRenderingFiber = workInProgress`. It is cleared at the end of `renderWithHooks`, after the component function returns: `currentlyRenderingFiber = null`.
@@ -695,46 +691,43 @@ It is set at the beginning of `renderWithHooks`, before the component function i
 Simultaneously, `ReactCurrentDispatcher.current` is set to `ContextOnlyDispatcher` after the component function returns. `ContextOnlyDispatcher` throws for every hook call.
 
 If hooks were called after `currentlyRenderingFiber` is cleared (in async callbacks, timers, event handlers), `mountWorkInProgressHook` or `updateWorkInProgressHook` would try to attach to or read from `null`. Before reaching that point, the dispatcher throws "Invalid hook call." The dispatcher check is the guard. `currentlyRenderingFiber` being null is what makes the guard necessary: there is no Fiber to attach to, so the call must be rejected.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** `useRef` stores its data as `{ current: initialValue }` in the hook node's `memoizedState`. Why does mutating `ref.current` not trigger a re-render, even though the hook node's data changed?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `useRef` returns the object stored in `memoizedState` directly. It is the same object reference on every render. When you write `ref.current = newValue`, you are mutating a property of that object. You are not calling any setter. You are not calling `dispatchSetState`. No update is enqueued. No Fiber is marked dirty. The Scheduler is not notified. React has no awareness that `ref.current` changed.
 
 This is intentional. A ref is explicitly designed to be a mutable container that persists across renders without triggering them. It is the escape hatch for values that need to persist (previous state, DOM node references, timer IDs, any imperative handle) but whose changes do not represent UI state.
 
 React's re-render trigger is `dispatchSetState` (or `dispatchReducerAction` for `useReducer`). Only these functions mark a Fiber as having pending work. Mutating an object in the heap, however that object was created, never triggers a re-render unless you went through one of these dispatch functions. `ref.current = x` is a plain property assignment. It is invisible to React's scheduling system.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q4.** During an update render, the update dispatcher reads from `fiber.alternate.memoizedState` rather than `fiber.memoizedState`. Why does it read from the alternate, and what would go wrong if it read from `fiber.memoizedState` directly?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 During the render phase, React is building a new work-in-progress Fiber tree. The current Fiber (`workInProgress`) is a new or recycled node being constructed for this render. Its `memoizedState` is either `null` (freshly created for this render) or being populated by the current render's hook calls. It does not yet contain the previous render's hook data.
 
 The previous render's hook data lives on the current committed Fiber, which is `workInProgress.alternate`, the corresponding node in the current (on-screen) tree. `fiber.alternate.memoizedState` is the linked list from the last committed render, containing the actual current values of all state, refs, and effect deps.
 
 If the update dispatcher read from `fiber.memoizedState` (the work-in-progress node being built), it would find either null (first hook of this render, list not yet started) or partial data from the current render's earlier hook calls. It would be reading data that has not been committed, from the render currently in progress, rather than the stable committed state. This would produce incorrect state values, broken effect dep comparisons, and corrupted memoization caches. The alternate tree provides the stable, committed baseline that updates are computed against.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q5.** React's `useEffect` dependency comparison uses `Object.is` for each element. A developer passes an object as a dependency: `useEffect(() => { ... }, [config])`. The `config` object's contents never change but it is recreated on every render. What happens, and how should this be fixed?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 On every render, `config` is a new object with a new reference (e.g., `const config = { timeout: 5000 }` defined in the render body). `areHookInputsEqual` compares `Object.is(prevConfig, newConfig)`. Two distinct objects are not `Object.is`-equal regardless of their contents. The comparison returns `false`. The `HookHasEffect` flag is set on the effect hook node. The effect runs on every render.
 
 This defeats the purpose of the dependency array entirely. The effect is supposed to run only when `config` meaningfully changes. Instead it runs on every render because the reference always changes.
@@ -764,8 +757,7 @@ useEffect(() => { ... }, [config.timeout, config.retries]);
 ```
 
 The third is often the simplest and most robust: primitive values (`number`, `string`, `boolean`) are compared by value under `Object.is`, so they change only when their actual content changes. Depending on object properties directly avoids the reference stability problem entirely.
-
-</details>
+</Answer>
 
 ---
 

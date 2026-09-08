@@ -317,6 +317,7 @@ requestAnimationFrame(tick);
 
 ### Self-test: 5 questions
 
+<Question>
 **Q1.** Which of these style changes triggers a reflow, which triggers only a repaint, and which triggers only a composite?
 
 ```js
@@ -324,7 +325,17 @@ el.style.left = '10px';
 el.style.color = 'red';
 el.style.transform = 'translateX(10px)';
 ```
+</Question>
 
+<Answer>
+`el.style.left = "10px"` → reflow. `left` changes geometry, triggering layout recalculation, which cascades to repaint and composite.
+`el.style.color = "red"` → repaint only. Color is a visual-only property, geometry is unchanged.
+`el.style.transform = "translateX(10px)"` → composite only. `transform` is handled by the GPU compositor and skips both layout and paint entirely.
+</Answer>
+
+---
+
+<Question>
 **Q2.** What is the performance problem with this code, and how do you fix it?
 
 ```js
@@ -334,24 +345,10 @@ items.forEach((item) => {
   item.style.height = h * 2 + 'px';
 });
 ```
+</Question>
 
-**Q3.** A search input calls an API on every keystroke. The user types 8 characters quickly. With a 300ms debounce applied, how many API calls are made?
-
-**Q4.** What is the difference between `visibility: hidden` and `display: none` in terms of which rendering steps they affect?
-
-**Q5.** Why is `transform: translateX()` preferred over `left:` for animating horizontal position?
-
----
-
-<details>
-<summary>Answers</summary>
-
-**A1.**
-`el.style.left = "10px"` → reflow. `left` changes geometry, triggering layout recalculation, which cascades to repaint and composite.
-`el.style.color = "red"` → repaint only. Color is a visual-only property, geometry is unchanged.
-`el.style.transform = "translateX(10px)"` → composite only. `transform` is handled by the GPU compositor and skips both layout and paint entirely.
-
-**A2.** Layout thrashing. Reading `offsetHeight` inside a loop that also writes styles forces a synchronous reflow on every iteration because the browser must flush the pending style changes to return an accurate measurement. Fix: batch all reads first, then all writes:
+<Answer>
+Layout thrashing. Reading `offsetHeight` inside a loop that also writes styles forces a synchronous reflow on every iteration because the browser must flush the pending style changes to return an accurate measurement. Fix: batch all reads first, then all writes:
 
 ```js
 const heights = Array.from(items).map((item) => item.offsetHeight);
@@ -359,11 +356,34 @@ items.forEach((item, i) => {
   item.style.height = heights[i] * 2 + 'px';
 });
 ```
+</Answer>
 
-**A3.** One API call (assuming the user's keystrokes are within 300ms of each other). Debounce resets its timer on every invocation. If the user types all 8 characters within the 300ms window, the timer never completes between keystrokes. The API call fires once, 300ms after the last keystroke.
+---
 
-**A4.** `display: none` removes the element from the render tree entirely. It does not occupy space and is invisible. Any change to it (showing it again) triggers reflow because the geometry of surrounding elements is affected. `visibility: hidden` keeps the element in the render tree, preserving its space in layout. Making it visible again only triggers a repaint, not a reflow, because the geometry did not change.
+<Question>
+**Q3.** A search input calls an API on every keystroke. The user types 8 characters quickly. With a 300ms debounce applied, how many API calls are made?
+</Question>
 
-**A5.** `left:` is a geometry property. Changing it invalidates layout, triggering a full reflow on every animation frame, which is expensive on the main thread. `transform: translateX()` does not affect layout at all. It is composited by the GPU without triggering reflow or repaint. This means the animation runs off the main thread, is not blocked by JS execution, and runs at 60fps even under main thread pressure.
+<Answer>
+One API call (assuming the user's keystrokes are within 300ms of each other). Debounce resets its timer on every invocation. If the user types all 8 characters within the 300ms window, the timer never completes between keystrokes. The API call fires once, 300ms after the last keystroke.
+</Answer>
 
-</details>
+---
+
+<Question>
+**Q4.** What is the difference between `visibility: hidden` and `display: none` in terms of which rendering steps they affect?
+</Question>
+
+<Answer>
+`display: none` removes the element from the render tree entirely. It does not occupy space and is invisible. Any change to it (showing it again) triggers reflow because the geometry of surrounding elements is affected. `visibility: hidden` keeps the element in the render tree, preserving its space in layout. Making it visible again only triggers a repaint, not a reflow, because the geometry did not change.
+</Answer>
+
+---
+
+<Question>
+**Q5.** Why is `transform: translateX()` preferred over `left:` for animating horizontal position?
+</Question>
+
+<Answer>
+`left:` is a geometry property. Changing it invalidates layout, triggering a full reflow on every animation frame, which is expensive on the main thread. `transform: translateX()` does not affect layout at all. It is composited by the GPU without triggering reflow or repaint. This means the animation runs off the main thread, is not blocked by JS execution, and runs at 60fps even under main thread pressure.
+</Answer>

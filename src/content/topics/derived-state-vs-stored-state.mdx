@@ -315,6 +315,7 @@ The critical point: `useMemo` is a performance optimization for derived values. 
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: What is wrong with this component? It works in most cases but has a specific failure mode.**
 
 ```jsx
@@ -332,10 +333,9 @@ function UserDisplay({ userId }) {
   return <p>{displayName}</p>;
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `displayName` is derived state. It is always `user.firstName + ' ' + user.lastName`, a pure function of `user`. Storing it separately creates a window where `user` and `displayName` are out of sync: after `setUser(data)` enqueues and before `setDisplayName(...)` enqueues, React may or may not render an intermediate state where `user` is updated but `displayName` is still the previous value. In React 18 with automatic batching these two setters are batched, so in practice the glitch may not be visible. But the structural problem remains: if `user` is ever updated independently (a websocket push, an optimistic update, any path that updates `user` but not `displayName`), `displayName` goes stale.
 
 The fix: remove `displayName` state entirely.
@@ -355,11 +355,11 @@ function UserDisplay({ userId }) {
 ```
 
 `displayName` is always current because it is always computed from the current `user` state.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: This pattern appears frequently in codebases that migrate from class components. What is the bug?**
 
 ```jsx
@@ -384,10 +384,9 @@ function EditForm({ initialValues }) {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `useState(initialValues)` captures the initial prop value at mount time. This is intentional here, because the form is meant to have independent state that the user edits. That part is correct.
 
 The bug is `handleReset`. It calls `setValues(initialValues)`, resetting to the `initialValues` reference from the current render's closure. If the parent re-renders and passes a new `initialValues` object (same contents, new reference, or genuinely new values), `handleReset` resets to the latest prop value, which may differ from what was shown when the user started editing. Whether this is a bug depends on intent, but it is almost always unintended.
@@ -403,11 +402,11 @@ function handleReset() {
 ```
 
 If `initialValues` is intended as a "current external source of truth" that resets should reflect, then the form should not have independent state at all and should use the prop as a controlled value. The `useState(prop)` pattern is only correct when you explicitly want to initialize once and diverge. It requires a conscious decision about which of these two models you want.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: Is this `useMemo` necessary? Is it correct?**
 
 ```jsx
@@ -430,10 +429,9 @@ function Dashboard({ user, posts }) {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The `useMemo` is probably unnecessary and may actually be harmful here.
 
 For necessity: `posts.length` is a property access. `posts.reduce` on a reasonably sized array is microseconds. `user.name` is a property access. These computations are not expensive. `useMemo` adds dependency comparison overhead on every render (three `Object.is` calls), cache storage on the Fiber, and complexity. For a computation this trivial, the overhead of `useMemo` likely exceeds the cost it saves.
@@ -441,18 +439,17 @@ For necessity: `posts.length` is a property access. `posts.reduce` on a reasonab
 For correctness: the `useMemo` is technically correct, it will recompute when `posts` or `user` references change. But there is a subtlety: `user` is listed as a dependency because `user.name` is used. If the parent passes a new `user` object with the same `name` but different other fields, the memo recomputes unnecessarily. A more precise dependency would be `user.name` directly, but then you'd have `[posts, user.name]`, which works but is inconsistent with how objects are usually handled.
 
 The correct approach for this component: no `useMemo`, just inline computation. If `posts` had 100,000 items and `avgLikes` calculation were slow, `useMemo` would be warranted. At typical data sizes, the right answer is measure first, memoize second.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** State the two-question test for determining whether a value should be stored as state or computed as a derived value. Apply it to: `isLoggedIn` (derived from `user !== null`), `sortedItems` (derived from `items` sorted by `sortKey`), and `errorMessage` (set by a failed API call, displayed in a banner).
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The two questions: does this value change independently, not as a pure function of other state and props? And, does changing it need to trigger a re-render?
 
 `isLoggedIn`: fails the first question. It is always `user !== null`, a pure function of `user`. It has no independent existence. If `user` changes, `isLoggedIn` changes derivably. Storing it as state means it can go out of sync with `user`. Correct form: `const isLoggedIn = user !== null` computed during render.
@@ -460,55 +457,50 @@ The two questions: does this value change independently, not as a pure function 
 `sortedItems`: fails the first question. It is always `[...items].sort(...)`, a pure function of `items` and `sortKey`. If either changes, the sort result changes derivably. Correct form: `const sortedItems = [...items].sort(...)` computed during render, or wrapped in `useMemo` if the array is large.
 
 `errorMessage`: passes both questions. It is not derivable from other state, it is set by an external event (a failed API call) that React has no knowledge of until you tell it. It changes independently. Changing it needs to update the UI. Correct form: `useState(null)` for `errorMessage`, set by the API error handler.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** A developer argues: "storing derived state is fine as long as you use a `useEffect` to keep it in sync." What is the specific failure mode that `useEffect` synchronization cannot prevent?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The stale render problem. `useEffect` runs after render. The sequence is: state or props change, component renders with potentially stale derived state, React commits the (stale) DOM, then the effect fires and updates the derived state, causing a second render. There is always a committed render where the UI reflects incorrect derived state, however briefly. For fast operations this may be imperceptible, but it is architecturally incorrect. For slow operations or visible reflows, it produces a flash of wrong UI. Additionally, `useEffect` with dependencies introduces the possibility of a desynchronized dependency array (missing a dependency, or a dependency that changes reference but not content), which can cause the derived state to be stale indefinitely. Computing the derived value during render has neither of these failure modes: the value is always computed from the current sources, the computation runs as part of the render, and there is no intermediate committed state with stale data.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** When is `useMemo` appropriate for a derived value, and what is the cost of using it unnecessarily?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `useMemo` is appropriate when the computation is measurably expensive (sorting or filtering large collections, complex mathematical transformations, deep object construction) and the component re-renders frequently for reasons unrelated to the computation's dependencies. The concrete test: profile the component, identify that the specific computation takes a meaningful amount of time (several milliseconds or more), and verify that it runs unnecessarily often.
 
 The cost of using it unnecessarily: on every render, React must read the hook's state slot from the Fiber's linked list, compare each dependency using `Object.is`, and decide whether to use the cached value or recompute. For trivial computations (property access, string concatenation, array length), this overhead is comparable to or greater than the computation itself. It adds memory pressure (the cached value and dependency array are held on the Fiber), increases code complexity (the dependency array must be maintained), and can mask incorrect dependencies (if a dependency is missing from the array, the cached value is stale without any error). The guideline: compute first without `useMemo`, measure, apply `useMemo` only where you can show it improves performance.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q4.** The `useState(prop)` pattern is sometimes valid and sometimes a bug. What is the precise condition under which it is valid?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 It is valid when you explicitly intend the state to be initialized from the prop once at mount and then evolve independently of the prop. The clearest example is a form field that is pre-populated with a server value but then edited by the user. The initial server value is used to seed the form, but subsequent user edits produce local state that is intentionally different from the server value. The prop is the initializer, not the source of truth.
 
 It is a bug when you intend the component to stay in sync with the prop as the prop changes. `useState(prop)` only uses the initializer on the first render. If the prop changes (parent passes a new value), the state does not update. The component shows the old value forever. This is the "stale prop as state" bug.
 
 The signal that you want the valid pattern: the component has explicit user interaction that modifies the value (editing a field, reordering a list, toggling a local UI state). The signal that you have the bug: the component has no user interaction that modifies the value, or you have a `useEffect` that watches the prop and resets the state to match it (which means you should just use the prop directly).
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q5.** A senior engineer reviews your PR and says "this `useEffect` is a code smell." The effect updates one state variable whenever another state variable changes. Why is this always a sign that the second state variable should not exist?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 A `useEffect` that watches state A and updates state B exists solely to keep B in sync with A. If B is always a function of A, then B is derived state. The `useEffect` is the mechanism attempting to maintain a synchronization invariant that should not need to exist in the first place. The effect introduces latency (B is stale until after the render when A changed), adds complexity (dependency array, cleanup concerns), and creates a class of bugs where A and B are temporarily out of sync during the render between the state change and the effect firing. Removing state B and computing its value during render from A eliminates the effect, the latency, the complexity, and the entire class of sync bugs. The presence of a `useEffect` that updates state from other state is a reliable indicator that the updated state is derived and should be a `const` computed during render instead.
-
-</details>
+</Answer>

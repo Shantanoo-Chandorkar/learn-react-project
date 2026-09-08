@@ -333,11 +333,11 @@ This is more granular than the Pages Router's per-page revalidation. The route's
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: A page has `revalidate: 60`. It was last generated at 12:00:00. A user requests it at 12:01:05. What does that user see, and what happens next?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The user at 12:01:05 sees the stale HTML generated at 12:00:00. The revalidation window (60 seconds) expired at 12:01:00. The request at 12:01:05 arrives after the window expired, so it triggers background regeneration. But the stale-while-revalidate model means that triggering user still receives the old cached HTML immediately rather than waiting for the new render.
 
 Next.js serves the cached response to the 12:01:05 user instantly (no waiting) and simultaneously begins regenerating the page in the background: fetching fresh data and rendering new HTML. When that background process completes (typically under 1 second), the cache is updated.
@@ -345,48 +345,45 @@ Next.js serves the cached response to the 12:01:05 user instantly (no waiting) a
 The next user who requests the page after the background regeneration completes will receive the fresh HTML. The user at 12:01:05 will have seen data that was up to 65 seconds old (the 60-second window plus the 5 seconds they arrived after expiry).
 
 The key takeaway: ISR's stale-while-revalidate model guarantees instant responses for all users at the cost of the first post-expiry user seeing stale data. It never makes users wait for regeneration.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: What is the difference between `revalidatePath` and `revalidateTag`? When would you use each?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `revalidatePath('/products/42')` invalidates the cached HTML and data for a specific URL path. Every fetch result cached for that route is marked as stale. The next request to `/products/42` triggers immediate regeneration. Use this when you know exactly which URL needs to be refreshed: an admin updates a specific page, a CMS webhook fires for a specific article.
 
 `revalidateTag('product-42')` invalidates all cached fetch results that were tagged with `'product-42'`, regardless of which routes those fetches appeared in. This can invalidate multiple routes simultaneously: `/products/42`, `/products/42/reviews`, `/products/featured` (if product 42 is featured), and any other route that fetched data tagged `'product-42'`. Use this when data is used across multiple routes and you want to invalidate all of them without knowing the complete list of affected URLs.
 
 The practical choice: use `revalidatePath` for simple cases where the URL-to-data mapping is one-to-one. Use `revalidateTag` for data that appears in multiple routes (a product, an author, a category) where you want the invalidation to cascade to all affected pages automatically. `revalidateTag` requires discipline in tagging fetch calls but provides much more powerful invalidation targeting.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: A developer sets `revalidate: 0` on a page. What does this do?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `revalidate: 0` means the page's staleness window is zero seconds. Every request arrives after the staleness window has expired. The behavior is equivalent to SSR: every request triggers background regeneration, and the current user always receives stale data while the next user receives fresh data.
 
 However, this is subtly different from SSR. With SSR (`getServerSideProps` or `cache: 'no-store'`), the current user's request waits for fresh data before receiving a response. With `revalidate: 0`, the current user always receives the previous cached version instantly (stale-while-revalidate) and regeneration happens in the background.
 
 For truly real-time data where the current user must see fresh data (user-specific dashboards, live prices where showing a stale price even briefly is unacceptable), `revalidate: 0` is the wrong choice. Use `cache: 'no-store'` or `getServerSideProps` for genuine SSR. `revalidate: 0` is effectively "ISR with zero staleness tolerance" which produces near-SSR behavior with different freshness guarantees than true SSR.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** Explain the stale-while-revalidate model precisely. Who sees stale data, and who sees fresh data, in relation to when the revalidation window expires?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The stale-while-revalidate model works as follows. Every user who requests the page before the revalidation window expires receives the current cached HTML instantly. These users always see the most recently generated version of the page, which may be up to `revalidate` seconds old.
 
 The first user who requests the page after the revalidation window expires also receives the current cached HTML instantly. This user sees stale data. Their request triggers background regeneration: Next.js fetches fresh data and renders a new HTML page asynchronously.
@@ -394,16 +391,15 @@ The first user who requests the page after the revalidation window expires also 
 All users who request the page after the background regeneration completes receive the newly generated HTML. They see fresh data.
 
 The staleness guarantee is: any user may see data that is at most `revalidate` seconds old plus the time required to regenerate the page (typically under a second). No user ever waits for regeneration. The freshness guarantee is: after the first request following window expiry plus regeneration time, all subsequent users see data that was fetched after the window expired.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** A product catalog has 50,000 products. The top 1,000 products by sales volume receive 95% of traffic. Each product's price updates once a day. Design an ISR strategy for this catalog.
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Pre-render the top 1,000 products at build time using `getStaticPaths` with those 1,000 product IDs in the `paths` array and `fallback: 'blocking'` for the remaining 49,000.
 
 Set `revalidate: 86400` (24 hours) for all product pages, matching the price update frequency.
@@ -415,16 +411,15 @@ For the remaining 49,000 products, the first user to request any specific produc
 Add on-demand revalidation via `revalidateTag`: tag each product fetch with `product-{id}`. When the nightly price update runs, call `revalidateTag('product-{id}')` for each updated product. This invalidates those pages immediately rather than waiting for the 24-hour window, ensuring prices are fresh within minutes of the nightly update rather than potentially 24 hours after it.
 
 This strategy provides CDN-level performance for all products, correct price freshness after the nightly update, and does not require pre-building all 50,000 pages at build time.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** What is the difference between ISR's revalidation model and HTTP `Cache-Control: stale-while-revalidate`? Are they the same thing?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 They are based on the same concept (serve stale while refreshing in the background) but implemented at different levels with different scopes.
 
 HTTP `Cache-Control: stale-while-revalidate` is a browser and CDN cache directive. It tells intermediate caches (CDN nodes) and the browser to serve a stale cached response while asynchronously fetching a fresh one. The revalidation is driven by the HTTP caching layer, not by application code. It applies to any HTTP resource (HTML, JSON, images) and requires no server-side logic.
@@ -432,5 +427,4 @@ HTTP `Cache-Control: stale-while-revalidate` is a browser and CDN cache directiv
 Next.js ISR is implemented at the application level, within Next.js's server. It is not just a cache header: the revalidation actually re-executes your data fetching code and re-renders your React components on the server. The output is a completely regenerated HTML file with fresh data, not just a cached HTTP response served with a longer TTL. ISR knows how to run `getStaticProps` or re-execute Server Components. HTTP cache revalidation only knows how to repeat the original HTTP request.
 
 Next.js also sets `Cache-Control: s-maxage=REVALIDATE_SECONDS, stale-while-revalidate` headers on ISR responses so that CDN nodes can implement the HTTP-level caching on top of Next.js's server-level ISR. The two layers work together: the CDN handles geographically distributed caching, and Next.js handles the actual regeneration when the CDN decides it needs fresh content.
-
-</details>
+</Answer>

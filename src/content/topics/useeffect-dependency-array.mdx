@@ -131,6 +131,7 @@ Functions defined inside the component have the same problem — new reference o
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: "When should you use an empty dependency array?"**
 
 Only when the effect genuinely reads no reactive values — no props, no state, nothing derived from them. Not "when you want it to run once." The emptiness of the array must be truthful. If the effect reads a prop and you pass `[]`, you have a stale closure bug. The correct question to ask is: "does this effect read anything that can change between renders?" If no, `[]` is correct. If yes, every value it reads belongs in the array.
@@ -144,40 +145,36 @@ This means the effect produces a new value on every run that is itself listed as
 ### Self-Test
 
 **Q1.** What is the difference between a reactive value and a non-reactive value? Give two examples of each, and explain which ones belong in the dependency array.
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 A reactive value is any value that can change between renders and whose change should cause the effect to re-sync. A non-reactive value is one that is stable across renders — the same reference every time.
 
 Reactive values: props (they change when the parent re-renders with new props), state (changes on every `setState` call), and anything derived from props or state inside the component body. These belong in the dependency array.
 
 Non-reactive values: `setState` setter functions (React guarantees stable references), `useRef` ref objects (the `.current` may change but the ref object itself is stable), values defined outside the component (module-level constants, imported functions). These do not need to be in the dependency array because they never change between renders — listing them is harmless but unnecessary.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** An effect reads three values: a prop `userId`, a state variable `filter`, and `console.log`. Which go in the dependency array and why?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `userId` and `filter` go in the dependency array. Both are reactive: `userId` can change when the parent re-renders with a new prop, and `filter` can change when the state setter is called. If either changes, the effect reads a different value than it did in the previous render, so it must re-run to stay in sync.
 
 `console.log` does not go in the array. It is a stable, non-reactive value — the same function reference across every render, defined outside the component in the global scope. It cannot change between renders. Including it would be harmless but misleading, implying it could change.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** Why does putting an inline object literal `{ id: userId }` in a dependency array cause the effect to re-run on every render, even if `userId` has not changed?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 React compares dependency array elements using `Object.is`, which compares objects by reference, not by value. An inline object literal `{ id: userId }` creates a new object in memory on every render. Even if `userId` is identical between renders, the object that wraps it is a different reference — a new allocation each time. `Object.is(prevObj, currObj)` is false because these are two distinct objects in memory, even though their contents are equal. React sees a changed dependency and re-runs the effect.
 
 The fix is to put the primitive value directly in the array: `[userId]`. Primitive values like strings and numbers are compared by value with `Object.is`, so `Object.is('abc', 'abc')` is true. The effect only re-runs when `userId` actually changes.
-
-</details>
+</Answer>

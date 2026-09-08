@@ -229,6 +229,7 @@ React takes all arguments after the props object and puts them on `props.childre
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: Why does this JSX throw a "React is not defined" error in React 16?**
 
 ```jsx
@@ -242,16 +243,15 @@ function Card() {
 }
 // No import at the top of the file
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 In React 16 and the old JSX transform, JSX compiles to `React.createElement(...)`. `React` must be in scope as a variable for this call to work, even if you never write `React` anywhere in your code directly. If you forget `import React from 'react'`, the compiled code references an undefined variable and throws. In React 17+ with the new JSX transform, the compiler automatically imports `_jsx` from `react/jsx-runtime` at the top of the compiled output. You no longer need to import React manually. This is also why upgrading to the new transform allows removing hundreds of `import React from 'react'` lines from a codebase without changing any behavior.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: Predict the output. What does this render?**
 
 ```jsx
@@ -267,16 +267,15 @@ function App() {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The `ul` renders empty. The arrow function uses curly braces `{}` as its body, not parentheses `()`. A function body with curly braces requires an explicit `return` statement. Without it, the function returns `undefined`. `undefined` is valid as a React child and renders nothing. The `map` produces an array of `undefined` values, and React renders nothing for each one. The fix is either an explicit `return`: `return <li>{item}</li>`, or switching to a concise arrow body: `item => <li>{item}</li>` with parentheses instead of curly braces. This is a pure JavaScript issue, but it surfaces constantly in JSX because the JSX-inside-a-callback pattern is so common that the `{}` vs `()` distinction gets overlooked.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: What is wrong with this JSX, and what rule does it violate?**
 
 ```jsx
@@ -289,16 +288,15 @@ function Dashboard() {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 JSX requires a single root element. This component tries to return two sibling elements, `h1` and `main`, which compiles to two separate `React.createElement` calls at the top level. A JavaScript function can only return one value. Returning two expressions is a syntax error. The standard fix is to wrap both in a `<div>`, but that adds an unnecessary DOM node. The idiomatic React fix is a Fragment: `<>...</>` or `<React.Fragment>...</React.Fragment>`. A Fragment compiles to `React.createElement(React.Fragment, null, ...)`, which tells React to render the children without adding a wrapping DOM element. The children appear directly in the parent's DOM as if the Fragment weren't there.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 4: These two components look the same but behave differently. Why?**
 
 ```jsx
@@ -312,29 +310,27 @@ function App() {
   return <UserCard user={user} />;
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Component A tries to render a native DOM element named `usercard`. JSX lowercases are treated as string types: `React.createElement('usercard', { user })`. The browser receives a `<usercard>` element, which is an unknown HTML element. It renders as an empty unknown element. The `user` prop, being an object, cannot be serialized as an HTML attribute and may warn or be dropped. Component B renders the `UserCard` function component: `React.createElement(UserCard, { user })`. The `type` is the function reference, not a string. React calls `UserCard(props)` during reconciliation. The capitalization convention is not arbitrary style. It is the mechanical signal that tells the JSX compiler whether `type` should be a string literal or a variable reference.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** JSX is often described as "HTML in JavaScript." Why is this description wrong, and what is a more accurate description?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 HTML is a markup language parsed by the browser's HTML parser into a DOM tree. JSX is a syntax extension for JavaScript, parsed by a JavaScript compiler (Babel, TypeScript, or the React compiler) into `React.createElement` function calls, which produce plain JavaScript objects. JSX never reaches the browser as JSX. It is compiled before the browser sees it. The browser only ever receives JavaScript. A more accurate description: JSX is a syntactic shorthand for nested function calls that produce React element objects, designed to look like a tree so that UI hierarchy is visually apparent in the source code.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** What does `props.children` contain for each of these components?
 
 ```jsx
@@ -350,38 +346,35 @@ HTML is a markup language parsed by the browser's HTML parser into a DOM tree. J
 // Case C
 <Wrapper />
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Case A: `props.children` is the string `"Click me"`. A single text node is passed directly as the value, not wrapped in an array. Case B: `props.children` is an array of two React elements: `[{ type: Header, ... }, { type: Body, ... }]`. Multiple children compile to multiple arguments after the props object in `createElement`, which React collects into an array and assigns to `props.children`. Case C: `props.children` is `undefined`. No children were passed. This is why you check `props.children` before rendering it or use a default value, because a component that expects children but receives none would otherwise try to render `undefined`.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** Why can't you use `if` statements directly inside JSX? What can you use instead, and why do those work?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 JSX expressions inside `{}` must be JavaScript expressions, not statements. An `if` block is a statement, it does not evaluate to a value. A function call argument must be an expression. Since JSX compiles to `React.createElement(type, props, ...children)`, every child must be an expression that produces a value. The alternatives that work are: the ternary operator `condition ? a : b`, which is an expression that evaluates to one of two values; the logical AND `condition && element`, which evaluates to `element` if condition is truthy or `false`/`undefined` if falsy, both of which React treats as "render nothing"; and an immediately-invoked function expression or a variable assigned before the return that holds the conditional result. The rule is simple: if it can be a function argument, it can go in JSX curly braces.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q4.** What is `$$typeof` and why does it use a Symbol instead of a string like `"react.element"`?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `$$typeof` is a field React checks on every object before treating it as a renderable element. It exists to prevent JSON injection attacks. If a server sends user-controlled JSON to a client and the client passes it directly to React as a child, an attacker could craft a JSON payload that looks like a React element object and get React to render arbitrary content, including event handlers with script-like behavior. Using a Symbol prevents this because Symbols cannot be serialized or deserialized via JSON. `JSON.stringify` silently omits Symbol-keyed and Symbol-valued properties. `JSON.parse` can never produce a Symbol value. A string like `"react.element"` could be included in attacker-controlled JSON and pass a string equality check. A Symbol value cannot be replicated from JSON under any circumstances.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q5.** What does this compile to, and what does React do with the result?
 
 ```jsx
@@ -390,10 +383,9 @@ JSX expressions inside `{}` must be JavaScript expressions, not statements. An `
   <p>Second</p>
 </>
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 It compiles to:
 
 ```js
@@ -406,5 +398,4 @@ React.createElement(
 ```
 
 `React.Fragment` is a special built-in type that React recognizes during reconciliation. When React processes a Fiber node whose type is `React.Fragment`, it renders the children directly into the parent's DOM position without creating any wrapper DOM element. The two `p` elements appear in the DOM as direct siblings of whatever contains this component. The Fragment itself leaves no trace in the real DOM. It exists only in the Fiber tree as an organizational node that React uses to group children with a single return value.
-
-</details>
+</Answer>

@@ -313,17 +313,17 @@ The practical consequence: well-composed components are naturally more performan
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: React's own documentation says "we haven't found any use cases where we would recommend creating component inheritance hierarchies." But inheritance is not forbidden. When would a senior engineer still use a class component that extends React.Component?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The only remaining valid use case for class components extending `React.Component` is error boundaries. As of React 18, error boundaries can only be implemented as class components, specifically using the `componentDidCatch` and `static getDerivedStateFromError` lifecycle methods. Function components have no equivalent hook. Everything else, state, effects, context, refs, memoization, can be done with function components and hooks. A senior engineer uses class components in exactly one situation: when they need an error boundary and don't want to reach for a third-party library like `react-error-boundary`. Even then, the class component is typically a thin wrapper with no actual business logic, just the error catching mechanics.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: What does this render, and what composition pattern is it using?**
 
 ```jsx
@@ -341,16 +341,15 @@ function App() {
   return <Layout sidebar={<NavigationMenu />} main={<ArticleList />} footer={<FooterLinks />} />;
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `Layout` renders a three-column structure with `NavigationMenu` in the aside, `ArticleList` in the main, and `FooterLinks` in the footer. This is the named slots composition pattern, also called multi-slot composition. Instead of a single `children` prop, `Layout` accepts multiple named props (`sidebar`, `main`, `footer`) each of which can hold any React subtree. The caller decides what fills each slot. `Layout` owns the structural arrangement. The caller owns the content. This is more explicit than a single `children` prop when a component has multiple distinct regions. It is the React equivalent of the named slots feature in Web Components and Vue. It is pure composition: `Layout` has no knowledge of `NavigationMenu`, `ArticleList`, or `FooterLinks`, and those components have no knowledge of `Layout`.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: A developer says "render props are just a workaround that hooks made obsolete." Evaluate this claim.**
 
 ```jsx
@@ -394,45 +393,41 @@ function useWindowSize() {
   return size;
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Partially true, but the claim is too strong. For sharing stateful logic, custom hooks have largely replaced render props because they are less verbose and don't add extra nodes to the component tree. The `useWindowSize` hook is clearly cleaner than the `WindowSize` render prop for consuming window size. However, render props are not obsolete for structural composition scenarios where the parent needs to control both behavior AND layout simultaneously. For instance, a virtualized list component that manages scroll position and renders only visible rows needs to control the actual DOM structure, not just return a value. A drag-and-drop context that needs to wrap specific DOM nodes cannot be expressed purely as a hook. Render props and children-as-functions remain the right pattern when behavior and rendering structure are inseparable. The accurate statement is: hooks replaced render props for sharing logic; render props remain appropriate for structural control.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** React's documentation explicitly says to use composition instead of inheritance. What is the single mechanical reason React's component model makes inheritance unnecessary for the specific problem of UI reuse?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Because any "extension" you would express via inheritance can be expressed via composition without losing any capability. Inheritance provides two things: shared structure (render a base layout) and shared behavior (methods the subclass can call or override). In React, shared structure is provided by containment components that accept `children` or named slot props. Shared behavior is provided by custom hooks. A component that needs both a specific layout and specific behavior composes a structural component with a behavior hook. Nothing inheritance provided is unavailable through composition, and composition avoids all of inheritance's failure modes: the fragile base class, the diamond problem, and behavior spread across a hierarchy.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** Explain why fine-grained composition makes React's performance optimization primitives more effective than coarse-grained or monolithic components.
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 React's optimization primitives, `React.memo`, `useMemo`, `useCallback`, `React.lazy`, `Suspense`, and error boundaries, all operate at the component boundary. A component is the smallest unit React can independently memoize, lazily load, or error-isolate. A monolithic component that renders an entire page section is one optimization unit. If any part of it re-renders, all of it re-renders. Fine-grained composition creates many independent optimization units. `React.memo` on a `CardHeader` component means the header skips re-rendering when only the body's state changes. This would be impossible if header and body were sections of JSX inside a single component, because they would share the same Fiber node and re-render together. More component boundaries give React more places to apply its bailout system.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** You have a `Tooltip` component that manages its own show/hide state. A teammate wants to use it but needs the tooltip trigger to be a completely custom element, sometimes a button, sometimes an icon, sometimes a text link. How do you design `Tooltip` using composition so it is not coupled to any specific trigger element?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Use the render prop or children-as-function pattern. `Tooltip` manages the `isVisible` state and the show/hide handlers. It exposes them to the consumer through `children` as a function:
 
 ```jsx
@@ -462,27 +457,24 @@ function Tooltip({ content, children }) {
 ```
 
 `Tooltip` owns the behavior. The consumer owns the trigger element. They are decoupled. The alternative with a hook would work for the state management but would require the consumer to also handle attaching handlers, which couples the consumer to `Tooltip`'s internal API. The render prop keeps that coupling explicit and contained in the composition call site.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q4.** The `children` prop can be a function. Why does React not have a special syntax for this, and what does that tell you about how React thinks about composition?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Because `children` is just a prop, and props are just JavaScript values, and functions are just JavaScript values. There is no special case needed. React's composition model is built entirely on the fact that JSX attributes are JavaScript expressions, which means any JavaScript value, including functions, can be passed as a prop. The absence of special syntax is intentional. React deliberately kept the component model minimal: a component is a function, props are its arguments, and JSX is notation for describing the tree. Everything else, render props, higher-order components, context, hooks, is built on top of these three primitives using ordinary JavaScript. This means React's composition patterns are not framework-specific abstractions. They are just functions calling functions with functions as arguments, which any JavaScript developer already understands.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q5.** Class-based inheritance in UI frameworks was common before React (Backbone Views, Ember Components). What was the specific problem with inheritance that appeared as applications grew, and how did it manifest in production codebases?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The fragile base class problem. In Backbone and early Ember, base views defined structure and lifecycle methods. Subclasses overrode methods to customize behavior. As applications grew, the base class accumulated responsibilities because it was easier to add to the base than to refactor the entire hierarchy. Over time the base class became a god object, carrying state, utilities, and rendering logic that only some subclasses needed. Any change to the base class had to be manually verified across every subclass. Developers became afraid to modify the base class because the blast radius was unknown. In production, this manifested as regression bugs where a fix for one subclass's behavior silently broke another's because they shared an overridden method in a grandparent class that nobody fully understood anymore. The hierarchy, which was supposed to make code reuse clear, became the primary source of accidental coupling in the codebase.
-
-</details>
+</Answer>

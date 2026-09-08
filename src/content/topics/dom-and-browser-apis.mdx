@@ -361,6 +361,7 @@ console.log(liveList.length); // automatically includes the new element
 
 ### Self-test: 5 questions
 
+<Question>
 **Q1.** What does this log when the button is clicked?
 
 ```html
@@ -379,9 +380,25 @@ btn.addEventListener('click', (e) => {
   console.log('btn');
 });
 ```
+</Question>
 
+<Answer>
+`outer`, `btn`. The capture listener on `outer` fires first as the event travels down. Then the event reaches `btn` (target phase), which logs `btn` and calls `stopPropagation`. The bubble phase is cancelled, so `inner`'s bubble listener never fires.
+</Answer>
+
+---
+
+<Question>
 **Q2.** Does clicking a link with only `e.stopPropagation()` in its handler prevent the browser from navigating to the `href`?
+</Question>
 
+<Answer>
+No. `stopPropagation` only stops the event from bubbling up the DOM. It has no effect on the browser's default action. You need `e.preventDefault()` to prevent navigation.
+</Answer>
+
+---
+
+<Question>
 **Q3.** What is wrong with this delegation code?
 
 ```js
@@ -391,9 +408,25 @@ document.querySelector('#nav').addEventListener('click', (e) => {
   }
 });
 ```
+</Question>
 
+<Answer>
+`e.target === document.querySelector(".nav-link")` compares the clicked element against a single queried element. If there are multiple `.nav-link` elements, this only matches one of them. Use `e.target.matches(".nav-link")` instead, which checks the selector against any element. Also, `closest()` is safer for nested markup where the user might click a child element inside `.nav-link`.
+</Answer>
+
+---
+
+<Question>
 **Q4.** You have 1000 list items that are dynamically added. What is the most efficient way to handle click events on them?
+</Question>
 
+<Answer>
+Attach a single listener to the parent container using event delegation. Use `e.target.closest("li")` to identify which item was clicked. This is O(1) listeners regardless of how many items exist or get added dynamically.
+</Answer>
+
+---
+
+<Question>
 **Q5.** What does this log?
 
 ```js
@@ -405,20 +438,8 @@ document.querySelector('ul').innerHTML += '<li class="item">new</li>';
 console.log(list.length);
 console.log(snap.length);
 ```
+</Question>
 
----
-
-<details>
-<summary>Answers</summary>
-
-**A1.** `outer`, `btn`. The capture listener on `outer` fires first as the event travels down. Then the event reaches `btn` (target phase), which logs `btn` and calls `stopPropagation`. The bubble phase is cancelled, so `inner`'s bubble listener never fires.
-
-**A2.** No. `stopPropagation` only stops the event from bubbling up the DOM. It has no effect on the browser's default action. You need `e.preventDefault()` to prevent navigation.
-
-**A3.** `e.target === document.querySelector(".nav-link")` compares the clicked element against a single queried element. If there are multiple `.nav-link` elements, this only matches one of them. Use `e.target.matches(".nav-link")` instead, which checks the selector against any element. Also, `closest()` is safer for nested markup where the user might click a child element inside `.nav-link`.
-
-**A4.** Attach a single listener to the parent container using event delegation. Use `e.target.closest("li")` to identify which item was clicked. This is O(1) listeners regardless of how many items exist or get added dynamically.
-
-**A5.** `3`, `4`, `3`. `getElementsByClassName` returns a live `HTMLCollection`. When the new item is added, `list.length` automatically updates to `4`. `querySelectorAll` returns a static `NodeList` snapshot at query time, so `snap.length` remains `3`.
-
-</details>
+<Answer>
+`3`, `4`, `3`. `getElementsByClassName` returns a live `HTMLCollection`. When the new item is added, `list.length` automatically updates to `4`. `querySelectorAll` returns a static `NodeList` snapshot at query time, so `snap.length` remains `3`.
+</Answer>

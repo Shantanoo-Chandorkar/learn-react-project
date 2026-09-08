@@ -335,6 +335,7 @@ The absence of a cleanup when one is needed, forgetting to unsubscribe, forgetti
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: Will this cause an infinite loop? If yes, why exactly?**
 
 ```jsx
@@ -348,10 +349,9 @@ function App() {
   return <div>{user?.name}</div>;
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Yes, infinite loop. Here is the precise sequence.
 
 On mount: `user` is `null`. Effect runs (deps array contains `null` on first render, treated as changed). `fetchCurrentUser()` starts.
@@ -367,11 +367,11 @@ Fetch completes: `setUser(newData)` is called. The new data is a new object (eve
 The loop: every fetch produces a new object reference. The dep changes on every fetch completion. The effect runs again. Another fetch. Another new object. Another dep change. Forever.
 
 The fix: the dep array should be `[]` (run once on mount) or `[userId]` if the user to fetch is identified by a changing ID. The effect should not depend on the result of the fetch it is performing.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: This effect has a missing dependency. What specific behavior does the user experience?**
 
 ```jsx
@@ -391,10 +391,9 @@ function SearchResults({ query, userId }) {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `userId` is used in the effect callback but not in the dependency array. The effect runs only when `query` changes. If `userId` changes (the user logs in, switches accounts, or the parent component changes which user's results to show) without `query` changing, the effect does not re-run. `results` shows data fetched with the previous `userId`. The search results are for the wrong user.
 
 More precisely: the effect closure captures `userId` from the render when the effect was last created. When `userId` changes and `query` stays the same, `areHookInputsEqual` compares `[query]` to `[query]`, finds them equal, and does not re-run the effect. The callback still references the old `userId` value from its closure. `fetchResults(query, userId)` is never called with the new `userId` until `query` also changes.
@@ -402,11 +401,11 @@ More precisely: the effect closure captures `userId` from the render when the ef
 The user experience: after switching user accounts, search results still show the previous user's data. The bug is invisible in normal testing because `query` is usually changed along with or after `userId` in tests. It surfaces in production when a user switches accounts without changing their search term.
 
 The fix: `[query, userId]`.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: Is this effect correct? What could go wrong?**
 
 ```jsx
@@ -421,10 +420,9 @@ function Timer({ onTick }) {
   return <div>Timer running</div>;
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Syntactically correct: `onTick` is in the deps, the cleanup clears the interval. But there is a practical problem: if `onTick` is defined inline at the call site without `useCallback`, it is a new reference on every parent render.
 
 ```jsx
@@ -457,18 +455,17 @@ function Timer({ onTick }) {
 ```
 
 The ref always holds the latest `onTick` without the interval being recreated. This is the "event handler ref" pattern for stable effects with changing callbacks.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** What is the single litmus test for whether something belongs in a `useEffect`? Apply it to: fetching data when a userId changes, transforming a list for display, and updating the document title when a page name changes.
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The litmus test: "is this synchronizing an external system with React state?" If yes, it belongs in an effect. If no, it belongs either in a computation during render or in an event handler.
 
 Fetching data when userId changes: yes, this is synchronization. The external system is the network/server. The React state is `userId`. When `userId` changes, sync the external data source (fetch new user data). Belongs in `useEffect` with `[userId]` as deps.
@@ -476,31 +473,29 @@ Fetching data when userId changes: yes, this is synchronization. The external sy
 Transforming a list for display: no. Applying `items.map(formatItem)` is a pure computation that derives display data from React state. It has no external system to synchronize. The transformation runs during render and the result is used directly in JSX. Using an effect to compute it and store it in state introduces derived-state-as-state bugs, a stale render gap, and unnecessary complexity. Does not belong in `useEffect`.
 
 Updating document title when page name changes: yes, this is synchronization. The external system is the browser's document API. The React state is `pageName`. When `pageName` changes, sync the document title. `React.useEffect(() => { document.title = pageName; }, [pageName])` is correct.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** What is the precise mechanical reason an unstable dependency causes an effect to run on every render?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `areHookInputsEqual` uses `Object.is` to compare each element of the previous and current dependency arrays. `Object.is` for objects and functions is reference equality: two distinct objects with identical contents are not equal. A function defined in a component's render body is a new object on every render. An object literal in a component's render body is a new object on every render.
 
 When such a value is in the dependency array, every render produces a new reference for that dep. `Object.is(prevDep, newDep)` is `false` on every render. `areHookInputsEqual` returns `false`. The effect is marked with `HookHasEffect`. The effect runs after every render.
 
 This is functionally equivalent to having no dependency array at all, with the additional overhead of the dependency comparison on every render. The fix is to stabilize the reference: move constants outside the component, use `useCallback` for functions, use `useMemo` for objects. With a stable reference, `Object.is` returns `true` across renders where the value logically has not changed, and the effect correctly runs only when it should.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** The "notify parent of state change via effect" pattern is wrong. What should you do instead, and why is the effect version problematic?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The wrong pattern:
 
 ```jsx
@@ -523,5 +518,4 @@ The effect version is problematic for three reasons. First, timing: the effect r
 Second, it is not synchronization: `onChange(internalValue)` is not syncing an external system. It is communicating between components. That communication belongs in the event model (callbacks), not in the effect model (external synchronization).
 
 Third, stale closure risk: `internalValue` in the effect closure could be stale if the dep array is wrong. In the event handler, `newValue` is the fresh value from the event, never stale.
-
-</details>
+</Answer>

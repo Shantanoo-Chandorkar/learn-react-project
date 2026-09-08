@@ -235,29 +235,50 @@ If Step 2 or Step 4 is missing the correct headers, the browser blocks at that s
 
 ### Self-test: 5 questions
 
+<Question>
 **Q1.** A `POST` request with `Content-Type: application/json` is sent cross-origin. Is a preflight triggered, and why?
+</Question>
 
-**Q2.** The server responds with `Access-Control-Allow-Origin: *` and `Access-Control-Allow-Credentials: true`. The browser sends `fetch(url, { credentials: "include" })`. What happens?
-
-**Q3.** A cross-origin `GET` request succeeds (200 OK) and the server sets a custom header `X-Request-Id: abc123`. Why does `response.headers.get("X-Request-Id")` return `null` in the browser?
-
-**Q4.** You set `Access-Control-Max-Age: 600` on your preflight response. What exactly does this control?
-
-**Q5.** A server receives a DELETE request from a different origin, processes it, deletes the record from the database, and responds without any CORS headers. What happened from the browser's perspective, and what happened on the server?
+<Answer>
+Yes, preflight is triggered. `application/json` is not in the allowed `Content-Type` list for simple requests (`text/plain`, `multipart/form-data`, `application/x-www-form-urlencoded`). Even though the method is `POST` (which is simple), the `Content-Type` fails the simple criteria. All conditions must pass simultaneously for a request to be simple.
+</Answer>
 
 ---
 
-<details>
-<summary>Answers</summary>
+<Question>
+**Q2.** The server responds with `Access-Control-Allow-Origin: *` and `Access-Control-Allow-Credentials: true`. The browser sends `fetch(url, { credentials: "include" })`. What happens?
+</Question>
 
-**A1.** Yes, preflight is triggered. `application/json` is not in the allowed `Content-Type` list for simple requests (`text/plain`, `multipart/form-data`, `application/x-www-form-urlencoded`). Even though the method is `POST` (which is simple), the `Content-Type` fails the simple criteria. All conditions must pass simultaneously for a request to be simple.
+<Answer>
+The browser blocks the response. `Access-Control-Allow-Origin: *` (wildcard) and `Access-Control-Allow-Credentials: true` cannot coexist. The spec explicitly forbids this combination. The browser will reject the response with a CORS error. The fix is to set `Access-Control-Allow-Origin` to the specific origin rather than `*`.
+</Answer>
 
-**A2.** The browser blocks the response. `Access-Control-Allow-Origin: *` (wildcard) and `Access-Control-Allow-Credentials: true` cannot coexist. The spec explicitly forbids this combination. The browser will reject the response with a CORS error. The fix is to set `Access-Control-Allow-Origin` to the specific origin rather than `*`.
+---
 
-**A3.** `X-Request-Id` is not in the default set of exposed headers. By default, CORS only allows JS to read six safe headers. All other headers are hidden from JS even if they are present in the response. The server must explicitly include `Access-Control-Expose-Headers: X-Request-Id` for the browser to make it accessible via `response.headers.get()`.
+<Question>
+**Q3.** A cross-origin `GET` request succeeds (200 OK) and the server sets a custom header `X-Request-Id: abc123`. Why does `response.headers.get("X-Request-Id")` return `null` in the browser?
+</Question>
 
-**A4.** It tells the browser to cache the preflight result for 600 seconds (10 minutes). During that window, the browser will not send another `OPTIONS` preflight request for that specific URL and method/headers combination. It only affects preflight caching, not the actual request or response caching.
+<Answer>
+`X-Request-Id` is not in the default set of exposed headers. By default, CORS only allows JS to read six safe headers. All other headers are hidden from JS even if they are present in the response. The server must explicitly include `Access-Control-Expose-Headers: X-Request-Id` for the browser to make it accessible via `response.headers.get()`.
+</Answer>
 
-**A5.** On the server: the record was deleted. The request went through completely. CORS does not prevent the server from receiving or processing requests. On the browser: it received the response, saw no `Access-Control-Allow-Origin` header, and blocked the response from being accessible to JavaScript. A CORS error was thrown. The JS code never sees the response body or status code. This demonstrates that CORS is a browser-side read restriction, not a server-side execution restriction.
+---
 
-</details>
+<Question>
+**Q4.** You set `Access-Control-Max-Age: 600` on your preflight response. What exactly does this control?
+</Question>
+
+<Answer>
+It tells the browser to cache the preflight result for 600 seconds (10 minutes). During that window, the browser will not send another `OPTIONS` preflight request for that specific URL and method/headers combination. It only affects preflight caching, not the actual request or response caching.
+</Answer>
+
+---
+
+<Question>
+**Q5.** A server receives a DELETE request from a different origin, processes it, deletes the record from the database, and responds without any CORS headers. What happened from the browser's perspective, and what happened on the server?
+</Question>
+
+<Answer>
+On the server: the record was deleted. The request went through completely. CORS does not prevent the server from receiving or processing requests. On the browser: it received the response, saw no `Access-Control-Allow-Origin` header, and blocked the response from being accessible to JavaScript. A CORS error was thrown. The JS code never sees the response body or status code. This demonstrates that CORS is a browser-side read restriction, not a server-side execution restriction.
+</Answer>

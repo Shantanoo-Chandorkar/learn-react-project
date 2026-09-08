@@ -320,6 +320,7 @@ React processes each Fiber in this order during the render phase. Each component
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: Will `ExpensiveChild` re-render when the button is clicked?**
 
 ```jsx
@@ -340,16 +341,15 @@ function Parent() {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Yes, `ExpensiveChild` re-renders on every button click. `React.memo` performs a shallow equality check on props. The `data` prop is an object literal `{ label: 'stable label' }` defined inside `Parent`'s function body. Every time `Parent` re-renders (every click), this line executes and creates a new object with a new memory reference. `React.memo` compares `memoizedProps.data === pendingProps.data` using `Object.is`. Two distinct object references are not equal, even if their contents are identical. The memo check fails and `ExpensiveChild` re-renders. The fix is to move `data` outside the component (if static) or wrap it in `useMemo` to stabilize the reference. `React.memo` is only effective when the props it receives are stable references.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: How many times does each component render when the button is clicked once?**
 
 ```jsx
@@ -373,85 +373,77 @@ function Parent() {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `Parent` renders once. `Middle` renders once. `Child` renders zero additional times beyond the initial mount.
 
 Here is the precise reason. `<Child />` is JSX written inside `Parent`'s render function. When `Parent` re-renders, it creates a new React element for `<Child />`, but that element is immediately passed as `children` prop to `Middle`. `Middle` receives `children` as a prop. `children` is a new element object (new reference), so `Middle` re-renders (no `React.memo`). But when `Middle` renders, it renders `{children}`, which is the element React already has from `Parent`. React does not call `Child` again because the rendering of `Child` is determined by where its element appears in the reconciliation, and `Middle` is just passing it through unchanged. The key point: `Child` is a child of `Parent` in terms of element ownership, not of `Middle`. `Parent` created `<Child />`. `Middle` just placed it. So `Child`'s re-render is triggered by `Parent`'s re-render producing a new element for it, and since `Parent` did re-render, `Child` does re-render once. The log order is: Parent, Middle, Child, all once.
 
 The subtlety: if `Parent` were wrapped in `React.memo` and didn't re-render, `Middle` would re-render only if its own props changed, and `children` being stable would mean `Child` also doesn't re-render. The `children` as prop pattern can protect a subtree from re-renders when the parent holding the `children` prop doesn't itself re-render.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: A developer says state should always live at the top of the component tree so every component has access to it. Why is this advice wrong, and what is the correct principle?**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The advice conflates "accessible" with "correct placement." Putting all state at the top means every state change triggers a re-render starting from the root, propagating through the entire tree. Every component in the application is a potential re-render victim for every state change, regardless of whether it uses that state. The correct principle is state colocation: state should live in the lowest common ancestor of the components that need it. If only one component needs a piece of state, that state should live in that component, not its parent, grandparent, or root. If two sibling components need the same state, lift it to their closest shared parent, not to the application root. The result is that state changes trigger re-renders in the smallest possible subtree, and the rest of the application remains unaffected. Global state managers (Redux, Zustand) exist not because state should be global by default, but for the specific case where state is genuinely needed across widely separated parts of the tree and prop drilling the path would be impractical.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** There are three distinct trees in a React application. Name them, describe where each lives, and explain their relationship.
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The element tree is the output of component render functions: plain JavaScript objects created fresh on every render, used only for reconciliation, then discarded. The Fiber tree is React's persistent internal representation, one Fiber node per component instance and per DOM element, living for the lifetime of the application. It stores state, effects, references to DOM nodes, and the previous render's output for diffing. The DOM tree is the browser's actual rendered output, written to by React only during the commit phase for Fiber nodes with change flags. The element tree is used to update the Fiber tree. The Fiber tree is used to update the DOM tree. The DOM tree is what the user sees. Each tree is a projection of the previous one, with increasing permanence and decreasing frequency of updates.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** Component A owns state. Component B is its grandchild. Component C is a sibling of A. When A's state changes, which components re-render and why?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Component A re-renders because its state changed. Component B re-renders because it is in A's subtree. When A re-renders, it produces new JSX, which React uses to update A's Fiber children. A's child re-renders, that child's children re-render, and so on down to B. Component C does not re-render. C is a sibling of A, meaning they share a parent. A's re-render does not cause the parent to re-render (state changes propagate down, not up). C's Fiber is unaffected. This asymmetry is unidirectional data flow in mechanical terms: a state change propagates downward through the subtree rooted at the component that owns the state, and has no effect on ancestors or siblings.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** What is state colocation, and why does it produce better performance than centralizing state at the top of the tree?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 State colocation means placing state in the lowest component in the tree that needs it. If a piece of state is only used by one component and its descendants, it should live in that component, not in a parent or the application root. The performance benefit is direct: a state change triggers a re-render starting from the component that owns the state, propagating down through its subtree. If the state lives in a leaf component, only that leaf re-renders. If it lives in the root, the entire application re-renders. Centralizing state at the top for "ease of access" means every state change, no matter how local, causes the maximum possible re-render scope. Colocation minimizes re-render scope by minimizing the subtree that must re-evaluate.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q4.** A component re-renders but produces no DOM writes. Was the re-render "wasted"? What determines whether a re-render is a performance problem?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Not necessarily. A re-render is a function call that produces a new element tree. Reconciliation then compares the new tree to the previous one. If nothing changed, no DOM writes happen. The cost of the re-render is the cost of the function call plus the cost of reconciliation, both of which are pure JavaScript operations. These are cheap at small scale. A re-render is a genuine performance problem when either the component function itself is computationally expensive (doing heavy work on every call) or the subtree below it is very large (many Fiber nodes to reconcile even if most bail out). A re-render that takes microseconds and produces no DOM writes is not a problem. Aggressively memoizing to prevent re-renders that cost nothing adds overhead from the memoization checks themselves and complexity from maintaining stable references. Optimize re-renders that are measurably slow, not all re-renders.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q5.** The "children as a prop" pattern can protect a subtree from re-renders without `React.memo`. Explain exactly why this works at the Fiber level.
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 When a component receives `children` as a prop and simply renders it, the `children` value is a React element created by the component's parent at the call site. If the parent does not re-render, the `children` prop reference does not change. When the component that holds `children` re-renders for its own reasons (its own state change), React processes the `children` prop, finds the same element reference as the previous render in `memoizedProps.children`, and because the element is the same object, React can recognize the subtree as unchanged without needing `React.memo` on the child component. The child component's Fiber is not marked for update. The child does not re-render. This works because the element object for the child was created in the grandparent's render scope, and the grandparent is not re-rendering. The component holding `children` re-renders, but it is only a pass-through for the children, not their owner, so their element objects remain stable.
-
-</details>
+</Answer>
 
 ---
 

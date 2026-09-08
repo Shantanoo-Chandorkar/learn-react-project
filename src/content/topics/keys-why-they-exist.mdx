@@ -252,6 +252,7 @@ When keys are absent on a list, React falls back to index matching _and_ logs a 
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: A developer has a list of comment components. Each has a text input inside it for editing. They use `key={index}`. They delete the second comment. The input value in the third comment disappears. Why?**
 
 ```jsx
@@ -264,10 +265,9 @@ function Comment({ comment }) {
   return <input value={editText} onChange={(e) => setEditText(e.target.value)} />;
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 When the second comment (index 1) is deleted, the array becomes `[comment0, comment2]`. React reconciles with index keys. Index 0 maps to the existing `key=0` Fiber — unchanged. Index 1 now maps to `comment2`, but the existing `key=1` Fiber is `comment1`'s Fiber. React reuses it and updates the `comment` prop to `comment2`'s data.
 
 But `editText` in that Fiber is still `comment1`'s state. It is not reset. React does not call `useState` again — it reads the existing hook state from the Fiber. So the input shows `comment1`'s edit value with `comment2`'s underlying data.
@@ -275,11 +275,11 @@ But `editText` in that Fiber is still `comment1`'s state. It is not reset. React
 Index 2 no longer exists in the new array. The `key=2` Fiber is unmounted. Whatever the user had typed in `comment2`'s input is lost because that Fiber is destroyed.
 
 With stable data IDs as keys, `comment2`'s Fiber would survive with its state intact. `comment1`'s Fiber would be unmounted. The user's edits to any comment are preserved through deletions.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: A developer wants to reset all state in a `<FilterPanel />` when the user switches data sources. They write a `useEffect` to watch `sourceId` and manually reset each piece of state. Is there a simpler approach?**
 
 ```jsx
@@ -298,10 +298,9 @@ function FilterPanel({ sourceId }) {
   // ...
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Yes. Use `key`:
 
 ```jsx
@@ -311,16 +310,15 @@ Yes. Use `key`:
 When `sourceId` changes, React sees a different `key` on the same component type. It unmounts the old `FilterPanel` instance entirely — all state is destroyed — and mounts a fresh one. All `useState` initializers run from scratch. No `useEffect` needed, no manual reset calls, no risk of forgetting to reset a new piece of state added later.
 
 The `useEffect` approach has a subtle bug even when it works: there is a render frame between the `sourceId` prop changing and the effect running. During that frame, the component renders with the new `sourceId` but the old filter state. This can cause a stale query to fire. The `key` approach prevents this: the old instance is gone before the new one mounts, so there is never a frame with mismatched source and filter state.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: A developer insists that `key={index}` is fine because "all it does is affect performance, not correctness." Refute this with a specific counterexample.**
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The claim is wrong. `key={index}` affects correctness, not just performance, whenever the list can reorder, filter, or have items prepended.
 
 Counterexample: a to-do list where each item has an internal text input for inline editing. The list supports deleting items.
@@ -343,55 +341,51 @@ The user then deletes the _first_ item (index 0). The list shifts: what was inde
 React reconciles. Index 0 in the new list: looks up `key=0` Fiber (the old first item's Fiber, which had `draft: "First item's original text"`). Reuses it. Updates the `todo` prop to the second item's data. Now the input shows `"First item's original text"` inside the second item's row. The user's edit is gone.
 
 This is a correctness bug. The wrong value is displayed in the wrong row. `key={index}` gave React incorrect identity information, and React made a correct decision based on incorrect input.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** Why does `key` need to be stable across renders, not just unique within a render?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `key` is used by React to match old Fibers to new elements across renders. For this to preserve state correctly, the same data item must produce the same key on every render. If the key changes between renders — for example, `key={Math.random()}` — React sees a new key for every element on every render. It finds no match in the existing Fiber map, unmounts the old Fiber, and mounts a new one. All state is destroyed on every render. Every item is a fresh mount. The purpose of `key` is continuity of identity. Stability is what provides continuity.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** A list renders items A, B, C with stable IDs as keys. B is moved to the front: B, A, C. How many DOM operations does React perform, and why?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 React matches keys to existing Fibers. `key="B"` Fiber exists. `key="A"` Fiber exists. `key="C"` Fiber exists. All three match. React updates no props (the items themselves are unchanged).
 
 However, one DOM operation occurs: React moves B's DOM node to the front. The real DOM must reflect the new order, and since B physically needs to precede A, React issues a DOM `insertBefore` to reposition it. Props are unchanged so no attribute updates happen, but the structural reordering requires one DOM move operation.
 
 This is significantly cheaper than the no-key case, where React would update two text nodes and preserve a third, potentially running unnecessary effects and applying wrong state to the wrong Fibers.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** When is `key={index}` actually safe? State the precise conditions.
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `key={index}` is safe when all three conditions hold simultaneously: the list is never reordered, items are only ever appended to the end (never prepended or inserted in the middle), and no item is ever deleted from anywhere other than the end. In practice, this means a static display list where the only operation is adding new items at the bottom — like a log feed or an activity timeline rendered in chronological order. The moment any operation can change the index of an existing item (deletion, insertion at a non-tail position, sorting), index keys produce the Fiber-state mismatch bug described throughout this topic. The additional condition: even when the list structure is stable, if items are stateful components (they own internal state via hooks), you should still prefer stable data IDs, because the safety of index keys depends on never violating the structural assumptions. Stable IDs make the safety unconditional.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q4.** Explain why `key` is not accessible as a prop inside the component it is placed on, and how to handle a case where you need the key value inside the component.
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `key` is consumed entirely by React's reconciliation layer. It is stripped from the props object before the component function is called. React uses it to manage Fiber identity. From the component's perspective, it does not exist. Accessing `props.key` inside a component always returns `undefined`. React does not include it in the props object passed to the component function.
 
 If the component needs the identity value — for example, to include the item's ID in a callback or a data-fetch — pass it as a separate explicit prop:
@@ -410,16 +404,15 @@ function ItemRow({ id, data }) {
 ```
 
 The rule: `key` is for React. `id` (or any other name) is for your component. They are often the same value but always separate props.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q5.** A `<UserProfile key={userId} />` is used to reset state when `userId` changes. A junior developer questions this: "Isn't changing the key a performance problem since it unmounts and remounts the whole component?" How do you respond?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The junior developer is treating unmount-and-remount as inherently more expensive than staying mounted with a state reset. In most cases, this framing is wrong.
 
 The comparison is not "key change vs. no re-render." When `userId` changes, the component must reset its state and reflect the new user. The comparison is "key change (full remount) vs. useEffect (same Fiber, manual reset)."
@@ -427,5 +420,4 @@ The comparison is not "key change vs. no re-render." When `userId` changes, the 
 A full remount runs cleanup effects, destroys the Fiber, and mounts a fresh one. A `useEffect`-based reset runs cleanup effects, then runs the effect again, potentially with an intermediate render showing stale state. For components that need a complete reset on identity change, the remount is often the same cost as the effect-based reset, and it is simpler, has no intermediate stale-state frame, and does not require manually enumerating every state variable to reset.
 
 The `key` approach becomes a genuine performance concern only if the component being remounted is extremely expensive to initialize (heavy setup, slow async data fetching triggered on mount). In that case, an explicit state reset might be justified to avoid re-running expensive initialization. But this is an optimization to apply after measuring, not a reason to avoid the `key` pattern by default. For most components, the remount cost is sub-millisecond.
-
-</details>
+</Answer>

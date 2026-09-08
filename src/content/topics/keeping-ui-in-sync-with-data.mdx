@@ -209,6 +209,7 @@ This is why the synchronization problem is structurally impossible in React. The
 
 ### 7. Interview Traps
 
+<Question>
 **Trap 1: What is wrong with this update function?**
 
 ```jsx
@@ -233,16 +234,15 @@ function ProfilePage() {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The state object is being mutated directly before passing it to `setUser`. `user.isFollowing = !user.isFollowing` modifies the existing object in place. Then `setUser(user)` passes the same object reference back to React. React performs a shallow reference equality check: is the new state the same reference as the old state? It is, because you mutated the existing object instead of creating a new one. React sees no change and skips the re-render entirely. The UI never updates. The fix is to create a new object: `setUser({ ...user, isFollowing: !user.isFollowing, followers: ... })`. React's change detection is reference-based, not deep equality. Mutation silently breaks it.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 2: How many times does `expensive` run, and why?**
 
 ```jsx
@@ -262,16 +262,15 @@ function Dashboard() {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 `computeExpensiveValue` runs on every render of `Dashboard`, including when only `name` changes. Clicking "Change name" triggers a re-render because `setName` updates state. React calls the `Dashboard` function again. Every line in the function body executes again, including `computeExpensiveValue(count)`. The fact that `count` didn't change is irrelevant. React doesn't have per-expression caching by default. It calls your function, you run all your code, it diffs the output. If `computeExpensiveValue` is genuinely expensive and `count` didn't change, this is wasteful. The solution is `useMemo`, which we'll cover in Phase 7: cache the result of the computation and only recompute when `count` changes.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Trap 3: This component is supposed to keep the document title in sync with the user's name. What is wrong?**
 
 ```jsx
@@ -287,70 +286,63 @@ function ProfilePage() {
   );
 }
 ```
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Technically this works, but it violates React's render purity requirement. `document.title = name` is a side effect, it modifies something outside the component's returned JSX. Doing it directly in the render body means it executes every time the component renders, including during React's double-invocation in Strict Mode and during any render that might get thrown away in Concurrent Mode. Side effects in render run at unpredictable times and frequencies. The correct place is `useEffect`: `useEffect(() => { document.title = name; }, [name])`. This tells React "after you commit a render where `name` changed, run this side effect." The effect runs after the DOM is committed, at a predictable time, exactly once per `name` change. The deeper principle: render describes UI. Effects synchronize external systems with state. Never do external synchronization inside render.
-
-</details>
+</Answer>
 
 ---
 
 ### Self-Test
 
+<Question>
 **Q1.** Name the synchronization problem precisely. What is the structural reason it is unavoidable in a manual DOM model, regardless of developer discipline?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The synchronization problem is that every piece of data has an implicit set of DOM nodes that must reflect it, and the framework provides no mechanism to declare or enforce that relationship. It is structurally unavoidable because the connection between a variable and its dependent DOM nodes lives only in developer knowledge, not in the code. A new developer, a different code path, a feature added three months later, none of them have access to that implicit knowledge. The only way to ensure completeness is to enumerate every dependent by hand at every call site, which cannot be verified by a compiler, a linter, or a code reviewer.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q2.** React re-derives the entire UI on every state change rather than tracking which DOM nodes depend on which data. What is the cost of this approach, and how does React keep it acceptable?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The cost is that the entire component function runs on every state change, even if most of the output is unchanged. For large components this is wasted computation. React keeps this acceptable through the Virtual DOM and reconciliation: even though the function runs fully, React only applies DOM changes for nodes that actually differ in the output. The DOM operations, which are the expensive part, are minimized. The JavaScript execution, which is cheap, does the full re-derivation. The trade-off is: pay a small, predictable JS cost on every render to eliminate the large, unpredictable cost of incorrect or missed DOM updates.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q3.** What is the commit phase, and why is it non-interruptible while the render phase is interruptible?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 The commit phase is where React applies the computed changes to the real DOM. It is non-interruptible because the DOM must never be left in a half-updated state. If React applied some changes and then paused to handle a higher-priority task, the user would see a partially updated UI, which could be visually broken or logically inconsistent. The render phase, by contrast, only operates on Virtual DOM objects in JavaScript memory. Nothing visible to the user changes during the render phase. If it is interrupted and restarted, the user sees nothing. The worst case is wasted computation, not a broken UI. Interruptibility in the render phase is safe precisely because the render phase has no visible side effects.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q4.** In the `toggleFollow` mutation trap above, React uses reference equality to detect state changes. What does this mean for nested objects, and what rule does it imply for updating state?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 Reference equality means React checks `Object.is(oldState, newState)`. For objects and arrays, this is a pointer comparison. Two objects with identical contents but different references are considered different. The same object mutated in place is considered the same. This implies the immutability rule: always create a new object or array when updating state, never mutate the existing one. For nested objects, only the top-level reference is checked by default, not deep equality. This means if you have `{ user: { name: 'Shan' } }` and you update `state.user.name` directly, React sees the same top-level object reference and skips the re-render. The rule is: treat all state as immutable. Any update that needs to trigger a re-render must produce a new reference.
-
-</details>
+</Answer>
 
 ---
 
+<Question>
 **Q5.** You have a dashboard where 12 different components all display the current user's name. In the manual DOM model, what must happen when the name changes? In React, what must happen?
+</Question>
 
-<details>
-<summary>Answer</summary>
-
+<Answer>
 In the manual DOM model, the function that updates the name must know about all 12 DOM nodes, query or reference each one, and update each one individually. If any one is missed, added later, or accessed via a stale reference, the UI is inconsistent. There is no mechanism to verify completeness. In React, the function that updates the name calls `setUser` with the new name once. React re-renders the component that holds the state. Every one of the 12 components that receives the name as a prop gets the new value on the next render, automatically, because they are all derived from the same state. The developer writing the update function does not need to know how many components consume the name or where they are in the tree.
-
-</details>
+</Answer>
 
 ---
 

@@ -281,6 +281,7 @@ const d = Object.create(null);
 
 ### Self-test: 5 questions
 
+<Question>
 **Q1.** What does this log?
 
 ```js
@@ -296,7 +297,15 @@ console.log(a.x);
 console.log(b.x);
 console.log(Foo.prototype.x);
 ```
+</Question>
 
+<Answer>
+`20`, `10`, `10`. Setting `a.x = 20` creates an own property on `a`, shadowing the prototype's `x`. `b` has no own `x`, so it reads from the prototype. `Foo.prototype.x` is untouched.
+</Answer>
+
+---
+
+<Question>
 **Q2.** What does this log?
 
 ```js
@@ -320,9 +329,25 @@ class C extends B {
 
 console.log(new C().greet());
 ```
+</Question>
 
+<Answer>
+`"ABC"`. Each `super.greet()` calls the parent class method. `C` calls `B`, which calls `A` returning `"A"`, then `B` appends `"B"` returning `"AB"`, then `C` appends `"C"`.
+</Answer>
+
+---
+
+<Question>
 **Q3.** True or false: `typeof class Foo {}` returns `"class"`.
+</Question>
 
+<Answer>
+False. `typeof` returns `"function"`. Classes are functions under the hood.
+</Answer>
+
+---
+
+<Question>
 **Q4.** What does this log?
 
 ```js
@@ -335,7 +360,15 @@ const cat = new Animal('whiskers');
 console.log(cat.hasOwnProperty('name'));
 console.log(cat.hasOwnProperty('hasOwnProperty'));
 ```
+</Question>
 
+<Answer>
+`true`, `false`. `name` is set directly on the instance inside the constructor, so it is an own property. `hasOwnProperty` lives on `Object.prototype`, far up the chain, not on `cat` directly.
+</Answer>
+
+---
+
+<Question>
 **Q5.** What does this log?
 
 ```js
@@ -356,20 +389,8 @@ c1.increment();
 console.log(c1.count);
 console.log(c2.count);
 ```
+</Question>
 
----
-
-<details>
-<summary>Answers</summary>
-
-**A1.** `20`, `10`, `10`. Setting `a.x = 20` creates an own property on `a`, shadowing the prototype's `x`. `b` has no own `x`, so it reads from the prototype. `Foo.prototype.x` is untouched.
-
-**A2.** `"ABC"`. Each `super.greet()` calls the parent class method. `C` calls `B`, which calls `A` returning `"A"`, then `B` appends `"B"` returning `"AB"`, then `C` appends `"C"`.
-
-**A3.** False. `typeof` returns `"function"`. Classes are functions under the hood.
-
-**A4.** `true`, `false`. `name` is set directly on the instance inside the constructor, so it is an own property. `hasOwnProperty` lives on `Object.prototype`, far up the chain, not on `cat` directly.
-
-**A5.** `2`, `0`. Class fields are created as own properties on each instance, not on the prototype. `c1` and `c2` each get their own `count = 0`. Incrementing `c1.count` does not affect `c2.count`.
-
-</details>
+<Answer>
+`2`, `0`. Class fields are created as own properties on each instance, not on the prototype. `c1` and `c2` each get their own `count = 0`. Incrementing `c1.count` does not affect `c2.count`.
+</Answer>
