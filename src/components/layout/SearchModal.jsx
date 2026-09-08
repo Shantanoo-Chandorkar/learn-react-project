@@ -76,7 +76,7 @@ const SearchModal = ({ isOpen, onClose }) => {
                 left: 0,
                 right: 0,
                 bottom: 0,
-                backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                backgroundColor: 'var(--overlay-color)',
                 backdropFilter: 'blur(4px)',
                 zIndex: 2001,
                 display: 'flex',
@@ -90,16 +90,16 @@ const SearchModal = ({ isOpen, onClose }) => {
                 style={{
                     width: '90%',
                     maxWidth: '600px',
-                    backgroundColor: 'white',
+                    backgroundColor: 'var(--surface-1)',
                     borderRadius: '1rem',
-                    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+                    boxShadow: '0 20px 25px -5px var(--shadow-color)',
                     display: 'flex',
                     flexDirection: 'column',
                     maxHeight: '70vh',
                     overflow: 'hidden',
                 }}
             >
-                <div style={{ padding: '1.5rem', borderBottom: '1px solid #e2e8f0' }}>
+                <div style={{ padding: '1.5rem', borderBottom: '1px solid var(--border-color)' }}>
                     <input
                         ref={inputRef}
                         type="text"
@@ -110,7 +110,7 @@ const SearchModal = ({ isOpen, onClose }) => {
                             width: '100%',
                             padding: '0.75rem 1rem',
                             fontSize: '1.1rem',
-                            border: '2px solid #3b82f6',
+                            border: '2px solid var(--primary-color)',
                             borderRadius: '0.5rem',
                             outline: 'none',
                         }}
@@ -119,11 +119,11 @@ const SearchModal = ({ isOpen, onClose }) => {
 
                 <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
                     {query.trim() === '' ? (
-                        <p style={{ textAlign: 'center', color: '#64748b' }}>
+                        <p style={{ textAlign: 'center', color: 'var(--secondary-color)' }}>
                             Type to search for topics...
                         </p>
                     ) : results.length === 0 ? (
-                        <p style={{ textAlign: 'center', color: '#64748b' }}>
+                        <p style={{ textAlign: 'center', color: 'var(--secondary-color)' }}>
                             No results found for "{query}"
                         </p>
                     ) : (
@@ -140,23 +140,23 @@ const SearchModal = ({ isOpen, onClose }) => {
                                         borderRadius: '0.5rem',
                                         cursor: 'pointer',
                                         backgroundColor:
-                                            index === selectedIndex ? '#eff6ff' : 'transparent',
+                                            index === selectedIndex ? 'var(--primary-tint)' : 'transparent',
                                         borderLeft:
                                             index === selectedIndex
-                                                ? '4px solid #3b82f6'
+                                                ? '4px solid var(--primary-color)'
                                                 : '4px solid transparent',
                                         display: 'flex',
                                         flexDirection: 'column',
                                         gap: '0.25rem',
                                     }}
                                 >
-                                    <span style={{ fontWeight: '600', color: '#1e293b' }}>
+                                    <span style={{ fontWeight: '600', color: 'var(--text-color)' }}>
                                         {topic.title}
                                     </span>
                                     <span
                                         style={{
                                             fontSize: '0.8rem',
-                                            color: '#64748b',
+                                            color: 'var(--secondary-color)',
                                             textTransform: 'uppercase',
                                         }}
                                     >
@@ -171,19 +171,19 @@ const SearchModal = ({ isOpen, onClose }) => {
                 <div
                     style={{
                         padding: '1rem',
-                        backgroundColor: '#f8fafc',
-                        borderTop: '1px solid #e2e8f0',
+                        backgroundColor: 'var(--surface-2)',
+                        borderTop: '1px solid var(--border-color)',
                         display: 'flex',
                         justifyContent: 'space-between',
                         fontSize: '0.8rem',
-                        color: '#64748b',
+                        color: 'var(--secondary-color)',
                     }}
                 >
                     <span>
                         <kbd
                             style={{
                                 padding: '2px 4px',
-                                border: '1px solid #cbd5e1',
+                                border: '1px solid var(--border-color)',
                                 borderRadius: '4px',
                             }}
                         >
@@ -195,7 +195,7 @@ const SearchModal = ({ isOpen, onClose }) => {
                         <kbd
                             style={{
                                 padding: '2px 4px',
-                                border: '1px solid #cbd5e1',
+                                border: '1px solid var(--border-color)',
                                 borderRadius: '4px',
                             }}
                         >
@@ -207,7 +207,7 @@ const SearchModal = ({ isOpen, onClose }) => {
                         <kbd
                             style={{
                                 padding: '2px 4px',
-                                border: '1px solid #cbd5e1',
+                                border: '1px solid var(--border-color)',
                                 borderRadius: '4px',
                             }}
                         >

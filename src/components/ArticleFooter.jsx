@@ -19,7 +19,7 @@ const ArticleFooter = ({ slug }) => {
       style={{
         marginTop: '4rem',
         paddingTop: '2rem',
-        borderTop: '1px solid #e2e8f0',
+        borderTop: '1px solid var(--border-color)',
         display: 'flex',
         justifyContent: 'center',
       }}
@@ -31,9 +31,9 @@ const ArticleFooter = ({ slug }) => {
           padding: '0.75rem 2rem',
           borderRadius: '2rem',
           border: '2px solid',
-          borderColor: isCompleted ? '#10b981' : '#2563eb',
-          backgroundColor: isCompleted ? '#10b981' : 'transparent',
-          color: isCompleted ? 'white' : '#2563eb',
+          borderColor: isCompleted ? 'var(--success-text)' : 'var(--primary-color)',
+          backgroundColor: isCompleted ? 'var(--success-text)' : 'transparent',
+          color: isCompleted ? 'var(--surface-1)' : 'var(--primary-color)',
           fontWeight: '600',
           cursor: 'pointer',
           transition: 'all 0.2s ease',

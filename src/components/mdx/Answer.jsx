@@ -11,12 +11,12 @@ const Answer = ({ children }) => (
         style={{
             marginBottom: '1.5rem',
             padding: '0.875rem 1rem',
-            border: '1px solid #bfdbfe',
+            border: '1px solid var(--border-color)',
             borderRadius: '0.375rem',
-            backgroundColor: '#f8fafc',
+            backgroundColor: 'var(--surface-2)',
         }}
     >
-        <summary style={{ cursor: 'pointer', fontWeight: 600, color: '#1e40af' }}>
+        <summary style={{ cursor: 'pointer', fontWeight: 600, color: 'var(--primary-color)' }}>
             Answer
         </summary>
         <div style={{ marginTop: '0.75rem' }}>{children}</div>

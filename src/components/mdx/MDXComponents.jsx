@@ -16,16 +16,16 @@ const MDXComponents = {
     h1: (props) => (
         <h1
             style={{
-                color: '#2563eb',
+                color: 'var(--primary-color)',
                 marginBottom: '1rem',
-                borderBottom: '2px solid #e5e7eb',
+                borderBottom: '2px solid var(--border-color)',
                 paddingBottom: '0.5rem',
             }}
             {...props}
         />
     ),
     h2: (props) => (
-        <h2 style={{ color: '#1e40af', marginTop: '2rem', marginBottom: '1rem' }} {...props} />
+        <h2 style={{ color: 'var(--primary-color)', marginTop: '2rem', marginBottom: '1rem' }} {...props} />
     ),
     p: (props) => (
         <p
@@ -48,10 +48,10 @@ const MDXComponents = {
     blockquote: (props) => (
         <blockquote
             style={{
-                borderLeft: '4px solid #2563eb',
+                borderLeft: '4px solid var(--primary-color)',
                 paddingLeft: '1rem',
                 fontStyle: 'italic',
-                color: '#4b5563',
+                color: 'var(--secondary-color)',
                 margin: '1.5rem 0',
             }}
             {...props}
@@ -70,15 +70,15 @@ const MDXComponents = {
             />
         </div>
     ),
-    thead: (props) => <thead style={{ backgroundColor: '#eff6ff' }} {...props} />,
+    thead: (props) => <thead style={{ backgroundColor: 'var(--primary-tint)' }} {...props} />,
     th: (props) => (
         <th
             style={{
                 padding: '0.625rem 0.875rem',
                 textAlign: 'left',
                 fontWeight: '600',
-                color: '#1e40af',
-                borderBottom: '2px solid #bfdbfe',
+                color: 'var(--primary-color)',
+                borderBottom: '2px solid var(--border-color)',
                 whiteSpace: 'nowrap',
             }}
             {...props}
@@ -88,7 +88,7 @@ const MDXComponents = {
         <td
             style={{
                 padding: '0.625rem 0.875rem',
-                borderBottom: '1px solid #e5e7eb',
+                borderBottom: '1px solid var(--border-color)',
                 verticalAlign: 'top',
                 lineHeight: '1.6',
             }}
