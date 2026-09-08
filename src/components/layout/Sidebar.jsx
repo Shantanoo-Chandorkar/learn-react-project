@@ -181,7 +181,7 @@ const Sidebar = ({ currentPath = '' }) => {
                                 className={isActive('/') ? 'active' : undefined}
                             >
                                 <HomeIcon className="sidebar-category-icon" />
-                                <span className="sidebar-link-label">Home</span>
+                                <span className="sidebar-category-label">Home</span>
                             </a>
                         </li>
                     </ul>
