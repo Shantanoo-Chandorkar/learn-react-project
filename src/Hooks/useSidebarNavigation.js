@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import topics from '../data/topics.json';
+import { formatTitle } from '../utils/formatTitle';
 
 /**
  * Custom hook to group topics for sidebar navigation.
@@ -8,14 +9,6 @@ import topics from '../data/topics.json';
  * @returns {Array} Array of category objects with subcategories and ungrouped topics.
  */
 export const useSidebarNavigation = () => {
-  const formatTitle = (slug) => {
-    if (!slug) return '';
-    return slug
-      .split('-')
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
-  };
-
   const navigation = useMemo(() => {
     const grouped = topics.reduce((acc, topic) => {
       const { category, subcategory } = topic;
