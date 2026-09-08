@@ -5,7 +5,13 @@
   --text-color: #1e293b;
   --border-color: #e2e8f0;
   --card-bg: #ffffff;
+  --surface-warm: #faf8f4;
   --font-serif: 'Georgia', 'Times New Roman', Times, serif;
+  --font-sans:
+    'Inter',
+    system-ui,
+    -apple-system,
+    sans-serif;
 }
 
 * {
