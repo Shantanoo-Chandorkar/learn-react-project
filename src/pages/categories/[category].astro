@@ -1,0 +1,70 @@
+---
+/**
+ * [category].astro - lists every content page belonging to one category,
+ * grouped by subcategory the same way the sidebar groups its nav tree.
+ */
+import { getCollection } from 'astro:content';
+import MainLayout from '../../layouts/MainLayout.astro';
+import { formatTitle } from '../../utils/formatTitle';
+import '../../styles/editorial.css';
+
+export async function getStaticPaths() {
+    const topics = await getCollection('topics');
+    const categories = [...new Set(topics.map((topic) => topic.data.category))];
+    return categories.map((category) => ({
+        params: { category },
+        props: { category },
+    }));
+}
+
+const { category } = Astro.props;
+const allTopics = await getCollection('topics', (topic) => topic.data.category === category);
+allTopics.sort((a, b) => (a.data.order ?? Infinity) - (b.data.order ?? Infinity));
+
+const grouped = new Map();
+const ungrouped = [];
+for (const topic of allTopics) {
+    const sub = topic.data.subcategory;
+    if (!sub) {
+        ungrouped.push(topic);
+        continue;
+    }
+    if (!grouped.has(sub)) grouped.set(sub, []);
+    grouped.get(sub).push(topic);
+}
+
+const categoryName = formatTitle(category);
+const pageTitle = `${categoryName} | EscapeTheSurface`;
+---
+
+<MainLayout title={pageTitle} description={`Every lesson in ${categoryName}.`} currentPath={`/categories/${category}`}>
+    <div class="editorial-page">
+        <div class="editorial-hero">
+            <h1>{categoryName}</h1>
+            <p>{allTopics.length} lesson{allTopics.length === 1 ? '' : 's'} in this category.</p>
+        </div>
+
+        {[...grouped.entries()].map(([sub, subTopics]) => (
+            <div class="editorial-subcategory-group">
+                <h3 class="editorial-subcategory-title">{formatTitle(sub)}</h3>
+                <ul class="editorial-topic-list">
+                    {subTopics.map((topic) => (
+                        <li class="editorial-topic-row">
+                            <a href={`/topic/${topic.slug}`}>{topic.data.title}</a>
+                        </li>
+                    ))}
+                </ul>
+            </div>
+        ))}
+
+        {ungrouped.length > 0 && (
+            <ul class="editorial-topic-list">
+                {ungrouped.map((topic) => (
+                    <li class="editorial-topic-row">
+                        <a href={`/topic/${topic.slug}`}>{topic.data.title}</a>
+                    </li>
+                ))}
+            </ul>
+        )}
+    </div>
+</MainLayout>
