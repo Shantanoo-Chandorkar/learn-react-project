@@ -63,10 +63,9 @@ const Header = () => {
         >
           <SidebarIcon />
         </button>
-      </div>
-
-      <div className="learn-react-project-header-title">
-        <a href="/">EscapeTheSurface</a>
+        <div className="learn-react-project-header-title">
+          <a href="/">EscapeTheSurface</a>
+        </div>
       </div>
 
       <div className="header-right-section">
