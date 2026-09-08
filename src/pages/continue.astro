@@ -1,0 +1,26 @@
+---
+/**
+ * Redirect target for the "Continue reading" app shortcut; resolves the actual lesson at runtime.
+ */
+---
+
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>Continuing...</title>
+    </head>
+    <body>
+        <script>
+            try {
+                const storedStateJson = localStorage.getItem('learn-react-platform-storage');
+                const topicSlug = storedStateJson
+                    ? JSON.parse(storedStateJson)?.state?.lastVisitedTopicSlug
+                    : null;
+                window.location.replace(topicSlug ? `/topic/${topicSlug}` : '/');
+            } catch {
+                window.location.replace('/');
+            }
+        </script>
+    </body>
+</html>

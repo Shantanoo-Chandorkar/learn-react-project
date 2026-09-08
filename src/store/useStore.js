@@ -16,6 +16,9 @@ const useStore = create(
       // Array of slugs for completed topics
       completedTopics: [],
 
+      // Slug of the most recently visited topic - powers the "Continue reading" app shortcut
+      lastVisitedTopicSlug: null,
+
       // --- Actions ---
       toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
 
@@ -31,6 +34,8 @@ const useStore = create(
             : [...state.completedTopics, slug],
         })),
 
+      setLastVisitedTopicSlug: (slug) => set({ lastVisitedTopicSlug: slug }),
+
       // --- Reading Mode State ---
       readingMode: { voiceURI: null, rate: 1, pitch: 1, readCodeBlocks: false },
 
@@ -38,8 +43,7 @@ const useStore = create(
       setReadingVoice: (voiceURI) =>
         set((state) => ({ readingMode: { ...state.readingMode, voiceURI } })),
 
-      setReadingRate: (rate) =>
-        set((state) => ({ readingMode: { ...state.readingMode, rate } })),
+      setReadingRate: (rate) => set((state) => ({ readingMode: { ...state.readingMode, rate } })),
 
       setReadingPitch: (pitch) =>
         set((state) => ({ readingMode: { ...state.readingMode, pitch } })),
@@ -53,7 +57,8 @@ const useStore = create(
         completedTopics: state.completedTopics,
         isSidebarOpen: state.isSidebarOpen,
         readingMode: state.readingMode,
-      }), // persist progress, sidebar state, and reading mode preferences
+        lastVisitedTopicSlug: state.lastVisitedTopicSlug,
+      }), // persist progress, sidebar state, reading mode preferences, and last-visited topic
     },
   ),
 );
