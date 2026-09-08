@@ -113,15 +113,27 @@ const Sidebar = ({ currentPath = '' }) => {
 
     const renderCategory = (category) => {
         const Icon = categoryIcons[category.id] || Squares2X2Icon;
+        const categoryPath = `/categories/${category.id}`;
         return (
             <Accordion.Item value={category.id} key={category.id}>
-                <Accordion.Trigger className="sidebar-accordion-trigger">
-                    <div className="sidebar-category-header">
-                        <Icon className="sidebar-category-icon" />
-                        <span className="sidebar-category-label">{category.name}</span>
-                    </div>
-                    <ChevronDownIcon className="sidebar-accordion-chevron" />
-                </Accordion.Trigger>
+                <div className="sidebar-category-row">
+                    <a
+                        href={categoryPath}
+                        onClick={closeSidebar}
+                        className={isActive(categoryPath) ? 'sidebar-category-link active' : 'sidebar-category-link'}
+                    >
+                        <div className="sidebar-category-header">
+                            <Icon className="sidebar-category-icon" />
+                            <span className="sidebar-category-label">{category.name}</span>
+                        </div>
+                    </a>
+                    <Accordion.Trigger
+                        className="sidebar-accordion-chevron-trigger"
+                        aria-label={`Toggle ${category.name} topics`}
+                    >
+                        <ChevronDownIcon className="sidebar-accordion-chevron" />
+                    </Accordion.Trigger>
+                </div>
                 <Accordion.Content className="sidebar-accordion-content">
                     {category.subcategories.length > 0 && (
                         <Accordion.Root
