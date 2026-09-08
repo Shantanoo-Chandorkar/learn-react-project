@@ -21,6 +21,13 @@
   background-color: var(--surface-1);
 }
 
+/* MDX content wrapper */
+.mdx-content-wrapper {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
 /* Sidebar Styles - Rail Mode Support */
 .collapsible-sidebar {
   position: relative;
@@ -306,6 +313,11 @@
 
 /* Mobile Responsive Styles */
 @media (max-width: 1024px) {
+  .layout-content,
+  .mdx-content-wrapper {
+    padding: 1rem;
+  }
+
   .collapsible-sidebar {
     position: fixed;
     top: 0;
@@ -353,11 +365,4 @@
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
-}
-
-/* MDX content wrapper */
-.mdx-content-wrapper {
-  max-width: 800px;
-  margin: 0 auto;
-  padding: 2rem;
 }
