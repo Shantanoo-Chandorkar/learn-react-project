@@ -10,6 +10,7 @@ import {
     AcademicCapIcon,
     BookOpenIcon,
     IdentificationIcon,
+    ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/outline';
 
 const categoryIcons = {
@@ -114,53 +115,91 @@ const Sidebar = ({ currentPath = '' }) => {
     const renderCategory = (category) => {
         const Icon = categoryIcons[category.id] || Squares2X2Icon;
         const categoryPath = `/categories/${category.id}`;
+        const categoryIsActive = isActive(categoryPath);
+
+        const accordionContent = (
+            <Accordion.Content className="sidebar-accordion-content">
+                {category.subcategories.length > 0 && (
+                    <Accordion.Root
+                        type="multiple"
+                        className="sidebar-nested-accordion"
+                        defaultValue={activeSubcategory ? [activeSubcategory] : []}
+                    >
+                        {category.subcategories.map((sub) => (
+                            <Accordion.Item value={sub.id} key={sub.id}>
+                                <Accordion.Trigger className="sidebar-nested-accordion-trigger">
+                                    <span className="sidebar-subcategory-label">{sub.name}</span>
+                                    <ChevronDownIcon
+                                        className="sidebar-nested-accordion-chevron"
+                                        style={{ width: '0.75rem', height: '0.75rem' }}
+                                    />
+                                </Accordion.Trigger>
+                                <Accordion.Content className="sidebar-nested-accordion-content">
+                                    <ul>{sub.topics.map(renderTopicLink)}</ul>
+                                </Accordion.Content>
+                            </Accordion.Item>
+                        ))}
+                    </Accordion.Root>
+                )}
+                {category.ungrouped.length > 0 && (
+                    <ul>{category.ungrouped.map(renderTopicLink)}</ul>
+                )}
+            </Accordion.Content>
+        );
+
+        // Rail mode (collapsed) hides the accordion entirely via CSS, so the icon just navigates.
+        if (!isSidebarOpen) {
+            return (
+                <Accordion.Item value={category.id} key={category.id}>
+                    <div className="sidebar-category-row">
+                        <a
+                            href={categoryPath}
+                            onClick={closeSidebar}
+                            className={categoryIsActive ? 'sidebar-category-link active' : 'sidebar-category-link'}
+                        >
+                            <div className="sidebar-category-header">
+                                <Icon className="sidebar-category-icon" />
+                                <span className="sidebar-category-label">{category.name}</span>
+                            </div>
+                        </a>
+                        <Accordion.Trigger
+                            className="sidebar-accordion-chevron-trigger"
+                            aria-label={`Toggle ${category.name} topics`}
+                        >
+                            <ChevronDownIcon className="sidebar-accordion-chevron" />
+                        </Accordion.Trigger>
+                    </div>
+                    {accordionContent}
+                </Accordion.Item>
+            );
+        }
+
         return (
             <Accordion.Item value={category.id} key={category.id}>
                 <div className="sidebar-category-row">
-                    <a
-                        href={categoryPath}
-                        onClick={closeSidebar}
-                        className={isActive(categoryPath) ? 'sidebar-category-link active' : 'sidebar-category-link'}
+                    <Accordion.Trigger
+                        className={categoryIsActive ? 'sidebar-category-trigger active' : 'sidebar-category-trigger'}
+                        aria-label={`Toggle ${category.name} topics`}
                     >
                         <div className="sidebar-category-header">
                             <Icon className="sidebar-category-icon" />
                             <span className="sidebar-category-label">{category.name}</span>
                         </div>
-                    </a>
-                    <Accordion.Trigger
-                        className="sidebar-accordion-chevron-trigger"
-                        aria-label={`Toggle ${category.name} topics`}
-                    >
                         <ChevronDownIcon className="sidebar-accordion-chevron" />
                     </Accordion.Trigger>
+                    <a
+                        href={categoryPath}
+                        className="sidebar-category-external-link"
+                        aria-label={`Open ${category.name} category page`}
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            closeSidebar();
+                        }}
+                    >
+                        <ArrowTopRightOnSquareIcon className="sidebar-category-external-icon" aria-hidden="true" />
+                    </a>
                 </div>
-                <Accordion.Content className="sidebar-accordion-content">
-                    {category.subcategories.length > 0 && (
-                        <Accordion.Root
-                            type="multiple"
-                            className="sidebar-nested-accordion"
-                            defaultValue={activeSubcategory ? [activeSubcategory] : []}
-                        >
-                            {category.subcategories.map((sub) => (
-                                <Accordion.Item value={sub.id} key={sub.id}>
-                                    <Accordion.Trigger className="sidebar-nested-accordion-trigger">
-                                        <span className="sidebar-subcategory-label">{sub.name}</span>
-                                        <ChevronDownIcon
-                                            className="sidebar-nested-accordion-chevron"
-                                            style={{ width: '0.75rem', height: '0.75rem' }}
-                                        />
-                                    </Accordion.Trigger>
-                                    <Accordion.Content className="sidebar-nested-accordion-content">
-                                        <ul>{sub.topics.map(renderTopicLink)}</ul>
-                                    </Accordion.Content>
-                                </Accordion.Item>
-                            ))}
-                        </Accordion.Root>
-                    )}
-                    {category.ungrouped.length > 0 && (
-                        <ul>{category.ungrouped.map(renderTopicLink)}</ul>
-                    )}
-                </Accordion.Content>
+                {accordionContent}
             </Accordion.Item>
         );
     };
