@@ -16,7 +16,7 @@
 
 .editorial-hero h1 {
   font-family: var(--font-serif);
-  font-size: 2.75rem;
+  font-size: var(--fs-hero-h1);
   line-height: 1.15;
   font-weight: 400;
   margin: 0 0 1.25rem;
@@ -26,7 +26,7 @@
 .editorial-hero p,
 .editorial-hero strong {
   font-family: var(--font-sans);
-  font-size: 1rem;
+  font-size: 1rem; /* already at the 16px accessibility floor for reading text, not fluid-scaled */
   line-height: 1.6;
   color: var(--secondary-color);
   max-width: 42rem;
@@ -40,7 +40,7 @@
 
 .editorial-section h2 {
   font-family: var(--font-serif);
-  font-size: 1.75rem;
+  font-size: var(--fs-section-h2);
   font-weight: 400;
   margin: 0 0 1.5rem;
   color: var(--text-color);
@@ -66,14 +66,14 @@
 
 .editorial-category-name {
   font-family: var(--font-serif);
-  font-size: 1.125rem;
+  font-size: var(--fs-heading-sm);
   margin: 0 0 0.5rem;
   color: var(--text-color);
 }
 
 .editorial-category-desc {
   font-family: var(--font-sans);
-  font-size: 0.9375rem;
+  font-size: var(--fs-meta);
   line-height: 1.55;
   color: var(--secondary-color);
   margin: 0 0 0.5rem;
@@ -126,7 +126,7 @@
 
 .editorial-topic-row a {
   font-family: var(--font-sans);
-  font-size: 1rem;
+  font-size: 1rem; /* already at the 16px accessibility floor, not fluid-scaled */
   color: var(--text-color);
 }
 
@@ -179,16 +179,12 @@
 
 .editorial-subcategory-title {
   font-family: var(--font-serif);
-  font-size: 1.125rem;
+  font-size: var(--fs-heading-sm);
   color: var(--text-color);
   margin: 0 0 0.5rem;
 }
 
 @media (max-width: 640px) {
-  .editorial-hero h1 {
-    font-size: 2rem;
-  }
-
   .editorial-cta-section {
     padding: 2rem 1.25rem;
     margin: 0 -1.25rem;

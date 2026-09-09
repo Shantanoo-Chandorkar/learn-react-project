@@ -17,6 +17,7 @@ const MDXComponents = {
         <h1
             style={{
                 color: 'var(--primary-color)',
+                fontSize: 'var(--fs-mdx-h1)',
                 marginBottom: '1rem',
                 borderBottom: '2px solid var(--border-color)',
                 paddingBottom: '0.5rem',
@@ -25,15 +26,24 @@ const MDXComponents = {
         />
     ),
     h2: (props) => (
-        <h2 style={{ color: 'var(--primary-color)', marginTop: '2rem', marginBottom: '1rem' }} {...props} />
+        <h2
+            style={{
+                color: 'var(--primary-color)',
+                fontSize: 'var(--fs-mdx-h2)',
+                marginTop: '2rem',
+                marginBottom: '1rem',
+            }}
+            {...props}
+        />
     ),
+    h3: (props) => <h3 style={{ fontSize: 'var(--fs-mdx-h3)' }} {...props} />,
     p: (props) => (
         <p
             style={{
                 lineHeight: '1.75',
                 marginBottom: '1.25rem',
                 fontFamily: 'var(--font-serif)',
-                fontSize: '1.1rem',
+                fontSize: 'var(--fs-prose)',
             }}
             {...props}
         />

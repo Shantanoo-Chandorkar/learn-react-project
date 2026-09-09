@@ -18,6 +18,20 @@
     system-ui,
     -apple-system,
     sans-serif;
+
+  /*
+   * Fluid type scale: clamp(min, pref, max), pref interpolated linearly between a size at 375px
+   * viewport width and a size at 1200px (this site's own content max-width). Recompute with
+   * slope = (max - min) / (1200 - 375); yIntercept = min - slope * 375; pref = yIntercept + slope * 100vw.
+   */
+  --fs-hero-h1: clamp(2rem, 1.659rem + 1.455vw, 2.75rem);
+  --fs-section-h2: clamp(1.375rem, 1.205rem + 0.727vw, 1.75rem);
+  --fs-heading-sm: clamp(1.063rem, 1.034rem + 0.121vw, 1.125rem);
+  --fs-mdx-h1: clamp(1.625rem, 1.398rem + 0.970vw, 2.125rem);
+  --fs-mdx-h2: clamp(1.25rem, 1.136rem + 0.485vw, 1.5rem);
+  --fs-mdx-h3: clamp(1.125rem, 1.068rem + 0.242vw, 1.25rem);
+  --fs-prose: clamp(1rem, 0.955rem + 0.194vw, 1.1rem);
+  --fs-meta: clamp(0.875rem, 0.847rem + 0.121vw, 0.938rem);
 }
 
 /*
