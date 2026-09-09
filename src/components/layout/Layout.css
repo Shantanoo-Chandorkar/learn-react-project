@@ -28,6 +28,14 @@
   padding: 1rem;
 }
 
+/* Shiki gives language-less fences no token colors, so they render as a flat dark slab. */
+/* Shiki sets its palette inline, so !important is the only way to override it. */
+.mdx-content-wrapper pre[data-language='plaintext'] {
+  background-color: var(--surface-2) !important;
+  color: var(--text-color) !important;
+  border: 1px solid var(--border-color);
+}
+
 /* Sidebar Styles - Rail Mode Support */
 .collapsible-sidebar {
   position: relative;
