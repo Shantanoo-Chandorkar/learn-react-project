@@ -14,6 +14,7 @@
 import Header from '../components/layout/Header.jsx';
 import Sidebar from '../components/layout/Sidebar.jsx';
 import ProgressBar from '../components/ProgressBar.jsx';
+import NavigationProgressBar from '../components/NavigationProgressBar.jsx';
 import '../index.css';
 import '../App.css';
 import '../components/layout/Layout.css';
@@ -81,6 +82,7 @@ const GA_MEASUREMENT_ID = import.meta.env.VITE_GA_MEASUREMENT_ID;
     <body>
         <div class="layout-root">
             <ProgressBar mode="scroll" scrollTarget=".layout-content" color="var(--primary-color)" client:load />
+            <NavigationProgressBar client:load />
             <Header client:load />
             <div class="layout-body">
                 <Sidebar currentPath={currentPath} client:visible />

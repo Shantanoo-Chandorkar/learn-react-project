@@ -28,7 +28,7 @@ export async function getCategorySummaries() {
   return Array.from(byCategory.entries())
     .map(([slug, { count, minOrder }]) => ({
       slug,
-      name: formatTitle(slug),
+      name: categoryMeta[slug]?.name ?? formatTitle(slug),
       description: categoryMeta[slug]?.description ?? '',
       count,
       minOrder,

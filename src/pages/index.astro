@@ -4,6 +4,7 @@ import MainLayout from '../layouts/MainLayout.astro';
 import InstallButton from '../components/layout/InstallButton.jsx';
 import { getCategorySummaries } from '../utils/getCategorySummaries';
 import { formatTitle } from '../utils/formatTitle';
+import categoryMeta from '../data/categoryMeta';
 import '../styles/editorial.css';
 
 const categories = await getCategorySummaries();
@@ -19,10 +20,10 @@ const FEATURED_SLUGS = [
 const allTopics = await getCollection('topics');
 const featured = FEATURED_SLUGS.map((slug) => allTopics.find((topic) => topic.slug === slug)).filter(Boolean);
 
-const interviewPrepTopics = allTopics
-    .filter((topic) => topic.data.category === 'interview-prep')
+const javascriptTopics = allTopics
+    .filter((topic) => topic.data.category === 'javascript')
     .sort((a, b) => (a.data.order ?? Infinity) - (b.data.order ?? Infinity));
-const firstLesson = interviewPrepTopics[0];
+const firstLesson = javascriptTopics[0];
 ---
 
 <MainLayout
@@ -63,7 +64,9 @@ const firstLesson = interviewPrepTopics[0];
                 {featured.map((topic) => (
                     <li class="editorial-topic-row">
                         <a href={`/topic/${topic.slug}`}>{topic.data.title}</a>
-                        <span class="editorial-topic-tag">{formatTitle(topic.data.category)}</span>
+                        <span class="editorial-topic-tag">
+                            {categoryMeta[topic.data.category]?.name ?? formatTitle(topic.data.category)}
+                        </span>
                     </li>
                 ))}
             </ul>
