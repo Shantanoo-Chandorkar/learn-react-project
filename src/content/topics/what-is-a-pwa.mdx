@@ -1,0 +1,1218 @@
+---
+title: "Progressive Web Apps"
+category: "pwa"
+order: 1
+isUnlisted: true
+description: "What a PWA actually is, how the service worker lifecycle really works, and the gotchas that only show up in production."
+---
+
+# Progressive Web Apps
+
+## Exploring what a PWA actually is and common implementation patterns - a comprehensive guide
+
+### The mental model first
+
+A Progressive Web App is not a different kind of app. It is a normal website that ships three extra artifacts, all of which are optional and additive:
+
+1. **A Web App Manifest** (`manifest.webmanifest`), a JSON file describing the app's name, icons, colors, and how it should behave if the OS lets the user "install" it.
+2. **A Service Worker** (`sw.js`), a JavaScript file that runs in a background thread, separate from the page, and can intercept every network request the page makes.
+3. **HTTPS**, because both of the above are only available on a secure origin (or `localhost`, which browsers exempt for development).
+
+That's the entire feature surface. There is no separate runtime, no bundled browser, no native compilation step. When you "install" a site, the OS is not downloading an app binary, it's registering a manifest and creating a shortcut that opens the same web content in a window with the browser chrome (address bar, tabs) stripped away.
+
+**The one-sentence mental model:** a PWA is a website that has told the browser enough about itself (via the manifest) and taken enough control of its own networking (via the service worker) that the OS is willing to treat it like an app icon.
+
+---
+
+### The platform, and the tooling that is not the platform
+
+This distinction matters more in an interview than anything else on this page, because most PWA tutorials blur it.
+
+**The platform** is what the browser actually implements, and it is the whole requirement list:
+
+- The Web App Manifest, a JSON file you can write by hand in five minutes.
+- The Service Worker API: `navigator.serviceWorker.register()`, plus a JS file with `install`, `activate`, and `fetch` event listeners.
+- The Cache Storage API (`caches.open()`), the JS-controlled store of responses that the service worker reads from and writes to, plus IndexedDB for any structured data the worker needs to keep.
+- HTTPS.
+
+You can build a fully functional, installable, offline-capable PWA with nothing but those four things. No dependencies, no build step, no framework.
+
+**The tooling** is a convenience layer on top. Workbox, `vite-plugin-pwa`, `next-pwa`, the Angular service worker, and every other "PWA plugin" in every other ecosystem all compile down to exactly the same platform primitives listed above. What they buy you is real but narrow: they generate the manifest from config, they hash your build output into a precache list so the service worker knows what to cache and when it changed, and they wrap the common caching strategies (cache-first, network-first, stale-while-revalidate) in named helpers instead of hand-written `fetch` handlers.
+
+None of them is required. If a question asks "how do you make a site work offline," the answer is a service worker that answers `fetch` events from Cache Storage. Naming a library is a follow-up example, not the answer.
+
+The examples below name specific tools wherever a config option is easier to point at concretely. Read every one of them as "one library's way of expressing this," not as a necessary part of the platform.
+
+---
+
+### The three independent capabilities
+
+It helps to stop thinking of "PWA" as one feature and see it as three independently switchable capabilities that happen to be marketed together:
+
+| Capability | Enabled by | What breaks without it |
+|---|---|---|
+| Installable (icon, standalone window) | Manifest + HTTPS + a registered SW | No install prompt, but site still works normally in a browser tab |
+| Offline-capable | Service worker intercepting `fetch` + Cache Storage | Site just fails to load with no network, same as any website |
+| Update-aware | SW lifecycle events (`waiting`, `controllerchange`) | Users silently keep using stale cached code and content forever |
+
+A site can ship any one of these without the other two. A manifest with no service worker gets you a themed browser tab and little else. A service worker with no manifest gets you offline support with no install affordance.
+
+Installing also unlocks a set of OS integration APIs, badging, file handling, share targets, covered later under the capability APIs. Those are additions on top of these three, not part of what makes something a PWA.
+
+---
+
+### The service worker lifecycle, precisely
+
+This is the part almost everyone gets fuzzy on, and it's the part that actually matters for debugging. A service worker has four states:
+
+```
+register() → installing → installed (waiting) → activating → activated
+```
+
+- **installing**: the browser downloaded `sw.js` (or detected it changed) and is running its `install` event. A precache-based setup uses this step to fetch and cache everything in its precache list.
+- **installed / waiting**: install finished. If an *older* SW is currently controlling the page, the new one sits here and does nothing until that control is released.
+- **activating / activated**: the new SW takes over. Its `fetch` handler starts intercepting requests. Existing open tabs are still running the *old* SW's cached version of the page until they navigate or reload.
+
+Two calls decide when "waiting" turns into "activated":
+
+- `skipWaiting()`, the new SW forces its way to activation immediately, even with old tabs still open. Risky: those tabs' in-flight JS could suddenly be talking to a SW that expects a different app shell.
+- `clientsClaim()`, once activated, the SW immediately takes control of *all* open tabs in scope, not just future ones.
+
+---
+
+### Choosing when the new worker takes over
+
+There are exactly two strategies, and the choice is a product decision, not a technical default.
+
+**Auto-update**: call `skipWaiting()` and `clientsClaim()` the moment install finishes. The user is never asked. The tradeoff is that a tab mid-session can suddenly have its background fetches answered by a new SW expecting a different app shell or API shape, while the already-loaded JS in memory is still the old version. For a small mostly-static content site the risk is low, but it is still an uncontrolled moment where the ground shifts under a live page.
+
+**Prompt**: do not call `skipWaiting()` automatically. The new worker installs, sits in `waiting`, and the page shows a "New content available, refresh?" affordance. When the user accepts, the page messages the waiting worker to call `skipWaiting()`, listens for the `controllerchange` event, and reloads.
+
+The raw platform version of that handshake:
+
+```js
+// in the page
+waitingWorker.postMessage({ type: 'SKIP_WAITING' });
+navigator.serviceWorker.addEventListener('controllerchange', () => {
+  window.location.reload();
+});
+
+// in sw.js
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
+});
+```
+
+Registration libraries expose this as a config flag plus a callback rather than raw messages. In `vite-plugin-pwa` they are called `registerType: 'prompt'`, an `onNeedRefresh` callback, and an `updateSW(true)` function, but the wire-level behaviour is exactly the code above.
+
+The reference implementation this article draws on chose prompt mode deliberately: a reload costs the reader their scroll position and their place in a lesson, so it should be the reader's decision rather than something that happens invisibly mid-paragraph.
+
+---
+
+### The four storage layers, and which one you actually want
+
+Four completely different storage mechanisms get confused constantly. They are not competing options, they hold different things.
+
+| Layer | Holds | API style | Usable inside a service worker | Rough size | Cleared by |
+|---|---|---|---|---|---|
+| HTTP cache | Responses, keyed by URL, managed by headers | None, the browser owns it | Not directly, a SW can only bypass it | Browser's call | The browser |
+| Cache Storage | `Request` to `Response` pairs in named caches | Async, promise-based (`caches`) | **Yes** | Shares the origin quota | Your code, or eviction |
+| IndexedDB | Structured data: objects, arrays, `Blob`, `File`, `ArrayBuffer`, `Date` | Async, transactional, event-based | **Yes** | Shares the origin quota, GB scale | Your code, or eviction |
+| localStorage | Strings, and only strings | **Synchronous** | **No** | Roughly 5MB per origin | Your code, or eviction |
+
+Three consequences fall out of that table, and they are the answers to most storage questions.
+
+**A service worker cannot use localStorage.** Synchronous storage APIs are not exposed to any worker context, so inside `sw.js` your only two stores are Cache Storage and IndexedDB. This is not a policy choice you can work around, the global simply is not there.
+
+**A service worker has no memory between events.** The browser terminates an idle worker after tens of seconds and restarts it for the next event, so a variable you set in one `fetch` handler is gone by the next. Any state a worker needs across events (a retry queue, a sync cursor, a user's auth hint) has to live in IndexedDB. That, not durability, is the actual reason PWAs lean on IndexedDB.
+
+**Durability is not what separates them.** localStorage, IndexedDB, and Cache Storage all survive a tab close, a browser restart, and a device reboot. Only `sessionStorage` does not, since it is scoped to a single tab. What actually removes data is eviction and the user clearing site data, which the next section covers.
+
+Beyond those, IndexedDB differs from localStorage in kind, not just in size: it stores structured clones rather than strings, so there is no `JSON.stringify` tax on every read and write, it supports indexes and range queries instead of a flat key lookup, and it is asynchronous, so a 40MB read does not freeze the main thread the way a large synchronous `localStorage.getItem` does.
+
+**Cache Storage stores responses and nothing else: no TTL, no metadata, no size accounting.** There is no "expire after 30 days" option in the API. Anything resembling expiry has to be tracked separately, which is why cache-expiration tooling opens an IndexedDB database of its own to hold per-entry timestamps and prunes on the next access.
+
+That has a nice practical consequence. This very site, whose author never wrote a line of IndexedDB code, uses IndexedDB: configuring a cache with `expiration: { maxEntries, maxAgeSeconds }` causes the generated worker to keep a database named `workbox-expiration` full of timestamps. "We don't use IndexedDB" is usually false the moment a cache has an expiry policy.
+
+The raw IndexedDB API is verbose and event-based, which is why almost nobody uses it directly. `idb` (a small promise wrapper), Dexie, and localForage are the common choices, and all three are optional conveniences over the same store:
+
+```js
+// Raw platform, inside a service worker. No library.
+function openQueue() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('outbox', 1);
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore('requests', { keyPath: 'id', autoIncrement: true });
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function enqueue(body) {
+  const db = await openQueue();
+  const tx = db.transaction('requests', 'readwrite');
+  tx.objectStore('requests').put({ body, queuedAt: Date.now() });
+  return tx.complete;
+}
+```
+
+**Which to reach for**: Cache Storage for anything that is a response you want to replay (HTML, CSS, JS, images, API GETs). IndexedDB for structured data you query, and for queues of pending work. localStorage only for a tiny value you need synchronously during first paint, such as a theme preference, where an async read would cause a flash.
+
+All four live in the browser, scoped **per origin** (scheme + host + port). `localhost:4321` and `localhost:4322` are different origins for every one of these stores. That distinction causes more confusing debugging sessions than anything else on this page, see gotcha 5.
+
+---
+
+### Quota, eviction, and persistent storage
+
+"It's stored on the device" is not the same as "it will be there tomorrow." Storage is a loan, and the terms differ per browser.
+
+**How much you get.** Cache Storage and IndexedDB draw on one shared per-origin quota, not separate budgets. Ask for the numbers rather than guessing:
+
+```js
+const { usage, quota } = await navigator.storage.estimate();
+console.log(`${Math.round((usage / quota) * 100)}% of ${(quota / 1e9).toFixed(1)}GB used`);
+```
+
+Both values are deliberate approximations, padded to avoid leaking cross-site information, and Firefox reports a usage of 0 once an origin is persisted. Current ballparks: Chrome lets an origin group use up to roughly 80% of total disk, and Firefox allows about 10 GiB per site in the default mode and up to 50% of disk when persisted. Treat those as orders of magnitude, not contracts.
+
+**Best-effort versus persistent.** By default an origin's storage is *best-effort*: when the device runs low on space, the browser evicts entire origins to reclaim it, usually least-recently-used first. An origin can ask to be exempt:
+
+```js
+const isPersisted = await navigator.storage.persist(); // returns a boolean, check it
+```
+
+Chrome decides this silently from signals like whether the site is installed, notification permission, and engagement history rather than showing a prompt. Firefox asks the user. Either way the return value is the truth, so branch on it instead of assuming.
+
+**Eviction is origin-wide and all-or-nothing.** When an origin is evicted, Cache Storage, IndexedDB, localStorage, and the service worker registration go together. There is no scenario where you lose the page cache but keep the user's draft.
+
+**WebKit's seven-day rule is the one that surprises people.** Safari deletes all script-writable storage for a site after seven days of browser use with no user interaction with that site. Days of browser use, not calendar days, and the sweep covers localStorage, IndexedDB, Cache Storage, and the service worker registration alike. **Web apps installed to the home screen are exempt from that cap.** So on iOS, offline data for a site the user only visits in Safari is provisional by design, and installing is what makes it durable. If offline reading actually matters to your product, that is a concrete reason to encourage install rather than a nice-to-have.
+
+**The working rule:** treat everything in client storage as a cache of server truth unless you have called `persist()` and confirmed it succeeded. Every read path should behave correctly when the answer is "there's nothing here," because eventually that is the answer.
+
+---
+
+### The five caching strategies
+
+Every caching library ships the same five strategies, because they are the only five combinations that make sense. Each one is a handful of lines in a `fetch` handler. Knowing the list and the failure mode of each is the most reliably asked PWA question there is.
+
+| Strategy | What it does | Right for | How it fails |
+|---|---|---|---|
+| Cache first | Serve from cache, only hit the network on a miss | Hashed, immutable assets: versioned JS and CSS, fonts, icons | Nothing cached yet and offline means an outright failure (gotcha 3). On an unversioned URL it serves stale forever |
+| Network first | Try the network, fall back to cache on failure | HTML and navigations, anything that must be current when possible | With no timeout it hangs on a connection that never answers |
+| Stale while revalidate | Serve the cached copy immediately, fetch a fresh one in the background for next time | Avatars, non-critical API data, anything where slightly old is fine | The user always sees the previous version once. Two requests per hit |
+| Network only | Never cache, always network | Logins, payments, mutations, anything with a side effect | Offline means failure, which is the correct behaviour here |
+| Cache only | Never touch the network | Precached shell assets that are guaranteed present after install | A miss is a hard failure with no recovery path |
+
+They are not framework features. Cache first, in full:
+
+```js
+self.addEventListener('fetch', (event) => {
+  event.respondWith(
+    caches.match(event.request).then((cached) => cached || fetch(event.request)),
+  );
+});
+```
+
+Network first is barely longer, and the interesting part is the timeout:
+
+```js
+async function networkFirst(request, timeoutMs = 3000) {
+  const cache = await caches.open('pages-v1');
+  try {
+    const fresh = await Promise.race([
+      fetch(request),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('slow')), timeoutMs)),
+    ]);
+    cache.put(request, fresh.clone()); // clone: a Response body can only be read once
+    return fresh;
+  } catch {
+    const cached = await cache.match(request);
+    if (cached) return cached;
+    throw new Error('no network, no cache');
+  }
+}
+```
+
+**Why the timeout is not optional.** "Offline" is the easy case: the fetch rejects immediately and you fall back. The hard case is what is usually called lie-fi, a connection that completes the TCP handshake and then never delivers bytes: a captive portal, a train tunnel, a saturated cell. There is no rejection to catch, so a naive network-first sits there with a perfectly good cached copy on disk and shows the user a blank screen. Capping the wait, and treating the timeout as a cache-fallback trigger, is what makes network-first usable in the real world. Libraries expose this as an option; this site's config uses `networkTimeoutSeconds: 3`. Hand-written, it is the `Promise.race` above.
+
+Note the `.clone()`. A `Response` body is a stream that can be read exactly once, so writing one to the cache and also returning it to the page requires two copies. Forgetting the clone produces "body already used" errors that look mysterious the first time.
+
+---
+
+### The offline fallback page
+
+Setting `navigateFallback` to `null`, as described later in this article, avoids the misleading behaviour of serving the homepage for every uncached URL. But "let the browser show its error page" is not the only alternative, and it is not the industry-standard one. The standard practice is a dedicated offline page: precache it at install so it is always available, and serve it when a navigation cannot be satisfied any other way.
+
+```js
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open('shell-v1').then((cache) => cache.addAll(['/offline.html'])),
+  );
+});
+
+self.addEventListener('fetch', (event) => {
+  if (event.request.mode !== 'navigate') return;
+  event.respondWith(
+    networkFirst(event.request).catch(() => caches.match('/offline.html')),
+  );
+});
+```
+
+Three options, ranked:
+
+1. **A dedicated offline page.** Honest about what happened, keeps your branding and navigation, and can list what the user *does* have cached. Best default.
+2. **No fallback (`null`).** The browser's own offline error appears. Honest, ugly, zero work. Reasonable for a content site where uncached pages are genuinely unavailable.
+3. **Falling back to the app shell or homepage.** Correct for a single-page app, where a client-side router will render the right view from the URL. Actively wrong for a multi-page site, because it shows one page's content at another page's URL, which reads as a bug rather than as an offline state.
+
+---
+
+### Cache versioning and cleanup
+
+Caches are named, and nothing deletes them for you. Ship a new worker with a new cache name and the old cache stays on disk, consuming the same quota, forever.
+
+The convention is a version in the name, and a sweep in `activate`:
+
+```js
+const CURRENT_CACHES = ['shell-v3', 'pages-v3'];
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((names) =>
+      Promise.all(
+        names.filter((name) => !CURRENT_CACHES.includes(name)).map((name) => caches.delete(name)),
+      ),
+    ),
+  );
+});
+```
+
+**Why `activate` and not `install`.** During install, the *old* worker is still controlling open pages and still serving responses out of the old caches. Deleting them there would pull content out from under live tabs. By the time `activate` runs, the old worker has been released, so the old caches are genuinely unreferenced.
+
+**Why `waitUntil`.** A service worker can be terminated the moment its event handler returns. `event.waitUntil(promise)` tells the browser to keep the worker alive until that promise settles. Without it, an async cleanup or an async precache can be killed halfway through, leaving a partially populated cache that looks fine until a specific asset turns out to be missing.
+
+Generated workers do this for you. Precache entries carry a content revision, so a changed file produces a new entry and the old one is dropped, and an option like `cleanupOutdatedCaches` emits the sweep above. Worth knowing it is a sweep you could have written.
+
+---
+
+### Opaque responses and cross-origin caching
+
+Fetching a cross-origin resource that does not send CORS headers gives you an **opaque response**: `response.type === 'opaque'`, `status === 0`, `ok === false`, and a body your JavaScript cannot read. The browser still lets the *browser* use it (an opaque image renders fine), it just refuses to let your code inspect it.
+
+Two traps follow.
+
+**You cannot tell success from failure.** A 404 or a 500 from a CDN arrives as an opaque response that looks identical to a 200. A cache-first rule that blindly caches whatever came back will happily store the error page and serve it, permanently, to every future visitor. The guard is to check before caching, which requires a CORS-enabled request:
+
+```js
+const response = await fetch(request); // same-origin, or cross-origin with CORS
+if (response.ok) cache.put(request, response.clone());
+```
+
+**Opaque responses are padded against your quota.** Because their real size would leak cross-origin information, browsers charge a fixed inflated amount per opaque entry, commonly cited in the megabytes. Cache a dozen cross-origin fonts and icons and you can burn a large slice of the origin's quota storing a few kilobytes of actual bytes, which then triggers eviction of everything else.
+
+Practical rules: prefer same-origin copies of critical assets, request cross-origin ones with CORS (`crossorigin` on the tag, `mode: 'cors'` on the fetch) so you can verify the status, and restrict caching to known-good status codes. If none of that is possible, do not cache the resource at all.
+
+---
+
+### Navigation preload
+
+A stopped service worker has to boot before it can answer anything, and on a navigation the user pays that startup time before the request even begins. Navigation preload lets the browser start the network request in parallel with worker startup:
+
+```js
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.registration.navigationPreload?.enable());
+});
+
+self.addEventListener('fetch', (event) => {
+  if (event.request.mode !== 'navigate') return;
+  event.respondWith(
+    (async () => {
+      const preloaded = await event.preloadResponse;
+      return preloaded || fetch(event.request);
+    })(),
+  );
+});
+```
+
+Two caveats. It only helps when the worker was not already running, so it does nothing for a user clicking through a site quickly. And if you enable it and then never read `event.preloadResponse`, the browser has made a request whose response nobody consumes, which is wasted bandwidth and a console warning.
+
+---
+
+### Offline writes: Background Sync, and the queue you write yourself
+
+Everything so far is about reads. Writes are the harder half: the user taps submit in a tunnel, and the request must not vanish.
+
+The platform answer is the Background Sync API. The page registers a tag, the browser fires a `sync` event in the service worker once it believes connectivity is back, and it retries with backoff if the handler rejects, even if every tab is closed:
+
+```js
+// page
+const registration = await navigator.serviceWorker.ready;
+await registration.sync.register('outbox');
+
+// sw.js
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'outbox') event.waitUntil(flushOutbox());
+});
+```
+
+`flushOutbox()` reads pending requests out of IndexedDB, replays them, and deletes each on success. This is the concrete reason a worker needs IndexedDB: the queue has to survive both the worker's termination and the browser being closed entirely.
+
+**The support caveat is the whole story.** Background Sync is Chromium only. Safari and Firefox do not implement it, so on iOS the `sync` event will never fire. A portable design therefore treats it as an enhancement over a queue you flush yourself:
+
+```js
+window.addEventListener('online', flushOutbox);
+// and again on page load, since 'online' does not fire if the app starts while connected
+```
+
+That covers every browser, at the cost of only flushing while a tab is open. Where Background Sync exists, register the tag too and let the browser do it in the background.
+
+**Periodic Background Sync** (`periodicsync`) is the scheduled cousin, for refreshing content in the background at intervals. It is Chromium only, requires the app to be installed, and the browser grants intervals based on engagement rather than honouring what you ask for. Treat any content it fetches as a bonus, never as something the app depends on.
+
+---
+
+### What the browser actually requires to offer an install
+
+There is a stable core and a moving edge, and the mistake is memorising the whole list as though it were a spec.
+
+**The stable core**, true everywhere that supports install at all:
+
+- Served over HTTPS (or `localhost` for development).
+- A manifest, actually linked from the page with `<link rel="manifest">`, containing at minimum a `name` or `short_name`, a `start_url`, a `display` value other than `browser`, and icons including 192x192 and 512x512.
+
+**The moving edge:**
+
+- Chromium historically also required a registered service worker with a **non-empty** `fetch` handler. That check existed as a proxy for "this site does something offline," and it backfired: sites shipped empty fetch handlers purely to qualify, which hurt performance for no benefit, so Chrome started ignoring no-op handlers and has been revisiting the requirement. Treat "a service worker is required to be installable" as version-dependent rather than as a law.
+- Chromium also applies an engagement heuristic before it offers install UI, which is why `beforeinstallprompt` may not fire on a first visit even when everything else is correct.
+- **Lighthouse removed its PWA category in version 12 (May 2024)**, so advice to "run the Lighthouse PWA audit" is stale. The current check is DevTools, Application, Manifest, which lists installability problems directly.
+- Other engines differ in kind, not degree. Safari will add any page to the home screen from the Share sheet whether or not it has a manifest; the manifest only changes how the launched app behaves. Firefox on desktop does not install web apps at all.
+
+The interview-safe formulation: HTTPS plus a valid, linked manifest with the required icons is the part that has never changed. Everything past that is browser policy, so verify in DevTools for your target browsers rather than trusting a memorised checklist.
+
+---
+
+### The manifest, field by field
+
+The manifest is a plain JSON file. Most of it is metadata, but a few fields change behaviour in ways that cause real bugs.
+
+| Field | What it does | Notes |
+|---|---|---|
+| `id` | Stable identity of the app, independent of `start_url` | Without it, changing `start_url` can register as a *different* app |
+| `name` / `short_name` | Install dialog title / home screen label | `short_name` is what gets truncated under an icon |
+| `start_url` | URL opened when launched from the icon | Commonly tagged (`?source=pwa`) so analytics can separate app launches |
+| `scope` | The set of URLs that stay inside the app window | Links outside scope open in a browser tab |
+| `display` | `standalone`, `fullscreen`, `minimal-ui`, or `browser` | `browser` means "not installable" as far as most engines care |
+| `display_override` | Ordered list tried before `display` | How you opt into `window-controls-overlay` on desktop |
+| `theme_color` | Colours the title bar and status bar | Also set the matching `<meta name="theme-color">` for the browser tab case |
+| `background_color` | Splash screen background while the app boots | Should match your page background or the launch flashes |
+| `orientation` | Locks or hints screen orientation | Ignored on desktop |
+| `icons` | Icon set, with `sizes`, `type`, and `purpose` | 192 and 512 are the practical minimum |
+| `screenshots` | Images shown in a richer install dialog | Chromium shows a fuller install UI when present |
+| `shortcuts` | Long-press / right-click menu entries on the app icon | Static URLs only, see the personalisation gotcha |
+| `share_target` | Registers the app as a share destination | Covered below |
+| `file_handlers` | Registers the app to open file types | Covered below |
+| `protocol_handlers` | Registers custom or web protocol handling | Chromium, installed apps |
+| `launch_handler` | Whether a launch reuses an existing window or opens a new one | Prevents duplicate windows on repeat launches |
+
+Three of these cause most of the real bugs.
+
+**`start_url` outside `scope`.** If `scope` is `/app/` and `start_url` is `/`, the app launches to a URL it is not allowed to own, and the user gets a browser tab instead of the app window. The same applies to in-app links pointing outside scope. Scope defaults to the manifest's own directory, which is another reason to serve it from the root.
+
+**Maskable icons.** Android crops icons to a platform shape (circle, squircle, rounded square). A normal transparent icon gets either cropped into that shape or, worse, pasted onto a white rounded square that looks nothing like your brand. A `purpose: "maskable"` icon is drawn to expect this: the meaningful content sits inside a safe zone of roughly the middle 80% of the canvas, with bleed art filling the rest. Ship both, because `maskable` art looks over-padded when used unmasked:
+
+```json
+{
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
+```
+
+**iOS reads a different set of tags.** Even with a perfect manifest, iOS still wants its own markup in the document head, and ignoring it is why so many installed iOS apps show a screenshot-derived icon and a browser-coloured status bar:
+
+```html
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+```
+
+---
+
+### Beyond offline: the capability APIs
+
+Offline is the famous part of PWAs, but "what can an installed web app do that a normal tab cannot" is the breadth question interviewers actually use to separate people who have shipped one from people who have read about one. The honest answer is a short list of well-supported things and a longer list of Chromium-only ones.
+
+| API | Gives you | Support in one line |
+|---|---|---|
+| Web Share | Hand content to the OS share sheet | Safari (macOS, iOS), Chromium on Android, Windows, ChromeOS. Not Firefox desktop |
+| Share Target | Receive content shared *from* other apps | Chromium on Android and ChromeOS, installed only |
+| Badging | A count on the app icon | Installed only. Chromium desktop, Safari 16.4+ with notification permission. Not Firefox |
+| File Handling | Be the app that opens `.md`, `.csv`, and friends | Chromium desktop, installed only |
+| Screen Wake Lock | Keep the screen awake | Broad now: Chrome and Edge 84+, Safari 16.4+, Firefox 126+ |
+| Trusted Web Activity | Ship the same app through Google Play | Android only. No iOS equivalent |
+
+Every one of them needs a secure context, and most need a real user gesture. Feature-detect all of them, and design the fallback first, because on any given device roughly half of this table is missing.
+
+---
+
+### Web Share
+
+Hands a title, text, URL, or files to the operating system's own share sheet, so the user gets their real apps rather than a row of hardcoded social buttons.
+
+```js
+async function share(article) {
+  const payload = { title: article.title, text: article.summary, url: article.url };
+  if (!navigator.canShare?.(payload)) return copyToClipboard(article.url); // fallback
+  try {
+    await navigator.share(payload);
+  } catch (error) {
+    if (error.name !== 'AbortError') copyToClipboard(article.url); // user cancelled is not a failure
+  }
+}
+```
+
+**Caveats.** Requires HTTPS and **transient user activation**, meaning it must run inside a real click or tap handler; calling it from a timeout or an async continuation after an `await` chain silently throws. Available in Safari on macOS and iOS, and in Chromium on Android, Windows, and ChromeOS, but not in Firefox on desktop and not in Chrome on desktop Linux. Sharing *files* is supported in fewer places than sharing text and URLs, which is why `navigator.canShare(payload)` takes the payload: it answers "can you share this particular thing," not just "does the API exist." A cancelled share rejects with `AbortError`, so treat that separately from a real failure. Always keep a copy-link fallback, because on a large slice of desktop traffic this API simply is not there.
+
+---
+
+### Web Share Target
+
+The mirror image: the app appears in *other* apps' share sheets. This is manifest-only, no JavaScript required to register.
+
+```json
+{
+  "share_target": {
+    "action": "/save",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
+      "files": [{ "name": "attachments", "accept": ["image/*"] }]
+    }
+  }
+}
+```
+
+With `method: "GET"` the shared data arrives as query parameters on `action`, which a static page can read directly. With `POST`, the browser posts a form to that URL, so something has to receive it: either a server route, or a service worker `fetch` handler that intercepts the POST, reads the `FormData`, stashes it in IndexedDB, and redirects the user to a page that renders it. Files require `POST` with `multipart/form-data`.
+
+**Caveats.** Chromium on Android and ChromeOS only, and only when the app is installed. No Safari, no Firefox, and no meaningful desktop Windows or macOS support. Treat it as a bonus integration on Android rather than a workflow the product depends on, and make sure the same content can be added by paste or file picker.
+
+---
+
+### Badging
+
+Puts an unread count on the installed app's icon, the same affordance native mail and chat apps use.
+
+```js
+if ('setAppBadge' in navigator) {
+  await navigator.setAppBadge(unreadCount); // no argument shows a dot
+  // await navigator.clearAppBadge();
+}
+```
+
+It works from a page and from a service worker, which is the useful part: a `push` handler can update the badge while the app is closed.
+
+**Caveats.** The app must be installed; there is no badge on a browser tab. Chromium desktop (Windows, macOS) supports it. Safari supports it for home-screen web apps from iOS and iPadOS 16.4, but **only once the user has granted notification permission**, so the badge is effectively gated behind a permission prompt you may not otherwise need. Firefox does not implement it, and Chrome on Android has no app-icon badge to set. Because failure is silent, always mirror the count somewhere visible in the app and, where it makes sense, in `document.title`.
+
+---
+
+### File Handling
+
+Registers the installed app with the OS as a handler for file types, so double-clicking a `.md` file can open your app.
+
+```json
+{
+  "file_handlers": [
+    { "action": "/open", "accept": { "text/markdown": [".md", ".markdown"] } }
+  ]
+}
+```
+
+```js
+// on /open
+if ('launchQueue' in window) {
+  launchQueue.setConsumer(async (launchParams) => {
+    for (const handle of launchParams.files) {
+      const file = await handle.getFile();
+      render(await file.text());
+    }
+  });
+}
+```
+
+`launchParams.files` yields `FileSystemFileHandle` objects, so with the File System Access API you can also write back to the same file the user opened, rather than pushing a download.
+
+**Caveats.** Chromium desktop only (Windows, macOS, Linux, ChromeOS), installed apps only, and the OS association is confirmed by the user at install time rather than granted automatically. No Safari, no Firefox, and nothing on mobile. The File System Access API that pairs with it has the same support story. The fallback everywhere else is an ordinary `<input type="file">` for opening and a download for saving, which is what the vast majority of your users will get.
+
+---
+
+### Screen Wake Lock
+
+Stops the screen dimming and locking, for the cases where the user is looking at the screen without touching it: a recipe, sheet music, a workout timer, a boarding pass.
+
+```js
+let wakeLock = null;
+
+async function keepAwake() {
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+  } catch {
+    // Rejected: unsupported, page not visible, or the OS is in a power-saving mode
+  }
+}
+
+// The lock is released automatically when the page is hidden, so re-acquire on return
+document.addEventListener('visibilitychange', () => {
+  if (wakeLock !== null && document.visibilityState === 'visible') keepAwake();
+});
+```
+
+**Caveats.** Now broadly supported: Chrome and Edge 84+, Safari 16.4+, Firefox 126+. Still requires a secure context and a **visible** document, and the request can be rejected outright when the device is in a battery-saving mode, so the `try`/`catch` is not decoration. The automatic release on tab hide is the detail people miss, and the reason a wake lock silently stops working after the user switches apps and comes back. Release it explicitly when the user leaves the screen that needed it, since holding one costs battery.
+
+---
+
+### Shipping to an app store: Trusted Web Activity
+
+A Trusted Web Activity is an Android app whose entire UI is Chrome rendering your origin full screen, with no address bar and no browser chrome. It is not a WebView wrapper: it is the user's actual Chrome, so your service worker, caches, and storage are the same ones the browser already has.
+
+The pipeline: generate the Android project with Bubblewrap or PWABuilder, then prove you own the domain by hosting a Digital Asset Links file at `/.well-known/assetlinks.json` containing the app's package name and the SHA-256 fingerprint of its signing key. Without that verification the app still runs, but Chrome shows a browser toolbar over it, which defeats the point.
+
+```json
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.example.app",
+      "sha256_cert_fingerprints": ["AA:BB:CC:..."]
+    }
+  }
+]
+```
+
+**Caveats.** Android and Google Play only; a Play developer account has a one-time fee, and packaging tools typically run a quality audit before they will build. Content updates ship the instant you deploy the site, since the app is just your origin, but changes to the shell itself (name, icon, permissions) need a new Play release. There is **no iOS equivalent**: Apple rejects thin web wrappers under the App Store's minimum-functionality guideline (4.2), so on iOS the distribution channel remains "Add to Home Screen" from Safari.
+
+---
+
+### Debugging and shipping checklist
+
+Almost all service worker debugging happens in one place: DevTools, Application panel.
+
+- **Service Workers pane.** Shows which worker is active, which is waiting, and their scope. Three checkboxes matter: *Update on reload* (fetches and activates a new worker on every reload, which is how you develop without fighting the lifecycle), *Bypass for network* (ignores the worker entirely, to check whether it is the cause of a bug), and *Offline*. Plus buttons to skip waiting, unregister, and inspect the worker's own console.
+- **Storage pane.** Usage broken down by store, and *Clear site data*, which is the reliable reset: it unregisters workers, deletes caches, IndexedDB, and localStorage together.
+- **Cache Storage.** Browse every named cache and its entries. The first place to look when the wrong content keeps appearing.
+- **Manifest.** Renders the parsed manifest, previews icons, and lists installability errors, which replaced the removed Lighthouse PWA audit.
+
+Three practical notes:
+
+**Testing offline is a trap for first-time visitors.** Switching DevTools to offline only proves anything once the worker has already installed and cached something. A genuinely first-time visitor who is offline gets nothing, which is correct behaviour and often mistaken for a broken cache.
+
+**Browsers check for a new worker on navigation, and at most every 24 hours.** The `sw.js` request itself can be answered by the HTTP cache, which is why serving it with `Cache-Control: no-cache` matters; `updateViaCache: 'none'` at registration time enforces the same thing from the client side.
+
+**`chrome://serviceworker-internals`** lists every registration in the profile with start and stop controls, which is the tool for "is there a stale worker from a different port still alive."
+
+---
+
+### Recovering from a bad service worker
+
+A worker is the one thing you can ship that keeps running after you delete it from the server. If a broken one reaches users, a normal deploy does not necessarily reach them, so it is worth knowing the recovery path before you need it.
+
+The kill switch is a minimal worker that removes itself:
+
+```js
+self.addEventListener('install', () => self.skipWaiting());
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    (async () => {
+      const names = await caches.keys();
+      await Promise.all(names.map((name) => caches.delete(name)));
+      await self.registration.unregister();
+      const clients = await self.clients.matchAll({ type: 'window' });
+      clients.forEach((client) => client.navigate(client.url)); // reload into a worker-free page
+    })(),
+  );
+});
+```
+
+Deploy that at the same URL as the broken worker. Each returning client picks it up on its next update check, wipes the caches, unregisters, and reloads clean.
+
+Two supporting details. `Cache-Control: no-cache` on `/sw.js` is what makes this reachable at all: if the old worker file is sitting in an HTTP cache with a long max-age, the browser may not fetch the replacement for as long as that lasts, which is the single most expensive mistake available in this area. And `Clear-Site-Data: "storage"` as a response header is the server-side hammer for the same job, though it takes everything, including data the user cared about.
+
+---
+
+### Gotchas that only show up in production
+
+These five come from an actual build of a statically generated, multi-page content site. Every one of them looked like a different problem than it was.
+
+**1. Hydration mismatch from reading `navigator.onLine` in `useState`'s initializer**
+
+The naive version of an online-status hook does this:
+
+```js
+const [isOnline, setIsOnline] = useState(
+  typeof navigator === 'undefined' ? true : navigator.onLine,
+);
+```
+
+The server has no `navigator`, so the server-rendered HTML always says "online." If the *client's* first paint happens while genuinely offline, which is exactly when you would be testing an offline banner, the client's first render disagrees with the server-rendered HTML it is hydrating onto. React throws "Minified React error #418" and refuses to hydrate.
+
+The fix: always start with the value the server assumed, and only read the real one inside an effect, after mount.
+
+```js
+const [isOnline, setIsOnline] = useState(true);
+useEffect(() => {
+  setIsOnline(navigator.onLine);
+  // ...listeners
+}, []);
+```
+
+This is a general rule for any SSR or SSG app: **never branch initial render state on a browser-only global.** Assume the server's answer for the first paint, then correct it in an effect. Install buttons have the identical problem with standalone-display detection and need the identical treatment.
+
+**2. A build plugin's "auto inject manifest" can silently do nothing**
+
+Many PWA integrations advertise "auto inject Web App Manifest." That auto-injection is usually implemented as a bundler HTML-transform hook, which only fires for HTML that passes through the bundler's own pipeline, the way a single-page app's one `index.html` does. A static site generator that renders all of its pages itself and hands the bundler only the JS and CSS never routes any HTML through that hook, so the hook never runs. The manifest is generated correctly on disk, and no page links to it.
+
+The fix is a plain manual tag in the shared layout:
+
+```html
+<link rel="manifest" href="/manifest.webmanifest" />
+```
+
+The same reasoning applies to the service worker registration script and the icon `<link>` tags. Add them by hand rather than trusting auto-injection, and verify in the built HTML rather than in the config.
+
+**3. Cache-first on an empty cache, offline, throws an unhandled promise rejection**
+
+A cache-first rule means "check the cache, and only hit the network on a miss." If a user goes offline *before* a matching resource was ever successfully fetched once, there is nothing in the cache, the network fetch fails, and the failure surfaces as `Uncaught (in promise) no-response`.
+
+That is not a library bug, it is a config gap: cache-first assumes the item got pre-populated somehow. The fix is to move those assets into the *precache* list, guaranteed present from the first install, instead of relying on lazy runtime caching. Doing that also makes the runtime rule dead code, since the precache intercepts the request first, so delete it rather than leaving it in.
+
+**4. Content-only deploys never change `sw.js`, so the update prompt silently never fires**
+
+Consider a precache list that tracks only the app shell (`**/*.{js,css}`, `icons/*.png`), while content pages are cached on visit by a network-first rule and are deliberately kept out of the build-time precache manifest.
+
+Editing a content file and rebuilding then produces a byte-identical `sw.js`, because nothing the precache manifest tracks changed. No byte change means the browser's SW update check finds nothing new, and the "new content available" callback never fires. Readers sit on stale content forever with no signal.
+
+The fix is a synthetic precache entry whose revision changes every build:
+
+```js
+additionalManifestEntries: [{ url: '/', revision: Date.now().toString() }],
+```
+
+That guarantees `sw.js` differs on *every* build, shell change or not, so every deploy is detectable.
+
+**5. Orphaned dev servers on different ports look like a caching bug but are a scope bug**
+
+Multiple preview servers that were never killed each grab the next free port (4321, 4322, 4323, and so on). Service Worker registration and Cache Storage are scoped per origin, and the port is part of the origin, so `localhost:4321` and `localhost:4325` have *completely separate* registrations and caches.
+
+Testing against the wrong tab produces symptoms that look exactly like stale-cache bugs (favicon fetch failures, `importScripts` network errors) but are actually "you are talking to a different origin than you think you are." Check the port in the address bar before you debug the cache.
+
+---
+
+### General gotchas worth knowing regardless of stack
+
+- **HTTPS is non-negotiable in production.** `localhost` is a browser-specific exemption for development. Deploying a SW over plain HTTP anywhere else silently fails to register.
+- **A service worker's scope defaults to its own directory and everything below it.** A SW served from `/js/sw.js` can only control `/js/*` by default, not the whole site. Emit `sw.js` at the site root when you want a scope of `/`.
+- **The manifest is static.** It is generated once at build time and cannot read per-user state. Anything that looks personalized, a "Continue reading" app shortcut for example, has to point at a static URL that does the personalization client-side after landing, rather than baking the personalization into the manifest.
+- **A first-time visitor with no SW yet is never "offline-capable."** The SW itself has to be downloaded and installed while online first. Offline support is something a site earns after a successful first visit, not a day-one guarantee.
+- **Clearing site data removes everything**: SW registration, all caches, and `localStorage`. A reset to factory from the user's perspective, and a full reinstall from the SW's perspective.
+- **iOS Safari has historically lagged** on `beforeinstallprompt`, which it does not fire at all, and on background features like periodic background sync and, until fairly recently, push notifications. Code that assumes `beforeinstallprompt` will always fire silently does nothing on iOS, so branch on it explicitly.
+- **Auto-updating breaks lazily-loaded chunks in long-lived tabs.** A tab that has been open across a deploy still holds the old page's JS, which will ask for a hashed chunk that the new build no longer publishes. The result is a chunk-load error on a route the user has not visited yet. Prompt-mode updates avoid it by reloading before the swap; the alternatives are keeping a few builds' assets on the host, or catching the load error and reloading.
+- **An installed iOS web app has historically had its own storage container**, separate from Safari's. Cookies, `localStorage`, and session data do not carry across, so a user who installs after logging in can find themselves logged out in the installed app, which reads as a bug and is not one.
+- **Do not cache a redirected response as-is.** A `Response` with `redirected: true` replayed from the cache for a navigation fails, because the navigation expected a redirect it is no longer being given. Rebuild it into a fresh `Response` from the body and headers before storing it.
+- **Range requests need explicit handling.** Audio and video elements request byte ranges, and a cached full-body response served against a range request breaks seeking. Either exclude media from caching or handle `Range` headers deliberately.
+- **`start_url` must sit inside `scope`.** If it does not, or if in-app links point outside scope, launches and navigations leak into a browser tab instead of staying in the app window.
+
+---
+
+### Trap questions
+
+Short, trap-style questions. Answer before revealing.
+
+<Question>
+**Q1.** True or false: installing a PWA downloads a smaller, optimized version of the app to the device.
+</Question>
+
+<Answer>
+**False.** Nothing is downloaded except what a normal browser visit would already cache. "Installing" creates an OS-level shortcut and manifest registration around the exact same web content, served by the exact same browser engine.
+</Answer>
+
+---
+
+<Question>
+**Q2.** A site uses prompt-mode updates (no automatic `skipWaiting()`). A user has it open in two tabs. You deploy a new version. Tab A gets refreshed by the user, who accepts the update toast. What happens to Tab B?
+
+**A.** It updates automatically too, since they share the same origin.
+**B.** It keeps running the old SW and cached shell until it navigates or is reloaded.
+</Question>
+
+<Answer>
+**B.** SW control is per tab, per client. `clientsClaim()` is not in play here, and even with it, a page that never navigates or reloads keeps running the JS it already loaded into memory. Only a fresh navigation picks up the new active worker's responses.
+</Answer>
+
+---
+
+<Question>
+**Q3.** A site caches its pages with a network-first runtime rule rather than precaching them. Does the homepage get cached the very first time someone visits, before they have clicked anything?
+
+**A.** Yes, network-first caches it on that first successful load.
+**B.** No, nothing is cached until the second visit.
+</Question>
+
+<Answer>
+**A.** Network-first caches the response *as it serves it* on a successful network fetch. It does not need a second visit. "Cache on visit" means the first visit already populates the cache; it just is not pre-populated at build time the way a precached JS and CSS shell is.
+</Answer>
+
+---
+
+<Question>
+**Q4.** True or false: the manifest's `shortcuts` array can point at `/topic/${lastVisitedSlug}` so the OS shortcut always opens the user's actual last-read page.
+</Question>
+
+<Answer>
+**False**, and this is the entire reason a redirect page like `/continue` exists in real implementations. The manifest is a static file generated once at build time for *all* users. It cannot contain a per-user template. The shortcut points at the static URL `/continue`, and a tiny inline script on that page reads `localStorage` at *runtime* to perform the personalized redirect.
+</Answer>
+
+---
+
+<Question>
+**Q5.** A cache-first strategy is used for a resource, and the device is offline with nothing yet cached. What happens?
+
+**A.** The strategy falls back to a network request that times out gracefully.
+**B.** The fetch fails and, unless handled, surfaces as an unhandled promise rejection.
+</Question>
+
+<Answer>
+**B.** Cache-first has no cache entry to serve, so it falls through to the network, which fails immediately when offline. With no cache and no network there is no response to give back to the page, so the strategy throws. This is exactly the failure described in gotcha 3.
+</Answer>
+
+---
+
+<Question>
+**Q6.** True or false: a Cache Storage entry configured with a 30 day max age disappears on its own once 30 days pass.
+</Question>
+
+<Answer>
+**False.** Cache Storage has no concept of expiry at all. It stores request and response pairs and nothing else: no TTL, no timestamps, no size accounting. A "max age" option belongs to whatever library wrapped the cache, and that library implements it by keeping its own timestamp records in IndexedDB and pruning stale entries the next time the cache is touched. Nothing expires while the tab is closed. If you hand-write the `fetch` handler, expiry is code you write.
+</Answer>
+
+---
+
+<Question>
+**Q7.** Your worker caches a cross-origin font with a plain `fetch(url)` and no CORS. The CDN returns a 404. What ends up in the cache?
+
+**A.** Nothing, because the code checks `response.ok` and a 404 is not ok.
+**B.** The 404, cached as though it succeeded.
+</Question>
+
+<Answer>
+**B.** A cross-origin request without CORS produces an opaque response: `status` is 0, `ok` is false, and the body is unreadable, whether the server returned 200 or 404. A status check cannot distinguish them because there is no real status to check, so caching logic that trusts the response stores the failure permanently.
+
+It gets worse on quota: opaque entries are padded to a fixed inflated size, often several megabytes each, because their true size would leak cross-origin information. A handful of cached cross-origin assets can therefore evict everything else you stored.
+
+The fix is to request cross-origin resources with CORS so you get a real status to verify, or to host the critical ones on your own origin, or not to cache them at all.
+</Answer>
+
+---
+
+<Question>
+**Q8.** True or false: a site cannot be installed anywhere unless it registers a service worker with a `fetch` handler.
+</Question>
+
+<Answer>
+**False**, on two counts.
+
+It was never true of Safari, which will add any page to the home screen from the Share sheet, manifest or not. And on Chromium, where the requirement did exist, it is being relaxed: the check was a proxy for "this site works offline," sites defeated it by shipping empty `fetch` handlers, and Chrome responded by ignoring no-op handlers and revisiting the rule.
+
+What has stayed true is the rest of the core: HTTPS and a linked manifest with a `name`, a `start_url`, a non-`browser` `display`, and 192 and 512 icons. Since the surrounding policy moves between versions, the right answer in an interview is the stable core plus "and I would confirm the current criteria in DevTools, Application, Manifest rather than from memory."
+</Answer>
+
+---
+
+<Question>
+**Q9.** Your app queues failed requests and registers a Background Sync tag to retry them. Is the request guaranteed to eventually send on any modern browser?
+</Question>
+
+<Answer>
+**No.** Background Sync is Chromium only. On Safari and Firefox `registration.sync` does not exist, so the tag is never registered and the `sync` event never fires. A design that relies on it silently loses every queued write on iOS, which is the platform where users are most likely to be on a patchy connection.
+
+The portable answer is to own the queue: persist it in IndexedDB, flush it on the `online` event, on page load, and on tab focus, and register a Background Sync tag *in addition* where the API exists so the queue can also drain with no tab open. And because retries are inevitable in either path, every queued request needs an idempotency key so a replay does not create a duplicate.
+</Answer>
+
+---
+
+### Interview-depth questions
+
+<Question>
+**Q1.** Walk through exactly what happens, in order, between a new deploy going live and a returning visitor seeing the "New content available" toast.
+</Question>
+
+<Answer>
+1. The build runs. The precache generator hashes every file matched by its glob patterns (an app shell of `**/*.{js,css}` and `icons/*.png`, say) and also picks up any synthetic entries, such as a `Date.now()` revision. All of that gets baked into a new `sw.js`.
+2. The build is deployed. The host is configured to serve `/sw.js` with `Cache-Control: no-cache` (on Netlify that is a line in `public/_headers`), so neither the CDN nor the browser hands back a stale copy of the worker itself.
+3. A returning visitor's browser, on navigating to any page in scope, runs its native SW update check: it fetches `/sw.js` and byte-compares it against the currently registered one. Because the precache manifest changed, whether through new file hashes or the new build timestamp, the bytes differ.
+4. The browser starts installing the new SW as a separate worker. Its `install` event fires and it pre-fetches everything in the new precache list into a fresh Cache Storage cache.
+5. Because the site is in prompt mode with no automatic `skipWaiting()`, the new worker sits in the `waiting` state. It does not take over yet.
+6. The registration was created with an "update available" callback. The registration library's client runtime fires that callback exactly when it detects a worker sitting in `waiting`. At the platform level this is a `updatefound` listener plus a state check on the installing worker.
+7. That callback flips a piece of React state, which the layout consumes to render the toast with "New content available." and a Refresh button.
+8. Clicking Refresh messages the waiting worker to `skipWaiting()`, listens for `controllerchange`, and reloads the page once the new worker has taken control.
+</Answer>
+
+---
+
+<Question>
+**Q2.** Why choose prompt-mode updates instead of auto-update? What is the actual tradeoff?
+</Question>
+
+<Answer>
+Auto-update calls `skipWaiting()` and `clientsClaim()` automatically the moment a new SW finishes installing, with no user interaction. The tradeoff is correctness against friction:
+
+- With auto-update, a tab that is mid-session can suddenly have its background fetches answered by a new SW expecting a different app shell or API shape, while the already-loaded JS in memory is still the old version. For a small mostly-static content site the risk is low, but it is still an uncontrolled moment of "the ground shifted under you."
+- With prompt mode, the user explicitly chooses when to reload, so there is never a moment where old JS in memory talks to a new SW behind the scenes without the page having fully reloaded first.
+
+For a reading-heavy site, prompt mode is also a product decision rather than a default: a refresh costs the reader their scroll position and reading place, and that loss should be something they opted into rather than something that happened invisibly mid-session.
+</Answer>
+
+---
+
+<Question>
+**Q3.** What is the actual difference between a precache and a runtime cache, and why split them?
+</Question>
+
+<Answer>
+A precache is a **build-time, install-time** list. The generator knows exactly which files exist and what their content hashes are before the SW is ever registered, and the SW fetches all of them into Cache Storage during the `install` event, before it serves a single request. It suits the app shell (JS, CSS, icons), the things every page needs regardless of which page the user opens.
+
+Runtime caching is **request-time and opportunistic**. A rule matches a request as it happens (`request.mode === 'navigate'`, for example) and applies a strategy such as network-first on the fly, populating the cache only as pages are actually visited.
+
+The split matters at scale. A site with 75 content pages could technically precache all of them, but that means every visitor downloads every page on their first load, to support offline reading of pages most of them will never open. Runtime caching covers exactly the pages someone actually read, which is the set that offline reading needs.
+</Answer>
+
+---
+
+<Question>
+**Q4.** Why would the manifest `<link>` tag need to be added by hand instead of relying on a PWA integration's auto-injection?
+</Question>
+
+<Answer>
+Most PWA integrations wrap a bundler plugin whose auto head-injection (manifest link, theme-color, register script) is implemented as a bundler HTML-transform hook. That hook only runs for HTML the bundler itself processes as part of its bundling pipeline, which is how a typical single-page app's one `index.html` works.
+
+A static site generator renders every page itself through its own renderer and hands the bundler only the JS and CSS assets, so none of the generated HTML files ever pass through the bundler's HTML transform. The hook silently never fires. In the real case this article is drawn from, that was confirmed by reading the integration's own source: its build-done hook only generated the service worker, and never touched the rendered HTML files.
+
+The fix is a plain manual `<link rel="manifest" href="/manifest.webmanifest" />` in the shared layout. The general lesson: auto-injection features are pipeline-dependent, so verify them in the built output rather than assuming the config took effect.
+</Answer>
+
+---
+
+<Question>
+**Q5.** A "Continue reading" app shortcut needs to open the user's actual last-visited page, but manifest shortcuts are static. How do you solve that?
+</Question>
+
+<Answer>
+Two pieces working together:
+
+1. **Capturing the state.** A component mounted globally on every page runs an effect on each full page load that matches `window.location.pathname` against a route pattern such as `/^\/topic\/([^/]+)/` and, on a match, writes the slug into a client-side store that persists to `localStorage`. In a traditional multi-page site (plain anchor tags, no client-side router), every navigation is a full page load, so the effect naturally re-runs and the value stays current. In a single-page app you would hook the router instead.
+2. **Redirecting at open time.** The manifest shortcut points at the static URL `/continue`. That page is deliberately minimal, rendered without the usual header and sidebar so there is no chrome flash before it redirects, and contains an inline script that reads the persisted key out of `localStorage`, parses out the stored slug, and calls `window.location.replace()` to the real page, or falls back to `/` if nothing is stored yet.
+
+The personalization happens entirely client-side, at the moment the shortcut is opened, not at build time.
+</Answer>
+
+---
+
+<Question>
+**Q6.** Explain the hydration bug caused by reading `navigator.onLine` during render. What general rule does it teach?
+</Question>
+
+<Answer>
+See gotcha 1 above for the mechanics. The general rule: **in any app that server-renders or statically pre-renders and then hydrates on the client, the very first client render must produce markup identical to what the server produced, or React throws a hydration error and has to discard and re-render.**
+
+Any state derived from a browser-only API (`navigator`, `window`, `matchMedia`, `localStorage`) is a hydration hazard if it is read synchronously during the initial render. The fix pattern is always the same: seed state with the value the server would have produced (`true` for online, `false` for "is installed," since a server cannot know standalone display mode either), then correct it inside an effect, which only ever runs client-side, after hydration has already succeeded.
+</Answer>
+
+---
+
+<Question>
+**Q7.** What is the actual difference between the HTTP cache, Cache Storage, IndexedDB, and `localStorage`? Where does each live, and who controls eviction?
+</Question>
+
+<Answer>
+- **HTTP cache**: browser-managed, governed by response headers (`Cache-Control`, `ETag`, and friends). JavaScript has no direct read or write API for it. Service workers can bypass or ignore it, but cannot enumerate or edit its entries. Eviction is entirely up to the browser's heuristics and the header directives.
+- **Cache Storage** (the `caches` global): explicit, JS-controlled, request and response pairs grouped into named caches. It holds responses only, with no TTL or metadata of its own, so any expiry policy has to be tracked elsewhere. Eviction is whatever the app code does plus whatever the browser's storage-pressure eviction decides.
+- **IndexedDB**: async, transactional, structured-clone storage with indexes. The only general-purpose store a service worker can write to, and therefore where a worker keeps any state that has to outlive a single event, since the worker is terminated when idle. Same origin quota as Cache Storage, same eviction rules.
+- **`localStorage`**: synchronous string key-value store, roughly a 5MB origin quota, no automatic expiration, cleared only by explicit code, eviction, or the user clearing site data. **Not available inside a service worker**, because synchronous storage APIs are not exposed to workers. Suited to a small value you need during first paint, never to network responses.
+
+All four are scoped per origin (scheme + host + port) and are invisible to any other origin, including other ports on `localhost`. Cache Storage and IndexedDB share one quota, and eviction takes the whole origin at once rather than picking a store.
+</Answer>
+
+---
+
+<Question>
+**Q8.** Walk through how `beforeinstallprompt` and `appinstalled` drive an install button's three states.
+</Question>
+
+<Answer>
+- On mount, "already installed" is checked via `matchMedia('(display-mode: standalone)').matches || navigator.standalone`, the latter being Safari's older non-standard flag. This has to run in an effect, not during render, for the same hydration-safety reason as Q6.
+- The browser fires `beforeinstallprompt` on `window` when it decides the page is installable but has *not yet* shown its own default install UI, letting the page take that moment over. The handler calls `event.preventDefault()` to suppress the browser's own mini-infobar and stores the event object itself in state, because calling `.prompt()` on that stored event is what actually shows the native install dialog, and it can only be called once per event.
+- Clicking the button branches three ways. If already installed, show "Already installed." If a deferred prompt was captured, call `.prompt()` and await `.userChoice` to learn accepted or dismissed. Otherwise, most commonly on iOS Safari which never fires `beforeinstallprompt` at all, fall back to manual "Add to Home Screen" instructions, detected with a `navigator.userAgent` check for `iphone|ipad|ipod`.
+- The `appinstalled` event, which fires after a successful install regardless of which path triggered it, flips the installed flag to `true` and clears the stored prompt, since a used `beforeinstallprompt` event cannot be replayed.
+</Answer>
+
+---
+
+<Question>
+**Q9.** Why would a multi-page site set `navigateFallback` to `null` instead of using the default SPA-style fallback?
+</Question>
+
+<Answer>
+The default navigation fallback is meant for single-page apps: if a navigation request is not in the cache, serve a single shell HTML (typically `index.html`) and let client-side routing figure out what to render.
+
+A traditional multi-page site has dozens or hundreds of distinct, separately rendered HTML files and no client-side router. Falling back to the homepage HTML for a request to an uncached page would silently show the wrong content at the wrong URL. That is actively misleading, and worse than the browser's own honest offline error page.
+
+Setting the fallback to `null` disables it entirely: an uncached page requested offline correctly fails with the browser's native offline error instead of masquerading as a different page.
+
+Worth adding in an interview: `null` is not the only correct answer. A dedicated `/offline.html`, precached at install and served from the navigation handler's catch, is honest about what happened while keeping your branding and a way back into the cached pages. It is the better default; `null` is the zero-effort version of the same decision.
+</Answer>
+
+---
+
+<Question>
+**Q10.** What happens, precisely, if a user clears their browser's site data for the origin?
+</Question>
+
+<Answer>
+All three storage mechanisms tied to the origin are wiped simultaneously. The Service Worker registration is unregistered, so `sw.js` has to be fetched and installed again from scratch on the next visit. Every named Cache Storage cache, including the precache, is deleted. And `localStorage`, including anything persisted there such as a last-visited slug, completion state, or reading preferences, is gone.
+
+From the site's perspective this is functionally a first-time visit: no offline capability until a fresh SW install completes, a "Continue reading" shortcut with nothing to redirect to until a new page is visited, and progress tracking reset to zero.
+
+If the site was installed as a standalone app, the OS-level shortcut or window may still exist depending on the browser. It typically still opens, and simply re-registers everything on that first load.
+</Answer>
+
+---
+
+<Question>
+**Q11.** What are the concrete PWA limitations on iOS Safari, and how do you account for them?
+</Question>
+
+<Answer>
+- **No `beforeinstallprompt` event at all.** iOS never offers an automatic install prompt; install is only possible through Safari's manual Share, then "Add to Home Screen" flow. Detect this case (no captured deferred prompt, plus a `userAgent` check for `iphone|ipad|ipod`) and show explicit manual instructions rather than silently doing nothing.
+- **Standalone-mode detection differs.** `matchMedia('(display-mode: standalone)')` was not reliable before roughly iOS 16, so check the legacy `navigator.standalone` boolean as a fallback.
+- **The Apple touch icon needs its own tag.** `<link rel="apple-touch-icon">` at 180x180, because the manifest's `icons` array alone is not fully respected for the home-screen icon on iOS.
+- **Historically weaker background execution** for periodic background sync and longer-running push. A site that does not use those features is unaffected, but it is worth knowing as a ceiling if the app ever grows into that territory.
+</Answer>
+
+---
+
+<Question>
+**Q12.** From a security standpoint, what can a service worker do that a normal page script cannot, and what constrains that power?
+</Question>
+
+<Answer>
+A SW can intercept, inspect, and rewrite *every* network request and response made by pages under its scope, including ones the page never explicitly issues, such as navigation requests. That is strictly more powerful than a page script, which can only see requests it initiates itself. The constraints that keep this from being a wide-open attack surface:
+
+- **HTTPS-only registration** (except localhost), which prevents a network attacker from injecting or swapping a SW over an insecure connection.
+- **Same-origin scope.** A SW served at `/sw.js` with scope `/` can only control requests made by pages on that same origin. It has no ability to intercept or affect any other origin, even ones the page links to.
+- **No arbitrary code from untrusted sources.** In a normal setup the SW file is built and deployed by the same pipeline as the rest of the site, not loaded dynamically from user input or a third party, so the feature itself introduces no injection vector.
+
+The real risk with any SW is a *malicious or compromised deploy* shipping a worker that persistently intercepts and tampers with traffic even after the bad code is removed from the origin, since the SW keeps running until it is explicitly updated or unregistered. That is mitigated operationally: serve `/sw.js` with `Cache-Control: no-cache` so the browser always re-fetches the latest, and keep the deploy pipeline the only path that can produce a new `sw.js` in the first place.
+</Answer>
+
+---
+
+<Question>
+**Q13.** Adding a synthetic precache entry with a `Date.now()` revision forces `sw.js` to change on every build. What is the tradeoff?
+</Question>
+
+<Answer>
+The upside: it guarantees every deploy, content-only or shell-changing, is detectable as an update, closing exactly the gap described in gotcha 4.
+
+The tradeoff: *every* build now produces a "new version" from the SW's perspective, even a build that changed nothing a user would notice, such as a typo fix on one page nobody is currently reading. Users see the update-available prompt on every deploy, not only on meaningful ones.
+
+For an infrequent, content-focused deploy cadence with one person publishing, that is an acceptable trade for correctness. A higher-traffic app deploying many times a day would instead want a content hash covering only the meaningfully changed routes, or a manually bumped version string tied to actual releases, to avoid over-notifying users.
+</Answer>
+
+---
+
+<Question>
+**Q14.** If you wanted to add push notifications for new content later, what would actually need to change?
+</Question>
+
+<Answer>
+Push needs three things a purely static site does not have:
+
+1. A **push subscription**, created with `PushManager.subscribe()` and a VAPID public key, generated client-side and requiring explicit user permission.
+2. A **server component** to store those subscriptions and send the pushes. A static site with no backend and no database has nowhere to keep them.
+3. A **`push` event handler in the service worker** to actually display the notification when one arrives.
+
+The second item is the real blocker. Push *requires* a server-side sender, commonly a serverless function or a third-party push service, to trigger anything at all. For a project whose whole constraint is "static hosting, the browser, and the user's device, nothing else," that is a categorically different infrastructure commitment from every other part of a PWA, all of which need nothing beyond static hosting and browser APIs. Scoping push out is usually a deliberate architectural decision, not an oversight.
+</Answer>
+
+---
+
+<Question>
+**Q15.** Why can a service worker not use `localStorage`, and what do you use instead?
+</Question>
+
+<Answer>
+`localStorage` is a synchronous API, and synchronous storage APIs are not exposed to any worker context. A service worker runs off the main thread and must never block, so the global is simply absent. Reaching for it inside `sw.js` is a `ReferenceError`, not a permissions problem you can configure away.
+
+The replacements are Cache Storage for responses and IndexedDB for everything else. IndexedDB matters more than it first appears, because a service worker is not a long-running process: the browser terminates it after tens of seconds of idle and spins it up again for the next event. Module-level variables do not survive that. Any state the worker needs across events, a pending-request queue, a sync cursor, a feature flag it was told about, has to be read back out of IndexedDB at the start of each event.
+
+A useful way to say it in an interview: a service worker is a stateless function that happens to have two databases attached.
+</Answer>
+
+---
+
+<Question>
+**Q16.** A user reports that your app's offline content disappeared on their iPhone after about a week of not opening it. What happened, and what would you change?
+</Question>
+
+<Answer>
+This is WebKit's storage policy, not a bug in the app. Safari deletes all script-writable storage for a site after seven days of browser use with no user interaction with that site, and the sweep takes everything at once: localStorage, IndexedDB, Cache Storage, and the service worker registration. Note it counts days the browser was used, not calendar days, so a user who browses daily hits it in a week and an occasional user might take a month.
+
+Two things follow. First, web apps installed to the home screen are exempt from that cap, so the fix that actually works is getting the user to install rather than any code change. That turns an install prompt from a growth nag into a data-durability feature, and it is worth saying so in the prompt copy.
+
+Second, `navigator.storage.persist()` is the equivalent lever elsewhere, and it is worth calling regardless, but it does not override this particular WebKit policy, so do not present it as the fix on iOS.
+
+The design lesson underneath: client storage is a cache, not a database of record. Any read path has to behave correctly when the data is missing, because on iOS it eventually will be.
+</Answer>
+
+---
+
+<Question>
+**Q17.** When would you store offline content in IndexedDB instead of Cache Storage?
+</Question>
+
+<Answer>
+Ask what you need to do with the data on the way out.
+
+**Cache Storage** is right when the thing you want back is a *response you will replay*: an HTML page, a stylesheet, an image, a GET response. The entry is a `Request` to `Response` pair, so the `fetch` handler can hand it straight to the browser with no deserialization and no rendering work. Anything a `fetch` handler answers should live here.
+
+**IndexedDB** is right when you need to *query, mutate, or partially update* the data: a list of records the user filters, a draft the user edits, a queue of writes waiting for connectivity, anything you would otherwise think of as a table. Cache Storage cannot do "give me the 20 newest items"; IndexedDB can, with an index.
+
+The two commonly appear together. A typical offline-capable app caches the shell and pages in Cache Storage, keeps the domain data and the outbox in IndexedDB, and lets the service worker read both. And as noted earlier, expiry metadata for a cache also ends up in IndexedDB, because Cache Storage has nowhere to put it.
+</Answer>
+
+---
+
+<Question>
+**Q18.** Design offline form submission for an app that has to work on iOS Safari as well as Chrome.
+</Question>
+
+<Answer>
+Background Sync alone is not an answer, because it is Chromium only. The portable design is a queue you own, with Background Sync layered on where it exists.
+
+1. **Never let the submit depend on the network.** On submit, write the payload to an IndexedDB object store (an outbox) and immediately give the user optimistic feedback: the item appears in the UI marked pending. The request is now durable, and survives a reload, a crash, and a reboot.
+2. **Try to flush right away.** Attempt the real request. On success, delete the outbox record and clear the pending marker. On failure, leave it queued.
+3. **Flush again on every plausible trigger:** the `online` event, page load (because `online` does not fire if the app starts while already connected), and on tab focus. Each flush replays the queued requests in order and deletes each on success.
+4. **Layer Background Sync where available.** Feature-detect `registration.sync`, register a tag, and have the service worker's `sync` handler run the same flush routine. On Chromium this means the queue drains even with every tab closed. On Safari and Firefox nothing registers and step 3 is still doing the work.
+5. **Make the replay safe.** Retries are inevitable, so every queued request needs an idempotency key that the server uses to deduplicate. Without it, a flaky connection produces duplicate records rather than lost ones.
+
+Two details interviewers listen for: the outbox lives in IndexedDB rather than in memory or localStorage, because the service worker needs to read it and localStorage is not available there; and the UI has to represent pending state honestly rather than pretending the write succeeded, so the user is not surprised when something fails permanently.
+</Answer>
+
+---
+
+<Question>
+**Q19.** Why can a network-first strategy with no timeout be worse for the user than shipping no service worker at all?
+</Question>
+
+<Answer>
+Because the failure it does not handle is the common one. Genuinely offline is easy: the `fetch` rejects at once and the code falls back to cache. The realistic bad case is a connection that is up but not delivering, a captive portal, a tunnel, a congested cell tower. The socket opens, the request is accepted, and nothing comes back. No rejection ever fires.
+
+A network-first handler with no time limit sits in that `await`, holding a perfectly good cached copy of the page on disk, showing the user nothing. Without a service worker the browser would eventually apply its own network timeout and show an error the user recognises. With one, the page can hang far longer, and the user blames the app, which now looks slower than the version that had no offline support at all.
+
+The fix is to race the fetch against a timer of a few seconds and treat expiry the same as failure, falling back to cache. That converts the worst case from an unbounded hang into a slightly stale page delivered quickly. Libraries expose it as a `networkTimeoutSeconds` option; hand-written it is a `Promise.race`.
+
+The general principle is worth stating: a service worker takes responsibility for outcomes the browser used to own, so every path it intercepts needs an explicit failure mode, including "the network is technically working."
+</Answer>
+
+---
+
+<Question>
+**Q20.** What can an installed PWA do that the same site in a browser tab cannot?
+</Question>
+
+<Answer>
+Less than the marketing suggests, and the honest list is short:
+
+- **Its own window and icon**, with no address bar or tabs, plus a launcher and task-switcher entry. This is the part users actually notice.
+- **App shortcuts** in the icon's long-press or right-click menu, from the manifest's `shortcuts`.
+- **Icon badging**, which has no meaning on a tab.
+- **File handling and protocol handling**, registering with the OS to open file types or URL schemes, on the platforms that support it.
+- **Share Target**, appearing in other apps' share sheets.
+- **Durability on iOS**: an installed home-screen app is exempt from WebKit's seven-day storage sweep, so its offline data survives where a tab's would not.
+- **Better odds on discretionary permissions**, since Chromium weighs install state when deciding things like persistent storage.
+
+What does *not* change is just as important: offline support, caching, push, and every other service worker feature work identically in a tab. Installing does not grant new hardware access, does not lift storage quotas by itself, and does not make the app faster. It is a distribution and presentation change, plus a handful of OS-integration hooks, not a new runtime.
+</Answer>
+
+---
+
+<Question>
+**Q21.** A user reports the installed app's icon on Android looks cropped, or sits on an unexpected white square. What is wrong?
+</Question>
+
+<Answer>
+The icon set has no `maskable` variant, so Android is applying its own icon mask to art that was not drawn for it.
+
+Android renders icons in a platform shape, a circle, squircle, or rounded square depending on the device. When it receives an ordinary icon it either crops it to that shape, taking the corners off logos that reach the edges, or, for an icon with transparency, pastes it onto a plain white rounded square so it has something opaque to mask, which is the effect people describe as "my icon got a white box."
+
+The fix is an icon declared `"purpose": "maskable"`, drawn for masking: the meaningful content sits in a safe zone of roughly the central 80% of the canvas, and the outer band is bleed art that the mask is free to cut. Ship both purposes, because a maskable icon looks conspicuously small and over-padded when it is displayed unmasked, which is what happens on platforms that do not mask. Chrome DevTools' Manifest pane can preview the masked result.
+</Answer>
+
+---
+
+<Question>
+**Q22.** A Trusted Web Activity renders your website full screen with no browser UI. What stops anyone from publishing an app that does that with *your* domain?
+</Question>
+
+<Answer>
+Digital Asset Links. The app declares the origin it intends to render, and the origin has to declare the app back, by hosting `/.well-known/assetlinks.json` containing the app's package name and the SHA-256 fingerprint of the certificate it is signed with. Chrome verifies that pairing when the activity launches.
+
+If the verification fails, the app does not break, which is the elegant part: it falls back to showing a Custom Tab with a visible URL bar. So a hijacker publishing a TWA pointing at a domain they do not control gets a browser window with your address plainly displayed, not a convincing impostor. The fingerprint requirement means a would-be impersonator would have to control the origin's `.well-known` path to remove that toolbar.
+
+Two practical consequences: the fingerprint belongs to the key that actually signs the release, so using Play App Signing means publishing Google's fingerprint rather than your local one, and the file must be reachable at exactly that path, uncached and unredirected, or verification quietly fails and every install shows the toolbar.
+</Answer>
+
+---
+
+<Question>
+**Q23.** When would you not choose a PWA?
+</Question>
+
+<Answer>
+A fair answer names the real limits rather than defending the technology.
+
+- **iOS is the deciding factor for most consumer products.** No automatic install prompt, a manual Share sheet flow most users never discover, no Background Sync, historically separate storage from Safari, and the seven-day storage sweep for uninstalled sites. If a large share of the audience is on iPhone and the experience depends on background behaviour or durable local data, that is a hard constraint.
+- **Deep hardware and OS integration.** Bluetooth, NFC, USB, background geolocation, health data, widgets, deep system share and contact integration: the web either lacks these or has them only in Chromium.
+- **Sustained background work.** The web has no equivalent of a long-running background service. Periodic Background Sync is Chromium-only and its cadence is the browser's decision, not yours.
+- **Heavy compute or graphics** where native toolchains, threading, and GPU access still win, even accounting for WebAssembly and WebGPU.
+- **Store discovery and trust as a channel.** If users expect to find you by searching an app store, a TWA covers Android and nothing covers iOS.
+
+The other half of the answer is where a PWA wins outright: one codebase and one deploy across desktop and mobile, no review queue between a fix and its users, linkable URLs into any state, nothing to install before the first use, and no 30% platform cut. For content, commerce, productivity tools, and internal software, those usually dominate. The interviewer is checking whether you can name the tradeoff rather than sell a preference.
+</Answer>
+
+---
+
+<Question>
+**Q24.** You deploy a service worker with a bug that caches a broken build and serves it aggressively. Users who already loaded it are stuck. How do you recover them?
+</Question>
+
+<Answer>
+The reason this is hard is that a worker keeps running after you remove it from the server, so an ordinary "fix and redeploy" is not automatically enough.
+
+**The recovery is a kill-switch worker deployed at the same URL as the broken one.** It skips waiting, and on activate it deletes every cache with a `caches.keys()` sweep, calls `self.registration.unregister()`, and navigates each open client so they reload without a controller. Every returning client picks that up on its next update check and self-cleans.
+
+**What makes it reachable is the caching of `sw.js` itself.** The browser fetches the worker file on navigation and at most every 24 hours, and that fetch can be served by the HTTP cache. If the broken worker was deployed with a long `max-age`, the replacement may not be fetched for as long as that header says, and there is no way to reach those users sooner. Serving `/sw.js` with `Cache-Control: no-cache` is not a micro-optimisation, it is what preserves the ability to recover at all. `updateViaCache: 'none'` at registration enforces it from the client side too.
+
+**The blunt instrument** is a `Clear-Site-Data: "storage"` response header, which wipes the origin's storage and registrations wholesale. It works, and it also destroys anything the user had stored, so it is a last resort rather than a first move.
+
+The preventive answer worth adding: prompt-mode updates and a staged rollout limit how many users a bad worker reaches, and testing with *Update on reload* plus a real second visit, rather than only a hard refresh, catches most of these before deploy.
+</Answer>

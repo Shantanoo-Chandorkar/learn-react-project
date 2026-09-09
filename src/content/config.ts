@@ -16,6 +16,8 @@ const topics = defineCollection({
         /** Numeric order for sorting within a category — matches the id from the legacy topics.json. */
         order: z.number().optional(),
         description: z.string().optional(),
+        /** Hides the topic from category listings; the page itself is still built and publicly reachable. */
+        isUnlisted: z.boolean().optional(),
     }),
 });
 
