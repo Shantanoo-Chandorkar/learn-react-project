@@ -28,6 +28,20 @@ const useStore = create(
 
       setReadCodeBlocks: (readCodeBlocks) =>
         set((state) => ({ readingMode: { ...state.readingMode, readCodeBlocks } })),
+
+      // --- PWA Install State ---
+      // Shared: beforeinstallprompt fires once and its event prompts once, so per-instance state goes stale.
+      installPromptEvent: null,
+      isAppInstalled: false,
+      wasInstallPromptDismissed: false,
+
+      // Install Actions
+      setInstallPromptEvent: (installPromptEvent) => set({ installPromptEvent }),
+
+      setAppInstalled: () => set({ isAppInstalled: true, installPromptEvent: null }),
+
+      markInstallPromptDismissed: () =>
+        set({ wasInstallPromptDismissed: true, installPromptEvent: null }),
     }),
     {
       name: 'learn-react-platform-storage', // unique name for localStorage
