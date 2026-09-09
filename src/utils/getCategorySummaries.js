@@ -14,6 +14,7 @@ export async function getCategorySummaries() {
 
   const byCategory = new Map();
   for (const topic of topics) {
+    if (topic.data.isUnlisted) continue;
     const slug = topic.data.category;
     const order = topic.data.order ?? Infinity;
     if (!byCategory.has(slug)) {

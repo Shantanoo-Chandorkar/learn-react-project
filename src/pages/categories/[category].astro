@@ -9,7 +9,7 @@ import { formatTitle } from '../../utils/formatTitle';
 import '../../styles/editorial.css';
 
 export async function getStaticPaths() {
-    const topics = await getCollection('topics');
+    const topics = await getCollection('topics', (topic) => !topic.data.isUnlisted);
     const categories = [...new Set(topics.map((topic) => topic.data.category))];
     return categories.map((category) => ({
         params: { category },
@@ -18,7 +18,7 @@ export async function getStaticPaths() {
 }
 
 const { category } = Astro.props;
-const allTopics = await getCollection('topics', (topic) => topic.data.category === category);
+const allTopics = await getCollection('topics', (topic) => topic.data.category === category && !topic.data.isUnlisted);
 allTopics.sort((a, b) => (a.data.order ?? Infinity) - (b.data.order ?? Infinity));
 
 const grouped = new Map();

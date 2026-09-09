@@ -1,6 +1,7 @@
 ---
 import { getCollection } from 'astro:content';
 import MainLayout from '../layouts/MainLayout.astro';
+import InstallButton from '../components/layout/InstallButton.jsx';
 import { getCategorySummaries } from '../utils/getCategorySummaries';
 import { formatTitle } from '../utils/formatTitle';
 import '../styles/editorial.css';
@@ -80,5 +81,19 @@ const firstLesson = interviewPrepTopics[0];
                 </a>
             </div>
         )}
+
+        <div class="editorial-section editorial-cta-section">
+            <h2>Install our PWA</h2>
+            <p>
+                Installed, it opens in its own window and the lessons you have already read stay
+                readable with no connection.
+            </p>
+            <div class="editorial-cta-actions">
+                <InstallButton client:load label="Install" className="editorial-cta-button" />
+                <a class="editorial-cta-button-secondary" href="/topic/what-is-a-pwa">
+                    What's a PWA?
+                </a>
+            </div>
+        </div>
     </div>
 </MainLayout>
