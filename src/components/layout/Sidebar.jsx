@@ -13,7 +13,7 @@ import {
 } from '@heroicons/react/24/outline';
 
 const categoryIcons = {
-    'interview-prep': AcademicCapIcon,
+    'javascript': AcademicCapIcon,
     'react': IdentificationIcon,
     'nextjs': BookOpenIcon,
 };
