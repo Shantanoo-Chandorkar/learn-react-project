@@ -10,12 +10,12 @@ import Toast from './Toast';
 import useServiceWorkerUpdate from '../../Hooks/useServiceWorkerUpdate';
 
 /**
- * Presentational Header Component — Astro island (client:load).
+ * Presentational Header Component - Astro island (client:load).
  *
  * Manages its own local search-modal state and the Ctrl+K shortcut.
  * Gets the mobile-menu toggle action directly from the Zustand store
  * instead of receiving it as a prop from a React parent layout.
- * Uses plain <a> tags for navigation — no react-router-dom in Astro.
+ * Uses plain <a> tags for navigation - no react-router-dom in Astro.
  */
 const SidebarIcon = () => (
   <svg

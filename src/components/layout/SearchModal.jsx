@@ -4,7 +4,7 @@ import Fuse from 'fuse.js';
 import topics from '../../data/topics.json';
 
 /**
- * SearchModal Component — used inside the Header React island.
+ * SearchModal Component - used inside the Header React island.
  *
  * Spotlight-style search interface using fuse.js for fuzzy indexing.
  * Supports Ctrl+K shortcut and keyboard navigation.

@@ -3,13 +3,13 @@ import Question from './Question.jsx';
 import Answer from './Answer.jsx';
 
 /**
- * MDXComponents — passed to <Content components={MDXComponents} /> in [slug].astro.
+ * MDXComponents - passed to <Content components={MDXComponents} /> in [slug].astro.
  *
  * Provides custom styling for prose elements rendered from MDX.
  * ComponentRegistry is no longer needed here: interactive React components
  * are now imported directly inside each MDX file with `client:load`.
  *
- * Code blocks (<pre> and <code>) are intentionally omitted — Shiki handles
+ * Code blocks (<pre> and <code>) are intentionally omitted - Shiki handles
  * syntax highlighting via the theme configured in astro.config.mjs.
  */
 const MDXComponents = {

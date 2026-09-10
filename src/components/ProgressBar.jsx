@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 
 /**
- * Self-contained top-of-page progress bar — copy this one file into any React project.
+ * Self-contained top-of-page progress bar - copy this one file into any React project.
  *
  * @param {Object} props
  * @param {'scroll'|'loading'} [props.mode='scroll'] - 'scroll' tracks page scroll; 'loading' sweeps on `isLoading`.

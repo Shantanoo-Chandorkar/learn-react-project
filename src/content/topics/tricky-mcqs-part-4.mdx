@@ -12,7 +12,7 @@ order: 35
 ---
 
 <Question>
-### Q1 — Event Bubbling
+### Q1 - Event Bubbling
 
 Consider the following code:
 
@@ -34,7 +34,7 @@ Where `#inner` is a button inside `#outer`. When the button is clicked, what is 
 </Question>
 
 <Answer>
-**Answer: Option 3 — `inner` only**
+**Answer: Option 3 - `inner` only**
 
 - Events bubble from child to parent by default
 - `e.stopPropagation()` stops the event from bubbling up to `#outer`
@@ -44,7 +44,7 @@ Where `#inner` is a button inside `#outer`. When the button is clicked, what is 
 ---
 
 <Question>
-### Q2 — Closure in a Loop
+### Q2 - Closure in a Loop
 
 ```javascript
 for (var i = 0; i < 3; i++) {
@@ -62,7 +62,7 @@ What is logged?
 </Question>
 
 <Answer>
-**Answer: Option 3 — `3`, `3`, `3`**
+**Answer: Option 3 - `3`, `3`, `3`**
 
 - `var` is function-scoped, not block-scoped
 - All three callbacks share the same `i` variable
@@ -73,7 +73,7 @@ What is logged?
 ---
 
 <Question>
-### Q3 — Fetch and HTTP Errors
+### Q3 - Fetch and HTTP Errors
 
 ```javascript
 fetch('https://api.example.com/data')
@@ -95,7 +95,7 @@ The server returns a 404 response with a valid JSON body. What happens?
 **Answer: Option 3**
 
 - `fetch()` only rejects on network failures, not HTTP error statuses
-- A 404 still resolves the promise — `response.ok` would be false but the chain continues
+- A 404 still resolves the promise - `response.ok` would be false but the chain continues
 - `.catch()` won't trigger unless `response.json()` itself throws (e.g. non-JSON body)
 - Always check `response.ok` manually if you want to handle HTTP errors
 </Answer>
@@ -103,7 +103,7 @@ The server returns a 404 response with a valid JSON body. What happens?
 ---
 
 <Question>
-### Q4 — Microtasks vs Macrotasks
+### Q4 - Microtasks vs Macrotasks
 
 ```javascript
 console.log('A');
@@ -122,7 +122,7 @@ What is the output?
 </Question>
 
 <Answer>
-**Answer: Option 3 — `A`, `D`, `C`, `B`**
+**Answer: Option 3 - `A`, `D`, `C`, `B`**
 
 - Synchronous code runs first: `A`, `D`
 - Microtask queue (Promises) runs before macrotask queue: `C`
@@ -132,7 +132,7 @@ What is the output?
 ---
 
 <Question>
-### Q5 — Event Delegation
+### Q5 - Event Delegation
 
 You have a `<ul>` with 1000 dynamically generated `<li>` items. You want to log the text of whichever `<li>` is clicked. Which is the most correct and efficient approach?
 
@@ -144,7 +144,7 @@ You have a `<ul>` with 1000 dynamically generated `<li>` items. You want to log 
 </Question>
 
 <Answer>
-**Answer: Option 2 — Event Delegation**
+**Answer: Option 2 - Event Delegation**
 
 - One listener on the parent `<ul>` using `event.target` handles all children
 - Much more efficient than attaching 1000 individual listeners
@@ -159,7 +159,7 @@ You have a `<ul>` with 1000 dynamically generated `<li>` items. You want to log 
 ---
 
 <Question>
-### Q6 — Arrow Functions and `this`
+### Q6 - Arrow Functions and `this`
 
 ```javascript
 const obj = {
@@ -181,18 +181,18 @@ What is logged? (Assume strict mode / ES module context)
 </Question>
 
 <Answer>
-**Answer: Option 2 — `Hello undefined`**
+**Answer: Option 2 - `Hello undefined`**
 
 - Arrow functions do NOT have their own `this`
 - They inherit `this` from the enclosing lexical scope, which here is the module scope, not `obj`
 - `this.name` is `undefined` in strict mode
-- Fix: use a regular function expression — `greet: function() { ... }`
+- Fix: use a regular function expression - `greet: function() { ... }`
 </Answer>
 
 ---
 
 <Question>
-### Q7 — Destructuring with Defaults
+### Q7 - Destructuring with Defaults
 
 ```javascript
 const { a, b = 10, c } = { a: 1, b: undefined, c: null };
@@ -209,7 +209,7 @@ What is logged?
 </Question>
 
 <Answer>
-**Answer: Option 1 — `1`, `10`, `null`**
+**Answer: Option 1 - `1`, `10`, `null`**
 
 - Default values in destructuring only activate when the value is `undefined`, not `null`
 - `b` is `undefined` → uses default `10`
@@ -219,7 +219,7 @@ What is logged?
 ---
 
 <Question>
-### Q8 — Spread and Shallow Copy
+### Q8 - Spread and Shallow Copy
 
 ```javascript
 const a = [{ x: 1 }, { x: 2 }];
@@ -238,9 +238,9 @@ What is logged?
 </Question>
 
 <Answer>
-**Answer: Option 2 — `99`, `99`**
+**Answer: Option 2 - `99`, `99`**
 
-- Spread creates a shallow copy — the array is new but the objects inside are the same references
+- Spread creates a shallow copy - the array is new but the objects inside are the same references
 - Mutating `b[0].x` also mutates `a[0].x` because they point to the same object
 - A deep copy would be needed to avoid this: `JSON.parse(JSON.stringify(a))`
 </Answer>
@@ -248,7 +248,7 @@ What is logged?
 ---
 
 <Question>
-### Q9 — Promise.all
+### Q9 - Promise.all
 
 ```javascript
 const p1 = Promise.resolve(1);
@@ -270,7 +270,7 @@ What is logged?
 </Question>
 
 <Answer>
-**Answer: Option 3 — `error`**
+**Answer: Option 3 - `error`**
 
 - `Promise.all` rejects immediately if any single promise rejects (fail-fast)
 - The `.catch()` block fires with the rejection reason
@@ -280,7 +280,7 @@ What is logged?
 ---
 
 <Question>
-### Q10 — Optional Chaining and Nullish Coalescing
+### Q10 - Optional Chaining and Nullish Coalescing
 
 ```javascript
 const user = { profile: { name: 'Shan' } };
@@ -299,7 +299,7 @@ What is logged?
 </Question>
 
 <Answer>
-**Answer: Option 3 — `Unknown`, `Shan`**
+**Answer: Option 3 - `Unknown`, `Shan`**
 
 - `user?.address` is `undefined` → `undefined?.city` is `undefined`
 - `undefined ?? 'Unknown'` → `'Unknown'` (nullish coalescing triggers on `null` / `undefined`)
@@ -313,7 +313,7 @@ What is logged?
 ---
 
 <Question>
-### Q11 — useEffect Dependency Array
+### Q11 - useEffect Dependency Array
 
 ```javascript
 function UserProfile({ userId }) {
@@ -349,7 +349,7 @@ What is the problem with this code?
 ---
 
 <Question>
-### Q12 — useState Stale Closure
+### Q12 - useState Stale Closure
 
 ```javascript
 function Counter() {
@@ -375,17 +375,17 @@ After clicking the button once, what does the counter show?
 </Question>
 
 <Answer>
-**Answer: Option 2 — `1`**
+**Answer: Option 2 - `1`**
 
 - All three `setCount(count + 1)` calls use the same stale `count` value (0), so all set it to 1
 - React batches them but they all resolve to the same value
-- Fix: use the functional update form `setCount(prev => prev + 1)` — this increments from the latest state each time
+- Fix: use the functional update form `setCount(prev => prev + 1)` - this increments from the latest state each time
 </Answer>
 
 ---
 
 <Question>
-### Q13 — React.memo and useCallback
+### Q13 - React.memo and useCallback
 
 ```javascript
 function Parent() {
@@ -428,7 +428,7 @@ What happens every time the Increment button is clicked?
 ---
 
 <Question>
-### Q14 — useRef vs useState
+### Q14 - useRef vs useState
 
 ```javascript
 function Timer() {
@@ -473,7 +473,7 @@ Which statements are true about `useRef` here? (Pick all that apply)
 ---
 
 <Question>
-### Q15 — Rules of Hooks in a Custom Hook
+### Q15 - Rules of Hooks in a Custom Hook
 
 ```javascript
 function useData(url) {

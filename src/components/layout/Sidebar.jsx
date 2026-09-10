@@ -37,7 +37,7 @@ const ChevronDownIcon = ({ className, style }) => (
 );
 
 /**
- * Sidebar navigation component — Astro island (client:visible).
+ * Sidebar navigation component - Astro island (client:visible).
  *
  * Owns the sidebar's open/closed state locally (always starts closed;
  * listens for the header toggle button's SIDEBAR_TOGGLE_EVENT). Also acts

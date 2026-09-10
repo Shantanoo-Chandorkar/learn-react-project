@@ -2,7 +2,7 @@
   command = "npm run build"
   publish = "dist"
 
-# OG meta tags are now injected at build time by [slug].astro — the edge
+# OG meta tags are now injected at build time by [slug].astro - the edge
 # function is no longer needed.
 
 # Redirect legacy /react-router path to the topic page

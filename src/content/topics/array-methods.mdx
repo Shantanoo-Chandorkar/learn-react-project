@@ -146,8 +146,8 @@ mixed.filter(Boolean);
 
 ```js
 const scores = [0, 10, 20, 0, 30];
-scores.filter(Boolean); // [10, 20, 30] — drops the 0s, probably wrong
-scores.filter((s) => s !== null); // [0, 10, 20, 0, 30] — keeps 0s, correct
+scores.filter(Boolean); // [10, 20, 30] - drops the 0s, probably wrong
+scores.filter((s) => s !== null); // [0, 10, 20, 0, 30] - keeps 0s, correct
 ```
 
 ---
@@ -159,7 +159,7 @@ After `filter`, the indices of surviving elements change. The index property in 
 ```js
 const arr = [10, 20, 30, 40, 50];
 const result = arr.filter((n, i) => {
-  console.log(i); // 0, 1, 2, 3, 4 — original indices
+  console.log(i); // 0, 1, 2, 3, 4 - original indices
   return n > 20;
 });
 

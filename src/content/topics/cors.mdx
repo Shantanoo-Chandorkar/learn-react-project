@@ -39,8 +39,8 @@ A request is simple if it meets **all** of these conditions simultaneously:
 | Method                                       | `GET`, `POST`, `HEAD`                                                    |
 | Headers (manually set)                       | `Accept`, `Accept-Language`, `Content-Language`, `Content-Type` only     |
 | `Content-Type` (if POST)                     | `text/plain`, `multipart/form-data`, `application/x-www-form-urlencoded` |
-| No `ReadableStream` in body                  | —                                                                        |
-| No event listeners on `XMLHttpRequestUpload` | —                                                                        |
+| No `ReadableStream` in body                  | -                                                                        |
+| No event listeners on `XMLHttpRequestUpload` | -                                                                        |
 
 Simple requests are sent directly. No preflight. The browser attaches an `Origin` header, the server responds, and the browser checks the response headers to decide whether to expose the response to JS.
 

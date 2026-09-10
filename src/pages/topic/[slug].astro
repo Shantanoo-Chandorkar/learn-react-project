@@ -1,13 +1,13 @@
 ---
 /**
- * [slug].astro — dynamic topic page
+ * [slug].astro - dynamic topic page
  *
  * getStaticPaths generates one route per entry in the 'topics' Content
  * Collection. Astro validates frontmatter against config.ts at build time,
  * so a missing title or wrong category is a build error, not a runtime 404.
  *
  * OG image URL is built here at build time using the same logic that the
- * old Netlify Edge Function used — except it happens once per slug during
+ * old Netlify Edge Function used - except it happens once per slug during
  * `astro build` instead of on every request at the edge.
  */
 import { getCollection } from 'astro:content';
@@ -26,7 +26,7 @@ const { topic } = Astro.props;
 const { slug } = Astro.params;
 const { Content } = await topic.render();
 
-// Build OG image URL at build time — replaces the Netlify Edge Function
+// Build OG image URL at build time - replaces the Netlify Edge Function
 const EDGE_OG_BASE_URL = import.meta.env.VITE_EDGE_OG_BASE_URL ?? 'https://edge-og-xi.vercel.app';
 const ogParams = new URLSearchParams({
     template: 'blog-card',

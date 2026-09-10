@@ -4,7 +4,7 @@ import useStore from '../../store/useStore';
 import { buildSegments, createReadingController } from '../../utils/readingModeEngine';
 
 /**
- * ReadingModeControls — Header sub-component (rendered inside the Header
+ * ReadingModeControls - Header sub-component (rendered inside the Header
  * island, so no separate client: directive needed).
  *
  * Reads the current page's `.mdx-content-wrapper` aloud via the browser's
@@ -211,7 +211,7 @@ const ReadingModeControls = () => {
                         <span>Read code blocks aloud</span>
                     </label>
                     <p className="reading-mode-note">
-                        Code often doesn't read well as speech — off by default. Some browsers
+                        Code often doesn't read well as speech - off by default. Some browsers
                         use online voices, so page text may reach your browser vendor's own
                         speech service.
                     </p>

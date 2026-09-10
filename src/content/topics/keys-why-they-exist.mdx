@@ -66,7 +66,7 @@ index 1 → "Write tests"
 index 2 → "Review PR"
 ```
 
-React compares index 0 old (`"Write tests"`) to index 0 new (`"New task"`). Same type (`li`). Different text content. **Updates the existing DOM node's text.** Compares index 1 old to index 1 new. Same situation. Updates again. Index 2 is new — inserts it.
+React compares index 0 old (`"Write tests"`) to index 0 new (`"New task"`). Same type (`li`). Different text content. **Updates the existing DOM node's text.** Compares index 1 old to index 1 new. Same situation. Updates again. Index 2 is new - inserts it.
 
 React performed two updates and one insertion. The correct answer was one insertion at the front.
 
@@ -94,7 +94,7 @@ User checks "Write tests" as done. State: index 0 Fiber has `done: true`.
 
 User prepends a new task. React reconciles by position. Index 0 old fiber (`done: true`) is reused for the new task at index 0. The new task renders with a checked checkbox. `"Write tests"` has moved to index 1, whose fiber had `done: false`, so it now renders as unchecked.
 
-The checkbox state has migrated to the wrong item. React reused the Fiber and its state. The `text` prop updated correctly (React did update the prop), but the internal `useState` hook's value — `done` — belongs to the Fiber, not the data. It moved with the node position, not the data identity.
+The checkbox state has migrated to the wrong item. React reused the Fiber and its state. The `text` prop updated correctly (React did update the prop), but the internal `useState` hook's value - `done` - belongs to the Fiber, not the data. It moved with the node position, not the data identity.
 
 ---
 
@@ -116,7 +116,7 @@ The `key` prop is the signal that breaks the position assumption.
 
 A `key` is an explicit identity contract between your data and a Fiber.
 
-When React sees a `key` on a list element, it no longer uses position to match old Fibers to new elements. It uses `key`. If a Fiber with `key="1"` exists in the old tree and an element with `key="1"` exists in the new tree, they match — regardless of what index either occupies.
+When React sees a `key` on a list element, it no longer uses position to match old Fibers to new elements. It uses `key`. If a Fiber with `key="1"` exists in the old tree and an element with `key="1"` exists in the new tree, they match - regardless of what index either occupies.
 
 If an element has a `key` that appears in the new tree but not the old tree, it is a new mount. If a Fiber has a `key` that appears in the old tree but not the new tree, it is an unmount.
 
@@ -176,22 +176,22 @@ With `key={task.id}`, React sees `key="2"` is gone: unmount that Fiber, run its 
 **What makes a good key:**
 
 ```jsx
-// ✅ Stable, unique data ID — correct
+// ✅ Stable, unique data ID - correct
 {
   items.map((item) => <Row key={item.id} data={item} />);
 }
 
-// ✅ Stable string that uniquely identifies the item — correct
+// ✅ Stable string that uniquely identifies the item - correct
 {
   tabs.map((tab) => <Tab key={tab.slug} tab={tab} />);
 }
 
-// ❌ Array index — wrong for any list that can reorder, filter, or prepend
+// ❌ Array index - wrong for any list that can reorder, filter, or prepend
 {
   items.map((item, index) => <Row key={index} data={item} />);
 }
 
-// ❌ Random value — remounts every item on every render
+// ❌ Random value - remounts every item on every render
 {
   items.map((item) => <Row key={Math.random()} data={item} />);
 }
@@ -268,9 +268,9 @@ function Comment({ comment }) {
 </Question>
 
 <Answer>
-When the second comment (index 1) is deleted, the array becomes `[comment0, comment2]`. React reconciles with index keys. Index 0 maps to the existing `key=0` Fiber — unchanged. Index 1 now maps to `comment2`, but the existing `key=1` Fiber is `comment1`'s Fiber. React reuses it and updates the `comment` prop to `comment2`'s data.
+When the second comment (index 1) is deleted, the array becomes `[comment0, comment2]`. React reconciles with index keys. Index 0 maps to the existing `key=0` Fiber - unchanged. Index 1 now maps to `comment2`, but the existing `key=1` Fiber is `comment1`'s Fiber. React reuses it and updates the `comment` prop to `comment2`'s data.
 
-But `editText` in that Fiber is still `comment1`'s state. It is not reset. React does not call `useState` again — it reads the existing hook state from the Fiber. So the input shows `comment1`'s edit value with `comment2`'s underlying data.
+But `editText` in that Fiber is still `comment1`'s state. It is not reset. React does not call `useState` again - it reads the existing hook state from the Fiber. So the input shows `comment1`'s edit value with `comment2`'s underlying data.
 
 Index 2 no longer exists in the new array. The `key=2` Fiber is unmounted. Whatever the user had typed in `comment2`'s input is lost because that Fiber is destroyed.
 
@@ -307,7 +307,7 @@ Yes. Use `key`:
 <FilterPanel key={sourceId} sourceId={sourceId} />
 ```
 
-When `sourceId` changes, React sees a different `key` on the same component type. It unmounts the old `FilterPanel` instance entirely — all state is destroyed — and mounts a fresh one. All `useState` initializers run from scratch. No `useEffect` needed, no manual reset calls, no risk of forgetting to reset a new piece of state added later.
+When `sourceId` changes, React sees a different `key` on the same component type. It unmounts the old `FilterPanel` instance entirely - all state is destroyed - and mounts a fresh one. All `useState` initializers run from scratch. No `useEffect` needed, no manual reset calls, no risk of forgetting to reset a new piece of state added later.
 
 The `useEffect` approach has a subtle bug even when it works: there is a render frame between the `sourceId` prop changing and the effect running. During that frame, the component renders with the new `sourceId` but the old filter state. This can cause a stale query to fire. The `key` approach prevents this: the old instance is gone before the new one mounts, so there is never a frame with mismatched source and filter state.
 </Answer>
@@ -352,7 +352,7 @@ This is a correctness bug. The wrong value is displayed in the wrong row. `key={
 </Question>
 
 <Answer>
-`key` is used by React to match old Fibers to new elements across renders. For this to preserve state correctly, the same data item must produce the same key on every render. If the key changes between renders — for example, `key={Math.random()}` — React sees a new key for every element on every render. It finds no match in the existing Fiber map, unmounts the old Fiber, and mounts a new one. All state is destroyed on every render. Every item is a fresh mount. The purpose of `key` is continuity of identity. Stability is what provides continuity.
+`key` is used by React to match old Fibers to new elements across renders. For this to preserve state correctly, the same data item must produce the same key on every render. If the key changes between renders - for example, `key={Math.random()}` - React sees a new key for every element on every render. It finds no match in the existing Fiber map, unmounts the old Fiber, and mounts a new one. All state is destroyed on every render. Every item is a fresh mount. The purpose of `key` is continuity of identity. Stability is what provides continuity.
 </Answer>
 
 ---
@@ -376,7 +376,7 @@ This is significantly cheaper than the no-key case, where React would update two
 </Question>
 
 <Answer>
-`key={index}` is safe when all three conditions hold simultaneously: the list is never reordered, items are only ever appended to the end (never prepended or inserted in the middle), and no item is ever deleted from anywhere other than the end. In practice, this means a static display list where the only operation is adding new items at the bottom — like a log feed or an activity timeline rendered in chronological order. The moment any operation can change the index of an existing item (deletion, insertion at a non-tail position, sorting), index keys produce the Fiber-state mismatch bug described throughout this topic. The additional condition: even when the list structure is stable, if items are stateful components (they own internal state via hooks), you should still prefer stable data IDs, because the safety of index keys depends on never violating the structural assumptions. Stable IDs make the safety unconditional.
+`key={index}` is safe when all three conditions hold simultaneously: the list is never reordered, items are only ever appended to the end (never prepended or inserted in the middle), and no item is ever deleted from anywhere other than the end. In practice, this means a static display list where the only operation is adding new items at the bottom - like a log feed or an activity timeline rendered in chronological order. The moment any operation can change the index of an existing item (deletion, insertion at a non-tail position, sorting), index keys produce the Fiber-state mismatch bug described throughout this topic. The additional condition: even when the list structure is stable, if items are stateful components (they own internal state via hooks), you should still prefer stable data IDs, because the safety of index keys depends on never violating the structural assumptions. Stable IDs make the safety unconditional.
 </Answer>
 
 ---
@@ -388,7 +388,7 @@ This is significantly cheaper than the no-key case, where React would update two
 <Answer>
 `key` is consumed entirely by React's reconciliation layer. It is stripped from the props object before the component function is called. React uses it to manage Fiber identity. From the component's perspective, it does not exist. Accessing `props.key` inside a component always returns `undefined`. React does not include it in the props object passed to the component function.
 
-If the component needs the identity value — for example, to include the item's ID in a callback or a data-fetch — pass it as a separate explicit prop:
+If the component needs the identity value - for example, to include the item's ID in a callback or a data-fetch - pass it as a separate explicit prop:
 
 ```jsx
 {

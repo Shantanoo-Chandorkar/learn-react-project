@@ -9,13 +9,13 @@ const CharCount = ({ length, max }) => {
     return (
         <span className={`feedback-form-char-count${isAtLimit ? ' feedback-form-char-count--limit' : ''}`}>
             {length}/{max}
-            {isAtLimit && ' — Max character limit reached.'}
+            {isAtLimit && ' - Max character limit reached.'}
         </span>
     );
 };
 
 /**
- * FeedbackForm — subject + message form that POSTs to the server-only /api/feedback route.
+ * FeedbackForm - subject + message form that POSTs to the server-only /api/feedback route.
  *
  * @returns {JSX.Element} The form, plus its result toast when a submission has been made.
  */
