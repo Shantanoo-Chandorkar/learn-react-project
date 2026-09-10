@@ -11,6 +11,7 @@ import {
     BookOpenIcon,
     IdentificationIcon,
     ArrowTopRightOnSquareIcon,
+    ChatBubbleLeftRightIcon,
 } from '@heroicons/react/24/outline';
 
 const categoryIcons = {
@@ -231,6 +232,21 @@ const Sidebar = ({ currentPath = '' }) => {
                     >
                         {navigation.map(renderCategory)}
                     </Accordion.Root>
+
+                    <hr className="sidebar-divider" />
+
+                    <ul>
+                        <li className="sidebar-nav-feedback">
+                            <a
+                                href="/feedback"
+                                onClick={closeSidebar}
+                                className={isActive('/feedback') ? 'active' : undefined}
+                            >
+                                <ChatBubbleLeftRightIcon className="sidebar-category-icon" />
+                                <span className="sidebar-category-label">Feedback</span>
+                            </a>
+                        </li>
+                    </ul>
                 </nav>
             </div>
         </CollapsibleSidebar>
