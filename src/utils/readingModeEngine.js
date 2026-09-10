@@ -10,7 +10,7 @@ const READABLE_TAGS = ['P', 'LI', 'BLOCKQUOTE', 'TD', 'TH'];
  *
  * @param {Element} containerEl Root element to walk (e.g. `.mdx-content-wrapper`).
  * @returns {Array<{type: 'heading'|'text'|'code'|'question'|'answer', text: string, el: Element}>}
- *   Ordered segments. `question`/`answer` segments carry an empty `text` — they
+ *   Ordered segments. `question`/`answer` segments carry an empty `text` - they
  *   mark where reading mode should announce the role, then the block's own
  *   nested paragraphs/code are emitted as their own segments right after, so
  *   settings like the code-reading toggle still apply inside Q&A content.
@@ -142,7 +142,7 @@ function utteranceTextFor(segment) {
  * Creates a play/pause/stop controller that reads segments aloud with
  * `speechSynthesis`. Playback position is tracked as an index into the
  * original (unfiltered) segment list, so toggling `readCodeBlocks`
- * mid-read never misaligns "where we are" — segments are (re)checked for
+ * mid-read never misaligns "where we are" - segments are (re)checked for
  * playability at the moment playback reaches them, not filtered up front.
  *
  * @param {object} config

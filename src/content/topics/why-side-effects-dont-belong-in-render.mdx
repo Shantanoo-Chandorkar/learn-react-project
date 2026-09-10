@@ -13,7 +13,7 @@ order: 62
 
 You have a component that needs to do two things: show some UI, and do something that affects the outside world. Fetch data. Set the page title. Start a timer. In plain JavaScript these are not separate concerns. You write code, it runs, it does things. There is no distinction between "computing output" and "changing the world." They happen in the same functions, in the same order, without rules.
 
-React separates them. Strictly. The function that describes your UI is not allowed to change the world while it runs. This feels like an arbitrary restriction until you understand what React is actually doing when it calls your component function — and how often, and under what circumstances.
+React separates them. Strictly. The function that describes your UI is not allowed to change the world while it runs. This feels like an arbitrary restriction until you understand what React is actually doing when it calls your component function - and how often, and under what circumstances.
 
 The restriction is not a style preference. It is a load-bearing constraint that the entire rendering model depends on.
 
@@ -67,13 +67,13 @@ Here is why the contract matters in practice:
 
 **React calls your render function more than once.** In Strict Mode, React double-invokes render functions in development deliberately, to surface side effects. If your render function is pure, running it twice is harmless. If it fires a fetch twice, you have two in-flight requests. If it logs an analytics event twice, your metrics are wrong. React uses double-invocation as a purity test. It will find your side effects.
 
-**React may call your render function and throw the result away.** In Concurrent Mode, React can speculatively render a component — computing what the UI would look like if it committed this work — and then decide not to commit it. Maybe a higher-priority update came in. Maybe the render was for a transition that got interrupted. The render happened. The side effect fired. But the user never saw the result, because React discarded that work. Your external system is now in a state that does not match anything the user sees.
+**React may call your render function and throw the result away.** In Concurrent Mode, React can speculatively render a component - computing what the UI would look like if it committed this work - and then decide not to commit it. Maybe a higher-priority update came in. Maybe the render was for a transition that got interrupted. The render happened. The side effect fired. But the user never saw the result, because React discarded that work. Your external system is now in a state that does not match anything the user sees.
 
 **React cannot undo side effects.** If React renders your component, triggers a `fetch`, and then decides to re-render from scratch due to a concurrent update, there is no mechanism to cancel the first fetch. There is no "un-send" for a network request. There is no "un-write" for a localStorage entry. React can re-run pure render functions indefinitely with no consequence. It cannot re-run impure ones safely.
 
 **The ordering is wrong.** When your component renders, React has not yet updated the DOM. The browser has not painted. If your side effect reads layout information (element dimensions, scroll position), it is reading stale data. If your side effect depends on the DOM being updated, it is running too early. React's effect system exists precisely to give side effects access to the post-commit world.
 
-The infinite loop in the naive example is the most visible symptom. But the deeper problem is that a component with side effects in its render body is unpredictable — its behavior depends not just on props and state, but on how many times React chose to call it, and when, and whether it committed the result.
+The infinite loop in the naive example is the most visible symptom. But the deeper problem is that a component with side effects in its render body is unpredictable - its behavior depends not just on props and state, but on how many times React chose to call it, and when, and whether it committed the result.
 
 ---
 
@@ -85,9 +85,9 @@ This is not a metaphor. This is the actual contract.
 
 React needs this contract for three concrete reasons:
 
-**Correctness.** React must be able to call your render function and trust that the result is a faithful description of what the UI should look like given these inputs — nothing more, nothing less. If the render function also launches network requests or modifies global state, the output is no longer a faithful description. It is a description plus unknown side effects with unknown timing.
+**Correctness.** React must be able to call your render function and trust that the result is a faithful description of what the UI should look like given these inputs - nothing more, nothing less. If the render function also launches network requests or modifies global state, the output is no longer a faithful description. It is a description plus unknown side effects with unknown timing.
 
-**Concurrency.** React 18's concurrent rendering allows React to pause, interrupt, and resume renders. A pure render function can be paused at any point — it has no in-progress state to corrupt. A render function with a side effect halfway through cannot be safely paused. The side effect may have already fired. There is no rollback.
+**Concurrency.** React 18's concurrent rendering allows React to pause, interrupt, and resume renders. A pure render function can be paused at any point - it has no in-progress state to corrupt. A render function with a side effect halfway through cannot be safely paused. The side effect may have already fired. There is no rollback.
 
 **Developer experience.** Strict Mode's double-invocation is only useful if render is pure. React deliberately runs your render twice in development to check: did you get the same result? If the second run has different output or different consequences, you have a bug, and React has surfaced it. If render has side effects, Strict Mode finds them. This is a feature, not an annoyance.
 
@@ -130,7 +130,7 @@ The render function now satisfies the contract. Same `userId`, same `name` state
 
 The fetch lives in the effect. React calls it once after the commit. If `userId` changes, React runs the cleanup function (setting `cancelled = true`, so the stale fetch is ignored), then runs the effect again for the new `userId`. If the component unmounts, the cleanup runs and the stale fetch is silenced.
 
-The infinite loop is gone because the effect does not run every render — it runs when `userId` changes, and `setName` changing `name` does not change `userId`, so the effect does not re-fire.
+The infinite loop is gone because the effect does not run every render - it runs when `userId` changes, and `setName` changing `name` does not change `userId`, so the effect does not re-fire.
 
 ---
 
@@ -147,7 +147,7 @@ The Fiber architecture stores each component's render output and effect list sep
 - `memoizedProps` / `memoizedState`: the inputs to the last render
 - `updateQueue`: pending effects to run after commit
 
-When React detects that a Fiber's output changed (via reconciliation), it marks it for commit. The effects in `updateQueue` are only processed during the commit phase — never during the render phase. This is enforced architecturally, not just by convention.
+When React detects that a Fiber's output changed (via reconciliation), it marks it for commit. The effects in `updateQueue` are only processed during the commit phase - never during the render phase. This is enforced architecturally, not just by convention.
 
 In Strict Mode, React's double-invocation of render functions is implemented by literally calling the component function twice and comparing the results. If your component logs to the console or fires a network request, you will see it happen twice. This is not a bug. It is React enforcing the purity contract by making violations visible. The second invocation's output is discarded; only the first is used for reconciliation. But the side effects of both invocations are real.
 
@@ -165,9 +165,9 @@ A candidate who reaches for `useRef` to track whether the fetch already fired, i
 
 **Trap 2: "I have a `console.log` in my render for debugging. My manager says this is a side effect and I should remove it. Are they right?"**
 
-Technically correct, practically nuanced. `console.log` is a side effect by definition — it writes to an external output stream. Running it twice does not produce the same state of the world as running it once. In Strict Mode you will see it twice, which is React's double-invocation making the impurity visible.
+Technically correct, practically nuanced. `console.log` is a side effect by definition - it writes to an external output stream. Running it twice does not produce the same state of the world as running it once. In Strict Mode you will see it twice, which is React's double-invocation making the impurity visible.
 
-In practice, a `console.log` in render during development is tolerated. It does not cause infinite loops, race conditions, or stale closures. The manager is technically right. The pragmatic answer is: it is fine for debugging, but it should not be in production code, and seeing it twice in Strict Mode is expected and meaningful — it is showing you the render ran twice, which is correct behavior.
+In practice, a `console.log` in render during development is tolerated. It does not cause infinite loops, race conditions, or stale closures. The manager is technically right. The pragmatic answer is: it is fine for debugging, but it should not be in production code, and seeing it twice in Strict Mode is expected and meaningful - it is showing you the render ran twice, which is correct behavior.
 
 The candidate who can articulate why it is technically a side effect while also explaining why it is practically tolerable demonstrates a deeper understanding than one who gives a binary yes/no.
 
@@ -192,7 +192,7 @@ This is why the React team has pushed render purity as a hard rule even though i
 <Answer>
 The purity contract: given the same props and state, the render function must return the same JSX output and must not change anything outside its own scope. It must be a pure function of its inputs.
 
-In a synchronous React app, React calls your component function exactly once per state update and immediately commits the result. A side effect in render fires once per update, at a predictable time. The violation exists but the consequences — a single extra fetch, a single extra log — are often invisible or benign in simple cases.
+In a synchronous React app, React calls your component function exactly once per state update and immediately commits the result. A side effect in render fires once per update, at a predictable time. The violation exists but the consequences - a single extra fetch, a single extra log - are often invisible or benign in simple cases.
 
 In Concurrent Mode, React may call your component function multiple times before committing, or call it and discard the result entirely due to a higher-priority interrupt. A side effect in render fires an unpredictable number of times. A fetch may fire three times before one visible update. An analytics event fires for renders the user never sees. A timer may start multiple times with no mechanism to stop the extras. The same violation that was tolerated in synchronous React causes real, user-visible bugs in Concurrent Mode. The purity contract was always the rule. Concurrent Mode simply removes the tolerance for breaking it.
 </Answer>
@@ -204,9 +204,9 @@ In Concurrent Mode, React may call your component function multiple times before
 </Question>
 
 <Answer>
-They are incorrect. `[...items].sort(...)` is pure. The spread operator creates a new array — a copy of `items`. The `.sort()` call mutates that new copy, not the original `items` array. The original prop is untouched. No external state changes. Given the same `items` array, this expression always produces the same sorted output.
+They are incorrect. `[...items].sort(...)` is pure. The spread operator creates a new array - a copy of `items`. The `.sort()` call mutates that new copy, not the original `items` array. The original prop is untouched. No external state changes. Given the same `items` array, this expression always produces the same sorted output.
 
-If the code were `items.sort(...)` — sorting the original array in place — the teammate would be correct. That would mutate a prop, which is external to the component's own scope, making it an impure operation. The distinction is the spread. Creating a copy and operating on the copy is pure. Mutating the input directly is not.
+If the code were `items.sort(...)` - sorting the original array in place - the teammate would be correct. That would mutate a prop, which is external to the component's own scope, making it an impure operation. The distinction is the spread. Creating a copy and operating on the copy is pure. Mutating the input directly is not.
 </Answer>
 
 ---
@@ -218,7 +218,7 @@ If the code were `items.sort(...)` — sorting the original array in place — t
 <Answer>
 Strict Mode double-invokes render functions in development on purpose, as a purity verification mechanism. It relies on the guarantee that render functions are pure: if that guarantee holds, calling the function twice with the same inputs produces the same output twice, and the second call has no observable consequences beyond the first. The double-invocation is harmless, and the UI is correct.
 
-When that guarantee is violated — when the render function has a side effect — the double-invocation makes the violation visible. A fetch fires twice: two network requests appear in the dev tools. A console.log appears twice. A counter increments twice. These are not Strict Mode bugs. They are Strict Mode doing its job: surfacing the consequence of an impure render so the developer can see and fix it.
+When that guarantee is violated - when the render function has a side effect - the double-invocation makes the violation visible. A fetch fires twice: two network requests appear in the dev tools. A console.log appears twice. A counter increments twice. These are not Strict Mode bugs. They are Strict Mode doing its job: surfacing the consequence of an impure render so the developer can see and fix it.
 
 The feature is the exposure. Without double-invocation, a side effect in render might fire once per update and appear to work. With double-invocation, the error is immediate and obvious. Strict Mode makes incorrect code visibly incorrect in development, so it can be fixed before it causes unpredictable behavior in Concurrent Mode production.
 </Answer>
@@ -232,7 +232,7 @@ The feature is the exposure. Without double-invocation, a side effect in render 
 <Answer>
 Three concrete failure modes:
 
-First, over-firing due to speculative rendering. Concurrent Mode may render the component speculatively — computing what the UI would look like if committed — and then discard that render because a higher-priority update interrupted it. The analytics event fired during a render the user never saw. "Page viewed" is logged for a page view that did not happen.
+First, over-firing due to speculative rendering. Concurrent Mode may render the component speculatively - computing what the UI would look like if committed - and then discard that render because a higher-priority update interrupted it. The analytics event fired during a render the user never saw. "Page viewed" is logged for a page view that did not happen.
 
 Second, over-firing due to re-renders. Any state change in the component or its ancestors causes a re-render. The analytics event fires on every re-render, not just on initial mount. A user who triggers three state updates on the same page generates three "page viewed" events.
 
@@ -252,7 +252,7 @@ Both reading and writing cross the boundary of the function's own scope, but the
 
 Writing is a clear violation. `localStorage.setItem` changes the state of the world. Running it twice writes twice. The external system is different after the call. This is a side effect by definition and is unsafe in render.
 
-Reading is more subtle. `localStorage.getItem` does not change the world. Running it twice does not produce two writes. However, it violates the purity contract in a different dimension: it makes the render function's output depend on something other than props and state. `f(props, state) → JSX` is no longer a complete description. The output also depends on whatever is currently in localStorage. If localStorage changes between renders — another tab wrote to it, a previous effect updated it — the same props and state produce different JSX. The render is non-deterministic from React's perspective.
+Reading is more subtle. `localStorage.getItem` does not change the world. Running it twice does not produce two writes. However, it violates the purity contract in a different dimension: it makes the render function's output depend on something other than props and state. `f(props, state) → JSX` is no longer a complete description. The output also depends on whatever is currently in localStorage. If localStorage changes between renders - another tab wrote to it, a previous effect updated it - the same props and state produce different JSX. The render is non-deterministic from React's perspective.
 
 The practical consequences are less severe than writing: no infinite loops, no double-writes. But the architectural problem is real: you have hidden input that React cannot track, cannot optimize around, and cannot reason about. The correct pattern is to read from localStorage in a `useEffect` and store the result in state, making the dependency explicit and React-visible. Reading in render is not catastrophic, but it is technically impure and should be avoided for the same reasons that make purity valuable: predictability, debuggability, and correctness under concurrent rendering.
 </Answer>

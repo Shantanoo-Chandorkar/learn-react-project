@@ -205,8 +205,8 @@ const b = [1, , 3]; // sparse
 const resultA = a.map((n) => n * 2);
 const resultB = b.map((n) => n * 2);
 
-console.log(resultA); // [2, NaN, 6]  — callback runs on undefined, NaN * 2 = NaN
-console.log(resultB); // [2, empty, 6] — callback skips the hole
+console.log(resultA); // [2, NaN, 6]  - callback runs on undefined, NaN * 2 = NaN
+console.log(resultB); // [2, empty, 6] - callback skips the hole
 ```
 
 `undefined` is a value. The callback runs on it. `undefined * 2` is `NaN`. A hole is not a value. The callback skips it entirely. The output length is the same in both cases, but the hole remains a hole.
@@ -297,7 +297,7 @@ const found = [1, 2, 3, 4, 5].find((n) => n === 3); // stops at 3
 No code for these. Answer from reading only.
 
 <Question>
-**Q1.** `[1, 2, 3].map(() => {})` — what does this return?
+**Q1.** `[1, 2, 3].map(() => {})` - what does this return?
 </Question>
 
 <Answer>
@@ -307,7 +307,7 @@ No code for these. Answer from reading only.
 ---
 
 <Question>
-**Q2.** `[1, 2, 3].forEach(n => n * 2)` — what does this return?
+**Q2.** `[1, 2, 3].forEach(n => n * 2)` - what does this return?
 </Question>
 
 <Answer>
@@ -327,7 +327,7 @@ Yes. `filter` creates a new array but the elements are the same references. Muta
 ---
 
 <Question>
-**Q4.** `[5].reduce((acc, n) => acc + n)` — does the callback run?
+**Q4.** `[5].reduce((acc, n) => acc + n)` - does the callback run?
 </Question>
 
 <Answer>
@@ -347,7 +347,7 @@ No. `return` exits the current callback invocation only. `forEach` has no mechan
 ---
 
 <Question>
-**Q6.** `["1","2","3"].map(parseInt)` — what is the second element?
+**Q6.** `["1","2","3"].map(parseInt)` - what is the second element?
 </Question>
 
 <Answer>

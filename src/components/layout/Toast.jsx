@@ -2,7 +2,7 @@ import React from 'react';
 import PropTypes from 'prop-types';
 
 /**
- * Toast — small fixed-position notification bar; caller fully controls visibility.
+ * Toast - small fixed-position notification bar; caller fully controls visibility.
  *
  * @param {string} message - Text shown in the toast.
  * @param {string} [actionLabel] - Label for the optional action button.

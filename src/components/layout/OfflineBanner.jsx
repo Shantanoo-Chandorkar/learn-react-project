@@ -3,7 +3,7 @@ import Toast from './Toast';
 import useOnlineStatus from '../../Hooks/useOnlineStatus';
 
 /**
- * OfflineBanner — shows a toast while offline; only previously-cached pages actually work offline.
+ * OfflineBanner - shows a toast while offline; only previously-cached pages actually work offline.
  */
 const OfflineBanner = () => {
   const isOnline = useOnlineStatus();

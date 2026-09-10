@@ -4,19 +4,17 @@ import Fuse from 'fuse.js';
 import topics from '../../data/topics.json';
 
 /**
- * SearchModal Component — used inside the Header React island.
+ * SearchModal Component - used inside the Header React island.
  *
  * Spotlight-style search interface using fuse.js for fuzzy indexing.
  * Supports Ctrl+K shortcut and keyboard navigation.
- *
- * Navigation uses window.location.href instead of react-router's
- * useNavigate — correct for Astro's full-page navigation model.
  */
 const SearchModal = ({ isOpen, onClose }) => {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState([]);
     const [selectedIndex, setSelectedIndex] = useState(0);
     const inputRef = useRef(null);
+    const resultRefs = useRef([]);
 
     const fuse = useMemo(
         () => new Fuse(topics, { keys: ['title', 'category'], threshold: 0.3 }),
@@ -43,10 +41,8 @@ const SearchModal = ({ isOpen, onClose }) => {
                 e.preventDefault();
                 setSelectedIndex((prev) => (prev - 1 + results.length) % Math.max(results.length, 1));
             } else if (e.key === 'Enter') {
-                if (results[selectedIndex]) {
-                    window.location.href = `/topic/${results[selectedIndex].slug}`;
-                    onClose();
-                }
+                // .click() reuses the mouse path so the nav progress bar's click-detection fires too
+                resultRefs.current[selectedIndex]?.click();
             } else if (e.key === 'Escape') {
                 onClose();
             }
@@ -129,39 +125,42 @@ const SearchModal = ({ isOpen, onClose }) => {
                     ) : (
                         <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
                             {results.map((topic, index) => (
-                                <li
-                                    key={topic.id}
-                                    onClick={() => {
-                                        window.location.href = `/topic/${topic.slug}`;
-                                        onClose();
-                                    }}
-                                    style={{
-                                        padding: '1rem',
-                                        borderRadius: '0.5rem',
-                                        cursor: 'pointer',
-                                        backgroundColor:
-                                            index === selectedIndex ? 'var(--primary-tint)' : 'transparent',
-                                        borderLeft:
-                                            index === selectedIndex
-                                                ? '4px solid var(--primary-color)'
-                                                : '4px solid transparent',
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        gap: '0.25rem',
-                                    }}
-                                >
-                                    <span style={{ fontWeight: '600', color: 'var(--text-color)' }}>
-                                        {topic.title}
-                                    </span>
-                                    <span
+                                <li key={topic.id}>
+                                    <a
+                                        href={`/topic/${topic.slug}`}
+                                        onClick={onClose}
+                                        ref={(element) => {
+                                            resultRefs.current[index] = element;
+                                        }}
                                         style={{
-                                            fontSize: '0.8rem',
-                                            color: 'var(--secondary-color)',
-                                            textTransform: 'uppercase',
+                                            padding: '1rem',
+                                            borderRadius: '0.5rem',
+                                            cursor: 'pointer',
+                                            textDecoration: 'none',
+                                            backgroundColor:
+                                                index === selectedIndex ? 'var(--primary-tint)' : 'transparent',
+                                            borderLeft:
+                                                index === selectedIndex
+                                                    ? '4px solid var(--primary-color)'
+                                                    : '4px solid transparent',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '0.25rem',
                                         }}
                                     >
-                                        {topic.category}
-                                    </span>
+                                        <span style={{ fontWeight: '600', color: 'var(--text-color)' }}>
+                                            {topic.title}
+                                        </span>
+                                        <span
+                                            style={{
+                                                fontSize: '0.8rem',
+                                                color: 'var(--secondary-color)',
+                                                textTransform: 'uppercase',
+                                            }}
+                                        >
+                                            {topic.category}
+                                        </span>
+                                    </a>
                                 </li>
                             ))}
                         </ul>

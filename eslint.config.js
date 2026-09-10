@@ -28,5 +28,12 @@ export default [
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
     },
   },
+  {
+    // Astro API routes run server-side (Node, via the Netlify adapter), not in the browser.
+    files: ['src/pages/api/**/*.js'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
   eslintConfigPrettier,
 ];

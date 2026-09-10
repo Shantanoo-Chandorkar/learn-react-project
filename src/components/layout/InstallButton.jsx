@@ -9,7 +9,7 @@ const isStandaloneDisplay = () =>
   window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
 
 /**
- * InstallButton — PWA install trigger; reads shared install state so every instance on a page agrees.
+ * InstallButton - PWA install trigger; reads shared install state so every instance on a page agrees.
  *
  * @param {string|null} label Text rendered beside the icon; icon-only when omitted.
  * @param {string} className Class applied to the button, defaults to the header icon style.

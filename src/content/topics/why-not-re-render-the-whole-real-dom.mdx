@@ -40,11 +40,11 @@ input.addEventListener('input', (e) => render(e.target.value));
 render('');
 ```
 
-On every keystroke, `innerHTML` is set. The browser parses the HTML string, destroys every existing `<li>` node, creates new ones, inserts them, recalculates layout, repaints. For 500 items this may be acceptable. For 5,000 items with complex list item markup — nested elements, images, event listeners — it will visibly lag. The input feels sticky. Animations stutter. Scroll position resets.
+On every keystroke, `innerHTML` is set. The browser parses the HTML string, destroys every existing `<li>` node, creates new ones, inserts them, recalculates layout, repaints. For 500 items this may be acceptable. For 5,000 items with complex list item markup - nested elements, images, event listeners - it will visibly lag. The input feels sticky. Animations stutter. Scroll position resets.
 
 The problem compounds when list items have state. Focused elements lose focus. Input cursors jump. CSS transitions abort. The browser had context attached to those nodes. Wiping the DOM discards all of it.
 
-Now make each list item interactive. A checkbox. A nested expand/collapse. A tooltip on hover. Wiping and re-rendering `innerHTML` destroys all event listeners attached to those nodes. You must re-attach them after every render. And any user interaction mid-render — keyboard focus, a tooltip open — is silently destroyed.
+Now make each list item interactive. A checkbox. A nested expand/collapse. A tooltip on hover. Wiping and re-rendering `innerHTML` destroys all event listeners attached to those nodes. You must re-attach them after every render. And any user interaction mid-render - keyboard focus, a tooltip open - is silently destroyed.
 
 ```js
 function render(filter) {
@@ -78,13 +78,13 @@ Every render cycle: full DOM destruction, full DOM construction, full listener r
 
 ### 3. Why That Breaks
 
-The precise failure mode: **DOM operations are not proportional to the logical size of the change. They are proportional to the size of the subtree being rebuilt, and they trigger browser work — style recalculation, layout, paint — that dwarfs the cost of the JavaScript that drives them.**
+The precise failure mode: **DOM operations are not proportional to the logical size of the change. They are proportional to the size of the subtree being rebuilt, and they trigger browser work - style recalculation, layout, paint - that dwarfs the cost of the JavaScript that drives them.**
 
 There are two distinct cost categories here, and conflating them causes bad intuitions about performance.
 
-**JavaScript cost.** Producing a new description of the UI — calling component functions, building object trees, diffing — happens entirely in the JS engine. The JS engine is fast. It operates on heap-allocated objects with no layout engine involvement. A full Virtual DOM tree construction and diff for a 500-node component tree takes microseconds on modern hardware.
+**JavaScript cost.** Producing a new description of the UI - calling component functions, building object trees, diffing - happens entirely in the JS engine. The JS engine is fast. It operates on heap-allocated objects with no layout engine involvement. A full Virtual DOM tree construction and diff for a 500-node component tree takes microseconds on modern hardware.
 
-**DOM cost.** Touching the DOM crosses the boundary between the JavaScript engine and the browser's rendering engine. They are separate subsystems. Every DOM mutation — `appendChild`, `removeChild`, `setAttribute`, `textContent = ...` — is a cross-subsystem call. And more importantly, the rendering engine does not apply DOM mutations individually. It batches them and then runs a cascade:
+**DOM cost.** Touching the DOM crosses the boundary between the JavaScript engine and the browser's rendering engine. They are separate subsystems. Every DOM mutation - `appendChild`, `removeChild`, `setAttribute`, `textContent = ...` - is a cross-subsystem call. And more importantly, the rendering engine does not apply DOM mutations individually. It batches them and then runs a cascade:
 
 1. **Style recalculation.** Which CSS rules apply to each node now?
 2. **Layout (reflow).** What are the position and dimensions of each node? This is recursive: a node's size depends on its children's sizes, which depend on their children.
@@ -101,7 +101,7 @@ This is why "DOM ops are expensive, JS is fast" is the mental model. It is not t
 
 Never touch the DOM unless you know exactly which node needs to change and what specifically needs to change about it.
 
-To know what specifically needs to change, you need a record of what the DOM currently looks like and a description of what it should look like. Diffing those two descriptions in JavaScript — fast, no rendering engine involvement — tells you the minimal set of mutations to apply. You then apply exactly those mutations and nothing else.
+To know what specifically needs to change, you need a record of what the DOM currently looks like and a description of what it should look like. Diffing those two descriptions in JavaScript - fast, no rendering engine involvement - tells you the minimal set of mutations to apply. You then apply exactly those mutations and nothing else.
 
 One sentence: **keep two JS descriptions of the UI, diff them cheaply in JS, apply only the diff to the expensive DOM.**
 
@@ -113,11 +113,11 @@ The Virtual DOM is the mechanism for holding those two descriptions. Reconciliat
 
 React's rendering pipeline separates into three phases precisely to minimize DOM contact:
 
-**Render phase.** React calls your component functions and builds a new Virtual DOM tree — a tree of plain JS objects. No DOM is touched. This can be interrupted, restarted, or thrown away. It is pure computation.
+**Render phase.** React calls your component functions and builds a new Virtual DOM tree - a tree of plain JS objects. No DOM is touched. This can be interrupted, restarted, or thrown away. It is pure computation.
 
-**Reconciliation.** React compares the new Virtual DOM tree against the previous one. For each node, it determines: same type, same position? Update props in place. Different type? Schedule deletion and insertion. New node? Schedule insertion. Removed node? Schedule deletion. The result is a list of effects — specific mutations to make. Still no DOM contact.
+**Reconciliation.** React compares the new Virtual DOM tree against the previous one. For each node, it determines: same type, same position? Update props in place. Different type? Schedule deletion and insertion. New node? Schedule insertion. Removed node? Schedule deletion. The result is a list of effects - specific mutations to make. Still no DOM contact.
 
-**Commit phase.** React walks the effect list and applies each mutation to the real DOM. `setAttribute`, `textContent`, `appendChild`, `removeChild` — the minimum set required to bring the DOM into sync with the new description. One pass. Synchronous. DOM contact happens only here.
+**Commit phase.** React walks the effect list and applies each mutation to the real DOM. `setAttribute`, `textContent`, `appendChild`, `removeChild` - the minimum set required to bring the DOM into sync with the new description. One pass. Synchronous. DOM contact happens only here.
 
 The practical consequence:
 
@@ -191,7 +191,7 @@ Setting `innerHTML` does more than create nodes. The browser must:
 3. Insert the new nodes into the document and attach them to the render tree.
 4. Run style recalculation, layout, and paint for the entire affected subtree.
 
-Additionally, nodes destroyed by `innerHTML` are not just removed from the DOM. Their C++ objects in the browser's rendering engine are dereferenced. Any JavaScript references to those nodes become detached node references — they still exist in JS heap until GC, but they point to nodes that are no longer in the document. If you had event listeners attached to them via `addEventListener`, those listeners are now attached to orphaned nodes. They will never fire.
+Additionally, nodes destroyed by `innerHTML` are not just removed from the DOM. Their C++ objects in the browser's rendering engine are dereferenced. Any JavaScript references to those nodes become detached node references - they still exist in JS heap until GC, but they point to nodes that are no longer in the document. If you had event listeners attached to them via `addEventListener`, those listeners are now attached to orphaned nodes. They will never fire.
 
 React avoids `innerHTML` entirely. Every DOM mutation is a targeted operation on a specific node's specific property. The browser's rendering engine updates only what changed. The rest of the DOM is undisturbed.
 
@@ -224,9 +224,9 @@ You can, and some high-performance applications do. React Native on web and game
 
 DOM rendering is slow but gives you the browser's entire accessibility tree, tab focus management, native form controls, text selection, scroll behavior, CSS animations, media queries, and screen reader support for free. These are not trivial. They represent years of platform work and are expected behavior for users, especially users who rely on assistive technology.
 
-Canvas rendering is fast because it bypasses all layout and compositing overhead — you control every pixel. But you lose everything above. You must implement your own text layout, hit testing, focus management, and accessibility. You are writing a UI toolkit from scratch, not using one.
+Canvas rendering is fast because it bypasses all layout and compositing overhead - you control every pixel. But you lose everything above. You must implement your own text layout, hit testing, focus management, and accessibility. You are writing a UI toolkit from scratch, not using one.
 
-React's answer is to minimize DOM operations, not eliminate them. The diffing approach brings DOM rendering close enough to canvas performance for most applications while retaining the full browser platform. For specific cases — data grids with tens of thousands of rows, real-time data visualizations — the answer is virtual scrolling, canvas layers, or `OffscreenCanvas`, applied surgically to the bottleneck, not globally.
+React's answer is to minimize DOM operations, not eliminate them. The diffing approach brings DOM rendering close enough to canvas performance for most applications while retaining the full browser platform. For specific cases - data grids with tens of thousands of rows, real-time data visualizations - the answer is virtual scrolling, canvas layers, or `OffscreenCanvas`, applied surgically to the bottleneck, not globally.
 </Answer>
 
 ---
@@ -238,9 +238,9 @@ React's answer is to minimize DOM operations, not eliminate them. The diffing ap
 <Answer>
 They are right in a narrow case: if the list is small, changes infrequently, contains no interactive elements, and no browser context (focus, transitions, selections) needs to be preserved. In that case, `innerHTML` is genuinely simpler and the performance difference is immeasurable.
 
-They are wrong in most real conditions. First, `innerHTML` is not one operation to the browser. It is HTML parsing, full subtree destruction, full subtree insertion, style recalculation, layout, and paint — an O(n) cascade where n is the subtree size, regardless of how much changed. A React diff for a one-item change in a 500-item list is O(500) for the comparison and O(1) for the DOM mutation. The `innerHTML` approach is O(500) for both.
+They are wrong in most real conditions. First, `innerHTML` is not one operation to the browser. It is HTML parsing, full subtree destruction, full subtree insertion, style recalculation, layout, and paint - an O(n) cascade where n is the subtree size, regardless of how much changed. A React diff for a one-item change in a 500-item list is O(500) for the comparison and O(1) for the DOM mutation. The `innerHTML` approach is O(500) for both.
 
-Second, `innerHTML` destroys browser context. Any focused element loses focus. Any open tooltip or dropdown closes. CSS transitions in progress abort. Custom element lifecycle methods for removed nodes may fire unexpectedly. JavaScript references to old child nodes become detached. If the list items are interactive — checkboxes, inputs, expandable rows — these are not theoretical concerns. They are observable bugs.
+Second, `innerHTML` destroys browser context. Any focused element loses focus. Any open tooltip or dropdown closes. CSS transitions in progress abort. Custom element lifecycle methods for removed nodes may fire unexpectedly. JavaScript references to old child nodes become detached. If the list items are interactive - checkboxes, inputs, expandable rows - these are not theoretical concerns. They are observable bugs.
 
 Third, `innerHTML` requires event delegation or listener re-attachment after every render, because the old nodes with their listeners are gone. React retains DOM nodes for unchanged items and their attached listeners across renders.
 
@@ -258,7 +258,7 @@ The developer's claim treats performance as a single axis. It is not. `innerHTML
 <Answer>
 Style recalculation, layout (reflow), paint, composite.
 
-Layout is typically the most expensive. It is recursive: a node's dimensions depend on its children, which depend on their children. Changing the width or height of a parent can force recalculation of every descendant's layout. Inserting or removing a node from document flow forces layout recalculation for all subsequent siblings. For large subtrees with complex layout — flexbox, grid, absolutely positioned children — this can take milliseconds per reflow. Because it blocks the main thread, any reflow that exceeds the frame budget (16ms at 60fps) drops a frame. Style recalculation is also significant for large stylesheets, but layout is the more common bottleneck for DOM-heavy applications.
+Layout is typically the most expensive. It is recursive: a node's dimensions depend on its children, which depend on their children. Changing the width or height of a parent can force recalculation of every descendant's layout. Inserting or removing a node from document flow forces layout recalculation for all subsequent siblings. For large subtrees with complex layout - flexbox, grid, absolutely positioned children - this can take milliseconds per reflow. Because it blocks the main thread, any reflow that exceeds the frame budget (16ms at 60fps) drops a frame. Style recalculation is also significant for large stylesheets, but layout is the more common bottleneck for DOM-heavy applications.
 </Answer>
 
 ---
@@ -295,7 +295,7 @@ boxes.forEach((box, i) => {
 // one layout recalculation total, deferred to next frame
 ```
 
-All reads happen before any writes. The browser runs exactly one layout pass. This pattern — read batch, write batch — is the fundamental rule for avoiding layout thrashing in any DOM-heavy code.
+All reads happen before any writes. The browser runs exactly one layout pass. This pattern - read batch, write batch - is the fundamental rule for avoiding layout thrashing in any DOM-heavy code.
 </Answer>
 
 ---
@@ -305,7 +305,7 @@ All reads happen before any writes. The browser runs exactly one layout pass. Th
 </Question>
 
 <Answer>
-Only the commit phase touches the real DOM. The render phase calls component functions and produces Virtual DOM element trees — pure JavaScript computation, no browser involvement. The reconciliation phase diffs old and new Virtual DOM trees and produces an effect list — still pure JavaScript. The commit phase applies the effect list to the real DOM as a single synchronous mutation pass.
+Only the commit phase touches the real DOM. The render phase calls component functions and produces Virtual DOM element trees - pure JavaScript computation, no browser involvement. The reconciliation phase diffs old and new Virtual DOM trees and produces an effect list - still pure JavaScript. The commit phase applies the effect list to the real DOM as a single synchronous mutation pass.
 
 Separating them matters for two reasons. First, it allows React to batch all DOM mutations into a single pass, avoiding the interleaved read-write patterns that cause layout thrashing. The commit phase only writes; it never reads layout properties mid-commit. The browser sees one batch of mutations and runs one style/layout/paint cycle.
 
@@ -321,9 +321,9 @@ Second, it makes the render and reconciliation phases interruptible. Because the
 <Answer>
 React issues one DOM mutation: the `textContent` (or equivalent attribute) update on the single cell that changed.
 
-It knows which rows to skip through reconciliation. React compares the new Virtual DOM tree for the table against the previous one. For each row, it checks whether the type (`tr`) is the same and whether the props are referentially equal or shallowly equal. For 999 rows whose data did not change, the props object is identical — same column values, same key — so React marks those Fiber nodes as having no update work. It traverses past them without producing any effect entries.
+It knows which rows to skip through reconciliation. React compares the new Virtual DOM tree for the table against the previous one. For each row, it checks whether the type (`tr`) is the same and whether the props are referentially equal or shallowly equal. For 999 rows whose data did not change, the props object is identical - same column values, same key - so React marks those Fiber nodes as having no update work. It traverses past them without producing any effect entries.
 
 For the one row that changed, React finds the differing prop, traverses into its children to find the changed cell, and marks that cell's Fiber with an `Update` effect. The commit phase walks the effect list, finds one entry, and issues one `textContent` mutation.
 
-This is why `key` stability matters. If row keys change between renders — for example, using array index as key when rows are reordered — React cannot correlate old and new rows. It may destroy and recreate rows that could have been updated in place, converting one mutation into thousands.
+This is why `key` stability matters. If row keys change between renders - for example, using array index as key when rows are reordered - React cannot correlate old and new rows. It may destroy and recreate rows that could have been updated in place, converting one mutation into thousands.
 </Answer>
