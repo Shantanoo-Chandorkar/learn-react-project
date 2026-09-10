@@ -605,7 +605,3 @@ Using `unstable_noStore()` from `next/cache` in any Server Component in the rout
 
 The minimum change in terms of code size is adding `export const dynamic = 'force-dynamic'` as one line to the route's `page.js` or `layout.js`. This is also the most readable because it explicitly declares the rendering intent at the route level rather than relying on implicit behavior from a specific fetch configuration.
 </Answer>
-
----
-
-Caching section is complete. The complete caching picture: Request Memoization deduplicates within a request, the Data Cache persists fetch results across requests with configurable revalidation, the Full Route Cache stores complete rendered output for static routes, and the Router Cache serves previously visited routes from browser memory. Each layer has independent opt-out mechanisms. On-demand revalidation via `revalidatePath` and `revalidateTag` provides precise cache invalidation without time-based staleness windows.
